@@ -6,5 +6,5 @@ import react from "@vitejs/plugin-react";
 // Для user/org page (https://<org>.github.io/) оставьте '/'.
 export default defineConfig({
   plugins: [react()],
-  base: "/collapsar-reports/",
+  base: "/GeneralReport/",
 });
