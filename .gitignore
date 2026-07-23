@@ -9,3 +9,5 @@ venv/
 .idea/
 .vscode/
 tools/
+uploads/
+.claude/

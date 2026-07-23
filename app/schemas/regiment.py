@@ -11,18 +11,23 @@ class RegimentRead(BaseModel):
     id: int
     name: str
     discord_role_id: str
+    color: str | None = None
 
 
 class RegimentCreate(BaseModel):
     name: str
     discord_role_id: str
+    color: str | None = None
 
 
 class RegimentUpdate(BaseModel):
-    """Частичное обновление формирования: переименование и/или смена роли."""
+    """Частичное обновление формирования: переименование, смена роли и/или цвета.
+    Поля, отсутствующие в теле запроса, не изменяются (exclude_unset в эндпоинте) —
+    это позволяет явно очистить цвет, отправив color: null."""
 
     name: str | None = None
     discord_role_id: str | None = None
+    color: str | None = None
 
 
 class DiscordRoleOption(BaseModel):

@@ -15,14 +15,19 @@ logger = logging.getLogger(__name__)
 DISCORD_API_BASE = "https://discord.com/api/v10"
 
 
-async def exchange_code_for_token(code: str) -> str:
-    """Обменивает код авторизации Discord OAuth2 на access_token пользователя."""
+async def exchange_code_for_token(code: str, redirect_uri: str) -> str:
+    """Обменивает код авторизации Discord OAuth2 на access_token пользователя.
+
+    redirect_uri должен точно совпадать с тем, что использовался при запросе кода
+    (его присылает фронт, а не берём из настроек — так адрес фронта/бэкенда может
+    меняться без пересборки, лишь бы совпадал с зарегистрированным в Discord Developer
+    Portal)."""
     data = {
         "client_id": settings.discord_client_id,
         "client_secret": settings.discord_client_secret,
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": settings.discord_redirect_uri,
+        "redirect_uri": redirect_uri,
     }
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
@@ -77,6 +82,52 @@ async def fetch_member_roles(discord_user_id: str) -> list[str]:
         raise DiscordAPIError("Не удалось получить роли участника на сервере Discord.")
 
     return response.json().get("roles", [])
+
+
+def _member_avatar_url(member: dict) -> str | None:
+    user = member.get("user", {})
+    avatar_hash = user.get("avatar")
+    if not avatar_hash:
+        return None
+    return f"https://cdn.discordapp.com/avatars/{user['id']}/{avatar_hash}.png"
+
+
+async def fetch_guild_members() -> list[dict]:
+    """Получает всех участников единственного сервера постранично (нужна включённая
+    Server Members Intent). Возвращает {discord_id, username, roles, avatar_url}."""
+    members: list[dict] = []
+    after = "0"
+
+    async with httpx.AsyncClient() as client:
+        while True:
+            url = f"{DISCORD_API_BASE}/guilds/{settings.discord_guild_id}/members"
+            response = await client.get(
+                url, headers=_bot_headers(), params={"limit": 1000, "after": after}
+            )
+            if response.status_code != 200:
+                logger.error("Discord guild members lookup failed: %s %s", response.status_code, response.text)
+                raise DiscordAPIError("Не удалось получить список участников сервера.")
+
+            page = response.json()
+            if not page:
+                break
+
+            for member in page:
+                user = member.get("user", {})
+                members.append(
+                    {
+                        "discord_id": user["id"],
+                        "username": member.get("nick") or user.get("username", "unknown"),
+                        "roles": member.get("roles", []),
+                        "avatar_url": _member_avatar_url(member),
+                    }
+                )
+
+            if len(page) < 1000:
+                break
+            after = page[-1]["user"]["id"]
+
+    return members
 
 
 async def fetch_guild_roles() -> list[dict]:

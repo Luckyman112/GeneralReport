@@ -15,3 +15,6 @@ class Regiment(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True)
     # Роль бойца формирования (@501)
     discord_role_id: Mapped[str] = mapped_column(String(32), unique=True)
+    # Цвет формирования (hex, например "#5865f2") — влияет на цвет ника бойца и
+    # акцент рапортов в интерфейсе. None — используется нейтральный цвет темы.
+    color: Mapped[str | None] = mapped_column(String(7), nullable=True)

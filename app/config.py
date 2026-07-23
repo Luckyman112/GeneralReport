@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     # Discord OAuth2
     discord_client_id: str
     discord_client_secret: str
-    discord_redirect_uri: str
 
     # Discord Bot (для чтения ролей участников и управления формированиями)
     discord_bot_token: str
@@ -22,15 +21,20 @@ class Settings(BaseSettings):
 
     # Роль администратора (видит рапорты всех формирований)
     admin_role_id: str
-    # Общая роль «Командир»: командир формирования = эта роль + роль самого формирования
+    # Общая роль «Командир»: командир формирования = эта роль + явное назначение
+    # командиром конкретного формирования (регулируется в веб-панели)
     commander_role_id: str
+
+    # Секрет для входа по паролю (в обход Discord) — даёт полный админский доступ
+    admin_password: str
 
     # JWT
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
-    # CORS: список origin'ов через запятую (например GitHub Pages)
+    # CORS: список origin'ов через запятую. При self-host фронта на том же адресе,
+    # что и бэкенд, обычно не нужен (same-origin), но оставлен для гибкости.
     allowed_origins: str = ""
 
     log_level: str = "INFO"

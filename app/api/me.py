@@ -14,7 +14,9 @@ async def get_me(access: AccessContext = Depends(get_access_context)) -> MeRespo
         user=UserRead.model_validate(access.user),
         access=AccessInfo(
             is_admin=access.is_admin,
+            is_password_login=access.is_password_login,
             commander_regiment_ids=sorted(access.commander_regiment_ids),
+            category_manager_regiment_ids=sorted(access.category_manager_regiment_ids),
             soldier_regiment_ids=sorted(access.soldier_regiment_ids),
         ),
     )

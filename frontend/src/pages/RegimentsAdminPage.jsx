@@ -10,6 +10,7 @@ export function RegimentsAdminPage() {
   const [editingRegiment, setEditingRegiment] = useState(null);
   const [newName, setNewName] = useState("");
   const [newRoleId, setNewRoleId] = useState("");
+  const [newColor, setNewColor] = useState("#5865f2");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -36,7 +37,7 @@ export function RegimentsAdminPage() {
     setCreating(true);
     setError(null);
     try {
-      await api.createRegiment(token, { name: newName.trim(), discordRoleId: newRoleId });
+      await api.createRegiment(token, { name: newName.trim(), discordRoleId: newRoleId, color: newColor });
       setNewName("");
       await loadAll();
     } catch (err) {
@@ -66,6 +67,10 @@ export function RegimentsAdminPage() {
             ))}
           </select>
         </label>
+        <label className="color-picker-label">
+          Цвет формирования
+          <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} />
+        </label>
         <div className="report-form-actions">
           <button className="primary" disabled={creating} type="submit">
             Создать
@@ -78,7 +83,10 @@ export function RegimentsAdminPage() {
       <div className="regiment-list">
         {regiments.map((r) => (
           <div key={r.id} className="regiment-card">
-            <strong>{r.name}</strong>
+            <span className="regiment-card-name">
+              <span className="color-swatch" style={{ background: r.color || "var(--surface-2)" }} />
+              <strong>{r.name}</strong>
+            </span>
             <button onClick={() => setEditingRegiment(r)}>Настроить</button>
           </div>
         ))}

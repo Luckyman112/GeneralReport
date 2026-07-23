@@ -1,10 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// base — путь, под которым сайт будет опубликован на GitHub Pages.
-// Для project page (https://<org>.github.io/<repo>/) укажите '/<repo>/'.
-// Для user/org page (https://<org>.github.io/) оставьте '/'.
+// Self-host: фронт раздаётся тем же процессом FastAPI по корневому пути (see
+// app/main.py — StaticFiles монтируется на "/"), поэтому base — корень.
 export default defineConfig({
   plugins: [react()],
-  base: "/GeneralReport/",
+  base: "/",
 });

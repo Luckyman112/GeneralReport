@@ -1,17 +1,21 @@
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
+import { InactiveBlock } from "./components/InactiveBlock";
 import { Navbar } from "./components/Navbar";
 import { LoginPage } from "./pages/LoginPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { RegimentsAdminPage } from "./pages/RegimentsAdminPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 function Layout({ children }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   return (
     <>
       {isAuthenticated && <Navbar />}
-      <main className="page-container">{children}</main>
+      <main className="page-container">
+        {isAuthenticated && user?.is_inactive ? <InactiveBlock /> : children}
+      </main>
     </>
   );
 }
@@ -44,6 +48,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute adminOnly>
               <RegimentsAdminPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute passwordOnly>
+              <SettingsPage />
             </ProtectedRoute>
           }
         />
