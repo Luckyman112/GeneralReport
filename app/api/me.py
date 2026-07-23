@@ -18,5 +18,7 @@ async def get_me(access: AccessContext = Depends(get_access_context)) -> MeRespo
             commander_regiment_ids=sorted(access.commander_regiment_ids),
             category_manager_regiment_ids=sorted(access.category_manager_regiment_ids),
             soldier_regiment_ids=sorted(access.soldier_regiment_ids),
+            can_write_violations=access.can_write_violations,
+            can_view_violations=access.can_view_violations,
         ),
     )

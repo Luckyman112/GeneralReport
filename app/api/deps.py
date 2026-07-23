@@ -46,10 +46,18 @@ class AccessContext:
     category_manager_regiment_ids: set[int] = field(default_factory=set)
     # Формирования, где пользователь — боец (видит только свои рапорты)
     soldier_regiment_ids: set[int] = field(default_factory=set)
+    # Формирования, чьи участники могут заводить/просматривать записи о нарушениях
+    # (настраивается администратором, см. app/api/violations.py)
+    violation_writer_regiment_ids: set[int] = field(default_factory=set)
+    violation_viewer_regiment_ids: set[int] = field(default_factory=set)
 
     @property
     def has_access(self) -> bool:
         return self.is_admin or bool(self.commander_regiment_ids) or bool(self.soldier_regiment_ids)
+
+    @property
+    def own_regiment_ids(self) -> set[int]:
+        return self.commander_regiment_ids | self.soldier_regiment_ids
 
     def is_commander_of(self, regiment_id: int) -> bool:
         return self.is_admin or regiment_id in self.commander_regiment_ids
@@ -61,6 +69,23 @@ class AccessContext:
 
     def can_manage_categories(self, regiment_id: int) -> bool:
         return self.is_full_commander_of(regiment_id)
+
+    @property
+    def can_write_violations(self) -> bool:
+        """Может заводить записи о нарушениях — участник (боец или командир) одного
+        из формирований-"писателей", настроенных администратором."""
+        return self.is_admin or bool(self.own_regiment_ids & self.violation_writer_regiment_ids)
+
+    @property
+    def can_view_violations(self) -> bool:
+        """Может просматривать список нарушений — участник формирования-"читателя",
+        либо командир/заместитель ЛЮБОГО формирования (нужно видеть, не задержали ли
+        кого-то из своего состава)."""
+        return (
+            self.is_admin
+            or bool(self.commander_regiment_ids)
+            or bool(self.own_regiment_ids & self.violation_viewer_regiment_ids)
+        )
 
 
 async def get_access_context(
@@ -106,4 +131,6 @@ async def get_access_context(
         commander_regiment_ids=commander_regiment_ids,
         category_manager_regiment_ids=category_manager_regiment_ids,
         soldier_regiment_ids=soldier_regiment_ids,
+        violation_writer_regiment_ids=set(app_config.violation_writer_regiment_ids),
+        violation_viewer_regiment_ids=set(app_config.violation_viewer_regiment_ids),
     )

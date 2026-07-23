@@ -142,6 +142,25 @@ export const api = {
         deputy_role_id: deputyRoleId ?? null,
       },
     }),
+
+  listViolations: (token) => request("/api/violations", { token }),
+  getViolationTargetCandidates: (token) => request("/api/violations/target-candidates", { token }),
+  createViolation: (token, { targetDiscordId, description }) =>
+    request("/api/violations", {
+      method: "POST",
+      token,
+      body: { target_discord_id: targetDiscordId, description },
+    }),
+  deleteViolation: (token, violationId) =>
+    request(`/api/violations/${violationId}`, { method: "DELETE", token }),
+  getViolationSettings: (token) => request("/api/violations/settings", { token }),
+  updateViolationSettings: (token, changes) =>
+    request("/api/violations/settings", { method: "PATCH", token, body: changes }),
+
+  listNotifications: (token) => request("/api/notifications", { token }),
+  markAllNotificationsRead: (token) => request("/api/notifications/read-all", { method: "POST", token }),
+  sendBroadcast: (token, { title, body }) =>
+    request("/api/notifications/broadcast", { method: "POST", token, body: { title, body } }),
 };
 
 export { ApiError };

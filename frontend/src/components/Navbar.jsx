@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { NotificationBell } from "./NotificationBell";
 
 function buildPositionLabel(access, regiments) {
   if (!access) return "";
@@ -36,10 +37,12 @@ export function Navbar() {
       <div className="navbar-brand">COLLAPSAR</div>
       <div className="navbar-links">
         <Link to="/reports">Рапорты</Link>
+        {access?.can_view_violations && <Link to="/violations">Нарушители</Link>}
         {access?.is_admin && <Link to="/regiments">Формирования</Link>}
         {access?.is_password_login && <Link to="/settings">Настройки</Link>}
       </div>
       <div className="navbar-user">
+        <NotificationBell />
         {user?.avatar_url && <img src={user.avatar_url} alt="" className="navbar-avatar" />}
         <span className="navbar-user-info">
           <span className="navbar-username" style={nameColor ? { color: nameColor } : undefined}>

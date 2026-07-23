@@ -42,3 +42,22 @@ async def update(
     await db.commit()
     await db.refresh(row)
     return row
+
+
+async def update_violation_regiments(
+    db: AsyncSession,
+    *,
+    writer_regiment_ids: list[int] | None = None,
+    viewer_regiment_ids: list[int] | None = None,
+) -> AppSettings:
+    """Списки формирований для модуля "Нарушители". None = поле не передано (не
+    трогаем) — отличать от пустого списка (явно "никто, кроме админа") позволяет
+    exclude_unset в эндпоинте."""
+    row = await get(db)
+    if writer_regiment_ids is not None:
+        row.violation_writer_regiment_ids = writer_regiment_ids
+    if viewer_regiment_ids is not None:
+        row.violation_viewer_regiment_ids = viewer_regiment_ids
+    await db.commit()
+    await db.refresh(row)
+    return row

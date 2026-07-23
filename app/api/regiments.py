@@ -210,6 +210,7 @@ async def get_commander_candidates(
         GuildMemberRead(
             discord_id=m["discord_id"],
             username=m["username"],
+            discord_username=m["username"],
             avatar_url=m["avatar_url"],
             is_commander_role=app_config.commander_role_id in m["roles"],
             is_deputy_role=app_config.deputy_role_id in m["roles"],

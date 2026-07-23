@@ -11,9 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from app.api.app_settings import router as app_settings_router
 from app.api.auth import router as auth_router
 from app.api.me import router as me_router
+from app.api.notifications import router as notifications_router
 from app.api.ranks import router as ranks_router
 from app.api.regiments import router as regiments_router
 from app.api.reports import router as reports_router
+from app.api.violations import router as violations_router
 from app.config import settings
 from app.database import engine
 from app.exceptions import register_exception_handlers
@@ -54,6 +56,8 @@ app.include_router(regiments_router, prefix="/api")
 app.include_router(me_router, prefix="/api")
 app.include_router(app_settings_router, prefix="/api")
 app.include_router(ranks_router, prefix="/api")
+app.include_router(violations_router, prefix="/api")
+app.include_router(notifications_router, prefix="/api")
 
 
 @app.get("/health", tags=["health"])

@@ -7,6 +7,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { RegimentsAdminPage } from "./pages/RegimentsAdminPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ViolationsPage } from "./pages/ViolationsPage";
 
 function Layout({ children }) {
   const { isAuthenticated, user } = useAuth();
@@ -56,6 +57,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute passwordOnly>
               <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/violations"
+          element={
+            <ProtectedRoute violationsOnly>
+              <ViolationsPage />
             </ProtectedRoute>
           }
         />

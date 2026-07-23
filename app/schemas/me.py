@@ -9,6 +9,8 @@ class AccessInfo(BaseModel):
     commander_regiment_ids: list[int]
     category_manager_regiment_ids: list[int]
     soldier_regiment_ids: list[int]
+    can_write_violations: bool
+    can_view_violations: bool
 
 
 class MeResponse(BaseModel):
