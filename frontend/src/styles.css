@@ -571,6 +571,19 @@ label {
   align-items: center;
 }
 
+.violation-mode-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.violation-filter-label {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 260px;
+  margin-bottom: 1rem;
+}
+
 .report-expand-toggle {
   display: inline;
   border: none;

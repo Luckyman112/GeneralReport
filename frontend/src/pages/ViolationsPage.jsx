@@ -1,30 +1,60 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { MemberSearchPicker } from "../components/MemberSearchPicker";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
 
+function formatViolationTarget(v) {
+  if (v.target_username) return v.target_username;
+  if (v.target_service_id && v.target_rank && v.target_callsign) {
+    return `${v.target_service_id} ${v.target_rank.code} ${v.target_callsign}`;
+  }
+  return "Неизвестно";
+}
+
 function ViolationForm({ onCreated }) {
-  const { token } = useAuth();
+  const { token, regiments } = useAuth();
+  const [mode, setMode] = useState("discord");
   const [members, setMembers] = useState([]);
   const [targetId, setTargetId] = useState("");
+  const [tiers, setTiers] = useState([]);
+  const [serviceId, setServiceId] = useState("");
+  const [rankId, setRankId] = useState("");
+  const [regimentId, setRegimentId] = useState("");
+  const [callsign, setCallsign] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     api.getViolationTargetCandidates(token).then(setMembers).catch(() => setMembers([]));
+    api.getRanks(token).then(setTiers).catch(() => setTiers([]));
   }, [token]);
+
+  const isValid =
+    description.trim() &&
+    (mode === "discord" ? Boolean(targetId) : serviceId.trim() && rankId && regimentId && callsign.trim());
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!targetId || !description.trim()) return;
+    if (!isValid) return;
     setSubmitting(true);
     setError(null);
     try {
-      await api.createViolation(token, { targetDiscordId: targetId, description: description.trim() });
+      await api.createViolation(token, {
+        targetDiscordId: mode === "discord" ? targetId : null,
+        targetServiceId: mode === "manual" ? serviceId.trim() : null,
+        targetRankId: mode === "manual" ? Number(rankId) : null,
+        targetRegimentId: mode === "manual" ? Number(regimentId) : null,
+        targetCallsign: mode === "manual" ? callsign.trim() : null,
+        description: description.trim(),
+      });
       setTargetId("");
+      setServiceId("");
+      setRankId("");
+      setRegimentId("");
+      setCallsign("");
       setDescription("");
       onCreated();
     } catch (e) {
@@ -37,17 +67,67 @@ function ViolationForm({ onCreated }) {
   return (
     <form className="report-form fade-in-up" onSubmit={handleSubmit}>
       <h3>Новая запись о нарушении</h3>
-      <label>
-        Нарушитель
-        <MemberSearchPicker members={members} selectedId={targetId} onSelect={setTargetId} />
-      </label>
+
+      <div className="violation-mode-toggle">
+        <button type="button" className={mode === "discord" ? "primary" : ""} onClick={() => setMode("discord")}>
+          Участник Discord
+        </button>
+        <button type="button" className={mode === "manual" ? "primary" : ""} onClick={() => setMode("manual")}>
+          Вручную (не в Discord)
+        </button>
+      </div>
+
+      {mode === "discord" ? (
+        <label>
+          Нарушитель
+          <MemberSearchPicker members={members} selectedId={targetId} onSelect={setTargetId} />
+        </label>
+      ) : (
+        <>
+          <label>
+            ИДН (4 цифры)
+            <input type="text" maxLength={4} value={serviceId} onChange={(e) => setServiceId(e.target.value)} />
+          </label>
+          <label>
+            Звание
+            <select value={rankId} onChange={(e) => setRankId(e.target.value)}>
+              <option value="">— выбрать —</option>
+              {tiers.map((tier) => (
+                <optgroup key={tier.id} label={tier.name}>
+                  {tier.ranks.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.code} — {r.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <label>
+            Формирование
+            <select value={regimentId} onChange={(e) => setRegimentId(e.target.value)}>
+              <option value="">— выбрать —</option>
+              {regiments.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Позывной
+            <input type="text" value={callsign} onChange={(e) => setCallsign(e.target.value)} />
+          </label>
+        </>
+      )}
+
       <label>
         Описание нарушения
         <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
       {error && <p className="error-text">{error}</p>}
       <div className="report-form-actions">
-        <button className="primary" type="submit" disabled={submitting || !targetId || !description.trim()}>
+        <button className="primary" type="submit" disabled={submitting || !isValid}>
           Зафиксировать
         </button>
       </div>
@@ -126,7 +206,7 @@ function ViolationAdminSettings() {
       </div>
 
       <p className="hint-text">
-        Кто может видеть весь список (помимо этого, всегда видят командиры/заместители любого формирования):
+        Кто может видеть весь список (помимо этого, всегда видят командиры/заместители своего формирования):
       </p>
       <div className="field-tags">
         {regiments.map((r) => (
@@ -173,6 +253,7 @@ function ViolationAdminSettings() {
 export function ViolationsPage() {
   const { token, access, regiments } = useAuth();
   const [violations, setViolations] = useState([]);
+  const [regimentFilter, setRegimentFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -193,6 +274,15 @@ export function ViolationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Формирования, реально встречающиеся в видимом списке — только по ним и даём фильтровать
+  const presentRegimentIds = useMemo(
+    () => [...new Set(violations.map((v) => v.target_regiment_id).filter(Boolean))],
+    [violations]
+  );
+  const visibleViolations = regimentFilter
+    ? violations.filter((v) => v.target_regiment_id === Number(regimentFilter))
+    : violations;
+
   async function handleDelete(id) {
     try {
       await api.deleteViolation(token, id);
@@ -212,14 +302,28 @@ export function ViolationsPage() {
 
       {access?.can_write_violations && <ViolationForm onCreated={load} />}
 
-      {violations.length === 0 ? (
+      {presentRegimentIds.length > 1 && (
+        <label className="violation-filter-label">
+          Формирование
+          <select value={regimentFilter} onChange={(e) => setRegimentFilter(e.target.value)}>
+            <option value="">Все формирования</option>
+            {presentRegimentIds.map((id) => (
+              <option key={id} value={id}>
+                {regimentsById[id]?.name || `#${id}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {visibleViolations.length === 0 ? (
         <p className="empty-state">Записей о нарушениях нет.</p>
       ) : (
         <div className="report-list">
-          {violations.map((v) => (
+          {visibleViolations.map((v) => (
             <div key={v.id} className="report-row fade-in-up">
               <div className="report-row-header">
-                <span className="report-regiment">{v.target_username}</span>
+                <span className="report-regiment">{formatViolationTarget(v)}</span>
                 {v.target_regiment_id && (
                   <span className="report-category">{regimentsById[v.target_regiment_id]?.name}</span>
                 )}

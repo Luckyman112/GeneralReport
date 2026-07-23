@@ -145,11 +145,18 @@ export const api = {
 
   listViolations: (token) => request("/api/violations", { token }),
   getViolationTargetCandidates: (token) => request("/api/violations/target-candidates", { token }),
-  createViolation: (token, { targetDiscordId, description }) =>
+  createViolation: (token, { targetDiscordId, targetServiceId, targetRankId, targetRegimentId, targetCallsign, description }) =>
     request("/api/violations", {
       method: "POST",
       token,
-      body: { target_discord_id: targetDiscordId, description },
+      body: {
+        target_discord_id: targetDiscordId || null,
+        target_service_id: targetServiceId || null,
+        target_rank_id: targetRankId || null,
+        target_regiment_id: targetRegimentId || null,
+        target_callsign: targetCallsign || null,
+        description,
+      },
     }),
   deleteViolation: (token, violationId) =>
     request(`/api/violations/${violationId}`, { method: "DELETE", token }),

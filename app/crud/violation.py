@@ -6,11 +6,24 @@ from sqlalchemy.orm import selectinload
 from app.models.notification import Notification, NotificationRead
 from app.models.violation import Violation
 
-_LOAD_OPTIONS = [selectinload(Violation.author)]
+_LOAD_OPTIONS = [selectinload(Violation.author), selectinload(Violation.target_rank)]
 
 
 async def list_all(db: AsyncSession) -> list[Violation]:
     result = await db.execute(select(Violation).options(*_LOAD_OPTIONS).order_by(Violation.created_at.desc()))
+    return list(result.scalars().all())
+
+
+async def list_by_regiments(db: AsyncSession, *, regiment_ids: set[int]) -> list[Violation]:
+    if not regiment_ids:
+        return []
+    query = (
+        select(Violation)
+        .where(Violation.target_regiment_id.in_(regiment_ids))
+        .options(*_LOAD_OPTIONS)
+        .order_by(Violation.created_at.desc())
+    )
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 
@@ -21,9 +34,12 @@ async def get_by_id(db: AsyncSession, violation_id: int) -> Violation | None:
 async def create(
     db: AsyncSession,
     *,
-    target_discord_id: str,
-    target_username: str,
+    target_discord_id: str | None,
+    target_username: str | None,
     target_regiment_id: int | None,
+    target_service_id: str | None = None,
+    target_rank_id: int | None = None,
+    target_callsign: str | None = None,
     description: str,
     created_by: int,
 ) -> Violation:
@@ -31,6 +47,9 @@ async def create(
         target_discord_id=target_discord_id,
         target_username=target_username,
         target_regiment_id=target_regiment_id,
+        target_service_id=target_service_id,
+        target_rank_id=target_rank_id,
+        target_callsign=target_callsign,
         description=description,
         created_by=created_by,
     )
