@@ -85,6 +85,23 @@ export function InfoIcon(props) {
   );
 }
 
+export function SunIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <circle cx="8" cy="8" r="3" />
+      <path d="M8 1.5v1.7M8 12.8v1.7M14.5 8h-1.7M3.2 8H1.5M12.6 3.4l-1.2 1.2M4.6 11.4l-1.2 1.2M12.6 12.6l-1.2-1.2M4.6 4.6 3.4 3.4" />
+    </svg>
+  );
+}
+
+export function MoonIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5Z" />
+    </svg>
+  );
+}
+
 export function LinkIcon(props) {
   return (
     <svg {...common} {...props}>

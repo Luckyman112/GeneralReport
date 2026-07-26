@@ -26,3 +26,9 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     actor: Mapped["User"] = relationship(foreign_keys=[actor_user_id])
+
+    # Заполняется, когда действие касается конкретного бойца (правка профиля,
+    # выговор и т.п.) — позволяет показывать точечную историю в личном деле,
+    # не парся details. None — общесистемные действия (бэкапы, роли, оверрайды).
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    target: Mapped["User | None"] = relationship(foreign_keys=[target_user_id])

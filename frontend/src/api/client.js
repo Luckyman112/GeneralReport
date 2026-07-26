@@ -222,6 +222,8 @@ export const api = {
       token,
       body: changes,
     }),
+  getMemberHistory: (token, regimentId, discordId) =>
+    request(`/api/regiments/${regimentId}/members/${discordId}/history`, { token }),
 
   getRanks: (token) => request("/api/ranks", { token }),
 

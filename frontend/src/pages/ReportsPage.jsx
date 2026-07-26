@@ -4,12 +4,14 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { CategoryManagerModal } from "../components/CategoryManagerModal";
 import { CategoryNav } from "../components/CategoryNav";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DetentionReportForm } from "../components/DetentionReportForm";
 import { EmptyState } from "../components/EmptyState";
 import { PageLoading } from "../components/PageLoading";
 import { RegimentPanel } from "../components/RegimentPanel";
 import { ReportForm } from "../components/ReportForm";
 import { ReportRow } from "../components/ReportRow";
+import { useToast } from "../components/ToastContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 import { downloadCsv } from "../utils/csv";
 import { formatMskDate } from "../utils/formatDate";
@@ -33,6 +35,7 @@ const STATUS_OPTIONS = [
 
 export function ReportsPage() {
   const { token, user, access, regiments: allRegiments } = useAuth();
+  const showToast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [regiments, setRegiments] = useState([]);
   const [reports, setReports] = useState([]);
@@ -224,6 +227,7 @@ export function ReportsPage() {
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedReportIds, setSelectedReportIds] = useState(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   function toggleBulkMode() {
     setBulkMode((v) => !v);
@@ -239,20 +243,40 @@ export function ReportsPage() {
     });
   }
 
-  async function handleBulkDecide(status) {
+  // Одобрение/отклонение/удаление каждого рапорта тянет за собой свою логику
+  // (баллы, уведомления, проверка повышения) — поэтому дёргаем те же одиночные
+  // ручки по очереди, а не отдельный bulk-эндпоинт. Ошибка на одном рапорте не
+  // должна останавливать обработку остальных выбранных.
+  async function runBulk(action) {
     setBulkRunning(true);
+    let failed = 0;
     try {
-      // Одобрение/отклонение каждого рапорта тянет за собой свою логику (баллы,
-      // уведомления, проверка повышения) — поэтому дёргаем ту же одиночную ручку
-      // по очереди, а не отдельный bulk-эндпоинт
       for (const reportId of selectedReportIds) {
-        await api.updateReportStatus(token, reportId, { status });
+        try {
+          await action(reportId);
+        } catch {
+          failed += 1;
+        }
       }
     } finally {
       setBulkRunning(false);
       setSelectedReportIds(new Set());
       await loadReports();
+      if (failed > 0) {
+        showToast(`Не удалось обработать: ${failed}`, "error");
+      } else {
+        showToast("Готово");
+      }
     }
+  }
+
+  function handleBulkDecide(status) {
+    return runBulk((reportId) => api.updateReportStatus(token, reportId, { status }));
+  }
+
+  function handleBulkDelete() {
+    setConfirmBulkDelete(false);
+    return runBulk((reportId) => api.deleteReport(token, reportId));
   }
 
   async function handleDelete(reportId) {
@@ -346,7 +370,7 @@ export function ReportsPage() {
 
           {bulkMode && (
             <div className="bulk-actions-bar">
-              <span>{selectedReportIds.size > 0 ? `Выбрано: ${selectedReportIds.size}` : "Отметьте рапорты со статусом «Отправлен»"}</span>
+              <span>{selectedReportIds.size > 0 ? `Выбрано: ${selectedReportIds.size}` : "Отметьте рапорты"}</span>
               <button
                 className="primary icon-button"
                 disabled={selectedReportIds.size === 0 || bulkRunning}
@@ -361,6 +385,19 @@ export function ReportsPage() {
               >
                 Отклонить выбранные
               </button>
+              <button
+                className="icon-button"
+                disabled={selectedReportIds.size === 0 || bulkRunning}
+                onClick={() => setConfirmBulkDelete(true)}
+              >
+                Удалить выбранные
+              </button>
+              <ConfirmDialog
+                open={confirmBulkDelete}
+                message={`Удалить выбранные рапорты (${selectedReportIds.size})? Действие необратимо.`}
+                onConfirm={handleBulkDelete}
+                onCancel={() => setConfirmBulkDelete(false)}
+              />
             </div>
           )}
 
@@ -401,7 +438,11 @@ export function ReportsPage() {
                   onDelete={() => handleDelete(report.id)}
                   onSetPoints={(points) => handleSetPoints(report.id, points)}
                   onDeleteImage={(imageId) => handleDeleteImage(report.id, imageId)}
-                  selectable={bulkMode && canManage(report) && report.status === "submitted"}
+                  selectable={
+                    bulkMode &&
+                    report.status !== "deleted" &&
+                    ((canManage(report) && report.status === "submitted") || canDelete(report))
+                  }
                   selected={selectedReportIds.has(report.id)}
                   onToggleSelected={() => toggleReportSelected(report.id)}
                 />

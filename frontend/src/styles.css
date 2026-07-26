@@ -36,6 +36,34 @@
   }
 }
 
+/* Ручной переключатель темы (см. ThemeToggle.jsx) — перебивает системную
+ * настройку в обе стороны, когда явно выбран конкретный вариант. */
+:root[data-theme="dark"] {
+  --bg: #080b12;
+  --surface: #111722;
+  --surface-2: #1b2230;
+  --border: #1e2836;
+  --text: #d4dde8;
+  --text-muted: #5f7183;
+  --accent: #3ea6ff;
+  --accent-hover: #2f8cdb;
+  --accent-glow: rgba(62, 166, 255, 0.35);
+  --accent-warn: #ffb020;
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --surface-2: #e9eff7;
+  --border: #d3dce8;
+  --text: #10151d;
+  --text-muted: #57657a;
+  --accent: #1c74d4;
+  --accent-hover: #155ba8;
+  --accent-glow: rgba(28, 116, 212, 0.25);
+  --accent-warn: #b3760f;
+}
+
 body {
   background: var(--bg);
   position: relative;

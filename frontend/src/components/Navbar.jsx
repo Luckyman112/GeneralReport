@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { useTheme } from "../hooks/useTheme";
 import { BroadcastModal } from "./BroadcastModal";
 import { GlobalSearch } from "./GlobalSearch";
-import { MegaphoneIcon } from "./icons";
+import { MegaphoneIcon, MoonIcon, SunIcon } from "./icons";
 import { NotificationBell } from "./NotificationBell";
 
 function buildPositionLabel(access, regiments) {
@@ -35,6 +36,7 @@ function ownRegimentColor(access, regiments) {
 export function Navbar() {
   const { user, access, regiments, logout } = useAuth();
   const [showBroadcast, setShowBroadcast] = useState(false);
+  const [theme, toggleTheme] = useTheme();
   const positionLabel = buildPositionLabel(access, regiments);
   const nameColor = ownRegimentColor(access, regiments);
 
@@ -55,6 +57,13 @@ export function Navbar() {
         {access?.is_password_login && <Link to="/settings">Настройки</Link>}
       </div>
       <div className="navbar-user">
+        <button
+          className="ghost"
+          title={theme === "dark" ? "Светлая тема" : "Тёмная тема"}
+          onClick={toggleTheme}
+        >
+          {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+        </button>
         <GlobalSearch />
         {access?.can_send_broadcast && (
           <button className="ghost" title="Объявление всем" onClick={() => setShowBroadcast(true)}>

@@ -37,6 +37,8 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [error, setError] = useState(null);
   const [expandedRankKey, setExpandedRankKey] = useState(null);
   const [showReprimandHistory, setShowReprimandHistory] = useState(false);
+  const [showProfileHistory, setShowProfileHistory] = useState(false);
+  const [profileHistory, setProfileHistory] = useState(null);
   const [earlyPromotionReason, setEarlyPromotionReason] = useState("");
 
   // Баллы за рапорт (Report.points) относятся к автору рапорта — для рапортов, где
@@ -242,6 +244,45 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           )
         )}
         {error && <p className="error-text">{error}</p>}
+
+        {canEdit && (
+          <>
+            <button
+              type="button"
+              className="ghost rank-accordion-header"
+              onClick={() => {
+                if (!showProfileHistory && profileHistory === null) {
+                  api
+                    .getMemberHistory(token, regimentId, member.discord_id)
+                    .then(setProfileHistory)
+                    .catch((e) => setError(e.message));
+                }
+                setShowProfileHistory((v) => !v);
+              }}
+            >
+              <span className={`rank-accordion-arrow ${showProfileHistory ? "rank-accordion-arrow-open" : ""}`}>▸</span>
+              <span>История изменений профиля</span>
+            </button>
+            {showProfileHistory && (
+              profileHistory === null ? (
+                <p className="hint-text">Загрузка...</p>
+              ) : profileHistory.length === 0 ? (
+                <p className="hint-text">Изменений пока не было.</p>
+              ) : (
+                <ul className="member-report-list">
+                  {profileHistory.map((entry) => (
+                    <li key={entry.id}>
+                      <span className="member-report-date">{formatMskDate(entry.created_at)} МСК</span>
+                      <p className="member-report-content">
+                        <strong>{formatFullName(entry.actor)}</strong>: {entry.details}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+          </>
+        )}
 
         {promotionStatus?.next_rank && (
           <div className="regiment-panel fade-in-up">

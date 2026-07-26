@@ -22,6 +22,7 @@ from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
 from app.models.user import User
+from app.schemas.audit_log import AuditLogRead
 from app.schemas.promotion import PointsAdjustmentRead
 from app.schemas.rank import RankRead
 from app.schemas.regiment import DiscordRoleOption, RegimentCreate, RegimentRead, RegimentUpdate
@@ -386,14 +387,35 @@ async def update_member_profile(
         db, discord_id=discord_id, fallback_username=member["username"], changes=changes
     )
     logger.info("%s обновил профиль участника %s: %s", access.user.username, discord_id, changes)
-    if access.is_admin or access.is_high_command:
-        await audit_log_crud.log(
-            db,
-            actor_user_id=access.user.id,
-            action="member_profile_edit",
-            details=f"Профиль участника {discord_id} в формировании {regiment_id}: {changes}",
-        )
+    # Пишем в историю всегда (не только для админа/высшего командования) — иначе
+    # правки обычного командира/заместителя нигде не отследить в личном деле
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        action="member_profile_edit",
+        details=f"Профиль участника {discord_id} в формировании {regiment_id}: {changes}",
+        target_user_id=user.id,
+    )
     return _build_guild_member(member, user)
+
+
+@router.get("/{regiment_id}/members/{discord_id}/history", response_model=list[AuditLogRead])
+async def get_member_history(
+    regiment_id: int,
+    discord_id: str,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[AuditLogRead]:
+    """История ручных правок профиля бойца (ИДН/звание/позывной/Steam ID и т.п.) —
+    доступна командиру/заместителю формирования, высшему командованию и
+    администратору (та же видимость, что и у самой формы редактирования профиля)."""
+    if not access.is_commander_of(regiment_id):
+        raise ForbiddenError("История профиля доступна только командиру/заместителю формирования")
+    target = await user_crud.get_by_discord_id(db, discord_id)
+    if target is None:
+        raise NotFoundError("Участник не найден")
+    entries = await audit_log_crud.list_for_target(db, target_user_id=target.id)
+    return [AuditLogRead.model_validate(e) for e in entries]
 
 
 @router.patch("/{regiment_id}/members/{discord_id}/tenure", response_model=GuildMemberRead)
