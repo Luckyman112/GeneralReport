@@ -1,25 +1,79 @@
+from datetime import date
+
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.notification import Notification, NotificationRead
+from app.models.report import Report
+from app.models.user import User
 from app.models.violation import Violation
 
-_LOAD_OPTIONS = [selectinload(Violation.author), selectinload(Violation.target_rank)]
+_LOAD_OPTIONS = [
+    selectinload(Violation.author).selectinload(User.rank),
+    selectinload(Violation.target_rank),
+]
 
 
-async def list_all(db: AsyncSession) -> list[Violation]:
-    result = await db.execute(select(Violation).options(*_LOAD_OPTIONS).order_by(Violation.created_at.desc()))
+def _apply_filters(query, *, search: str | None, date_from: date | None, date_to: date | None):
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(
+            or_(
+                Violation.target_username.ilike(pattern),
+                Violation.target_callsign.ilike(pattern),
+                Violation.target_service_id.ilike(pattern),
+            )
+        )
+    if date_from is not None:
+        query = query.where(Violation.created_at >= date_from)
+    if date_to is not None:
+        query = query.where(Violation.created_at < date_to)
+    return query
+
+
+async def list_all(
+    db: AsyncSession, *, search: str | None = None, date_from: date | None = None, date_to: date | None = None
+) -> list[Violation]:
+    query = select(Violation).options(*_LOAD_OPTIONS).order_by(Violation.created_at.desc())
+    query = _apply_filters(query, search=search, date_from=date_from, date_to=date_to)
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 
-async def list_by_regiments(db: AsyncSession, *, regiment_ids: set[int]) -> list[Violation]:
+async def list_by_regiments(
+    db: AsyncSession,
+    *,
+    regiment_ids: set[int],
+    search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[Violation]:
     if not regiment_ids:
         return []
     query = (
         select(Violation)
         .where(Violation.target_regiment_id.in_(regiment_ids))
+        .options(*_LOAD_OPTIONS)
+        .order_by(Violation.created_at.desc())
+    )
+    query = _apply_filters(query, search=search, date_from=date_from, date_to=date_to)
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def list_by_target_user(db: AsyncSession, *, user_id: int) -> list[Violation]:
+    """Все нарушения конкретного бойца — по его текущему user_id (см. привязку
+    target_discord_id -> users.discord_id, т.к. Violation хранит discord_id напрямую,
+    не user_id)."""
+    result = await db.execute(select(User.discord_id).where(User.id == user_id))
+    discord_id = result.scalar_one_or_none()
+    if discord_id is None:
+        return []
+    query = (
+        select(Violation)
+        .where(Violation.target_discord_id == discord_id)
         .options(*_LOAD_OPTIONS)
         .order_by(Violation.created_at.desc())
     )
@@ -40,6 +94,9 @@ async def create(
     target_service_id: str | None = None,
     target_rank_id: int | None = None,
     target_callsign: str | None = None,
+    punishment_type: str | None = None,
+    punishment_other_text: str | None = None,
+    punishment_amount: str | None = None,
     description: str,
     created_by: int,
 ) -> Violation:
@@ -50,6 +107,9 @@ async def create(
         target_service_id=target_service_id,
         target_rank_id=target_rank_id,
         target_callsign=target_callsign,
+        punishment_type=punishment_type,
+        punishment_other_text=punishment_other_text,
+        punishment_amount=punishment_amount,
         description=description,
         created_by=created_by,
     )
@@ -60,8 +120,9 @@ async def create(
 
 async def delete(db: AsyncSession, violation: Violation) -> None:
     """Удаляет и уведомление, автосозданное при подаче этого нарушения (вместе с
-    отметками "прочитано" по нему) — иначе внешний ключ notifications.violation_id
-    не даст удалить саму запись."""
+    отметками "прочитано" по нему), и отвязывает рапорт о задержании, из которого
+    оно было создано (report.violation_id) — иначе внешние ключи не дадут удалить
+    саму запись."""
     notification_ids_result = await db.execute(
         select(Notification.id).where(Notification.violation_id == violation.id)
     )
@@ -69,6 +130,8 @@ async def delete(db: AsyncSession, violation: Violation) -> None:
     if notification_ids:
         await db.execute(sa_delete(NotificationRead).where(NotificationRead.notification_id.in_(notification_ids)))
         await db.execute(sa_delete(Notification).where(Notification.id.in_(notification_ids)))
+
+    await db.execute(update(Report).where(Report.violation_id == violation.id).values(violation_id=None))
 
     await db.delete(violation)
     await db.commit()

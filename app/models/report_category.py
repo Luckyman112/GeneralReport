@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -25,3 +25,11 @@ class ReportCategory(Base):
     name: Mapped[str] = mapped_column(String(255))
     fields: Mapped[list[str]] = mapped_column(JSON, default=list)
     points: Mapped[int | None] = mapped_column(nullable=True, default=None)
+    # Рапорты этой категории при одобрении автоматически становятся записью в
+    # "Нарушителях" (см. app/api/reports.py) — заводить/снимать флаг может только
+    # высшее командование/администратор, как и всю остальную категорию
+    is_detention: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Балл, который получает КАЖДЫЙ участник рапорта (из ростер-полей, не автор) при
+    # одобрении — настраивает полноправный командир/высшее командование/админ,
+    # так же как обычные points. None — участникам баллы не начисляются.
+    participant_points: Mapped[int | None] = mapped_column(nullable=True, default=None)

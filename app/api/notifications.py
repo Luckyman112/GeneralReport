@@ -23,7 +23,10 @@ async def list_notifications(
     access: AccessContext = Depends(get_access_context),
 ) -> list[NotificationRead]:
     notifications = await notification_crud.list_for_user(
-        db, user_id=access.user.id, commander_regiment_ids=access.commander_regiment_ids
+        db,
+        user_id=access.user.id,
+        commander_regiment_ids=access.commander_regiment_ids,
+        see_all=access.is_admin or access.is_high_command,
     )
     read_ids = await notification_crud.get_read_ids(
         db, user_id=access.user.id, notification_ids=[n.id for n in notifications]
@@ -49,7 +52,10 @@ async def mark_all_read(
     access: AccessContext = Depends(get_access_context),
 ) -> None:
     notifications = await notification_crud.list_for_user(
-        db, user_id=access.user.id, commander_regiment_ids=access.commander_regiment_ids
+        db,
+        user_id=access.user.id,
+        commander_regiment_ids=access.commander_regiment_ids,
+        see_all=access.is_admin or access.is_high_command,
     )
     await notification_crud.mark_all_read(
         db, user_id=access.user.id, notification_ids=[n.id for n in notifications]
@@ -62,8 +68,8 @@ async def create_broadcast(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> NotificationRead:
-    if not access.is_admin:
-        raise ForbiddenError("Отправлять объявления может только администратор")
+    if not access.can_send_broadcast:
+        raise ForbiddenError("У вас нет прав на отправку объявлений")
     notification = await notification_crud.create_broadcast(
         db, title=payload.title, body=payload.body, created_by=access.user.id
     )

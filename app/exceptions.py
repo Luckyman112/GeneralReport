@@ -35,6 +35,12 @@ class DiscordAPIError(AppError):
     status_code = 502
 
 
+class TooManyRequestsError(AppError):
+    """Слишком много попыток за короткий промежуток — например, подбор пароля."""
+
+    status_code = 429
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:

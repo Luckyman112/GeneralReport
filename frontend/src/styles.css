@@ -1,26 +1,152 @@
 :root {
-  --bg: #0f1115;
-  --surface: #1a1d24;
-  --surface-2: #22262f;
-  --border: #2f333d;
-  --text: #e6e8eb;
-  --text-muted: #9aa1ac;
-  --accent: #5865f2;
-  --accent-hover: #4752c4;
-  --danger: #ed4245;
+  /* Тема "республиканская командная консоль / HUD" — палитра и декор по
+   * дизайн-брифу; цвета данных (диаграммы/палитра) не трогаем, они
+   * провалидированы отдельно (см. skill dataviz) */
+  --bg: #080b12;
+  --surface: #111722;
+  --surface-2: #1b2230;
+  --border: #1e2836;
+  --text: #d4dde8;
+  --text-muted: #5f7183;
+  --accent: #3ea6ff;
+  --accent-hover: #2f8cdb;
+  --accent-glow: rgba(62, 166, 255, 0.35);
+  --accent-warn: #ffb020;
+  --danger: #ff4d4d;
   --success: #3ba55c;
-  --warning: #faa61a;
+  --warning: #ffb020;
+
+  --font-display: "Rajdhani", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f5f6f8;
+    --bg: #f4f7fb;
     --surface: #ffffff;
-    --surface-2: #eef0f3;
-    --border: #dcdfe4;
-    --text: #1c1e21;
-    --text-muted: #5b616b;
+    --surface-2: #e9eff7;
+    --border: #d3dce8;
+    --text: #10151d;
+    --text-muted: #57657a;
+    --accent: #1c74d4;
+    --accent-hover: #155ba8;
+    --accent-glow: rgba(28, 116, 212, 0.25);
+    --accent-warn: #b3760f;
   }
+}
+
+body {
+  background: var(--bg);
+  position: relative;
+}
+
+/* Фоновая HUD-сетка 32×32 + мягкое свечение консоли от центра — на псевдоэлементе
+ * с собственным opacity, чтобы не гасить текст/контент самой страницы */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image:
+    repeating-linear-gradient(0deg, var(--border) 0, var(--border) 1px, transparent 1px, transparent 32px),
+    repeating-linear-gradient(90deg, var(--border) 0, var(--border) 1px, transparent 1px, transparent 32px);
+  opacity: 0.25;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image: radial-gradient(ellipse at top, var(--accent-glow), transparent 60%);
+}
+
+h1, h2, h3, h4,
+.status-badge,
+th {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.navbar-brand {
+  letter-spacing: 0.14em;
+  text-shadow: 0 0 12px var(--accent-glow);
+  font-weight: 700;
+}
+
+/* Моноширинные цифры/коды/ID — ИДН, дни выслуги, баллы, даты */
+.mono-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Разделитель секций — тонкая линия-градиент, тает по краям */
+.hud-divider {
+  height: 1px;
+  border: none;
+  margin: 1rem 0;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+/* Квадратный индикатор статуса со свечением — "онлайн/дежурство/офлайн" */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.status-dot-accent {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.status-dot-warn {
+  background: var(--accent-warn);
+  box-shadow: 0 0 6px var(--accent-warn);
+}
+
+.status-dot-muted {
+  background: var(--text-muted);
+}
+
+/* "HUD"-уголки republic-консоли на карточках формирований/панелей — чистый CSS,
+ * без сторонних ассетов. Асимметрия (только 2 угла) = эффект "сканера" */
+.regiment-panel,
+.report-row {
+  position: relative;
+}
+
+.regiment-panel::before,
+.report-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+  opacity: 0.6;
+}
+
+.regiment-panel::after,
+.report-row::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  border-bottom: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+  opacity: 0.6;
 }
 
 * {
@@ -87,9 +213,8 @@ input[type="number"] {
 
 body {
   margin: 0;
-  background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-body);
 }
 
 button {
@@ -120,6 +245,58 @@ button.primary {
 
 button.primary:hover {
   background: var(--accent-hover);
+}
+
+button.danger-outline {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
+}
+
+button.danger-outline:hover {
+  background: rgba(237, 66, 69, 0.1);
+}
+
+button.primary.danger {
+  background: var(--danger);
+}
+
+button.primary.danger:hover {
+  filter: brightness(0.9);
+}
+
+.toast-stack {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 100;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+}
+
+.toast {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  max-width: 320px;
+}
+
+.toast-error {
+  border-left-color: var(--danger);
+}
+
+.toast-success {
+  border-left-color: var(--success);
+}
+
+.confirm-dialog {
+  max-width: 420px;
 }
 
 button.ghost {
@@ -178,7 +355,7 @@ label {
 
 .reports-page-layout {
   display: grid;
-  grid-template-columns: auto 1fr 340px;
+  grid-template-columns: auto 1fr minmax(360px, 480px);
   gap: 1.5rem;
   align-items: start;
 }
@@ -186,6 +363,8 @@ label {
 .reports-sidebar {
   position: sticky;
   top: 1.5rem;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
 }
 
 .category-nav {
@@ -204,6 +383,174 @@ label {
     border-right: none;
     padding-right: 0;
   }
+}
+
+.stats-charts-row {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.drilldown-panel {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.donut-chart {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.donut-total {
+  fill: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.donut-segment {
+  transition: opacity 0.15s ease;
+}
+
+.donut-segment-clickable {
+  cursor: pointer;
+}
+
+.donut-segment-clickable:hover {
+  opacity: 0.8;
+}
+
+.donut-legend {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  padding: 0.1rem 0;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.donut-legend-static {
+  cursor: default;
+}
+
+.donut-legend-item:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.donut-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.promo-progress {
+  margin: 0.6rem 0;
+}
+
+.promo-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.promo-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.promo-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.promo-progress-fill-done {
+  background: var(--success);
+}
+
+.save-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
+  max-width: min(90vw, 640px);
+}
+
+.save-bar-label {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.save-bar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.promotion-banner {
+  display: block;
+  text-align: center;
+  padding: 0.5rem;
+  background: linear-gradient(90deg, var(--accent-hover), var(--accent));
+  color: white;
+  font-weight: 600;
+  text-decoration: none;
+  position: sticky;
+  top: 0;
+  z-index: 25;
+}
+
+.promotion-banner:hover {
+  filter: brightness(1.1);
+}
+
+.view-as-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.4rem 1rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--accent-warn);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.view-as-bar-idle {
+  border-bottom-color: var(--border);
+  color: var(--text-muted);
 }
 
 .inactive-block {
@@ -230,6 +577,14 @@ label {
   height: 100vh;
   text-align: center;
   gap: 0.75rem;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 78% 14%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 34% 68%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1px 1px at 62% 82%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 90% 55%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(ellipse at center, rgba(62, 166, 255, 0.08), transparent 70%);
+  background-color: var(--bg);
 }
 
 .discord-login-button {
@@ -261,15 +616,7 @@ label {
 }
 
 .navbar-brand {
-  background: linear-gradient(90deg, var(--accent), #8b93ff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.navbar-brand {
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  color: var(--accent);
 }
 
 .navbar-links {
@@ -544,6 +891,16 @@ label {
   font-size: 0.7rem;
 }
 
+.detention-badge {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
 .color-picker-label {
   flex-direction: row;
   align-items: center;
@@ -582,6 +939,17 @@ label {
   flex-direction: column;
   max-width: 260px;
   margin-bottom: 1rem;
+}
+
+.violations-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.violations-filters .violation-filter-label {
+  margin-bottom: 0;
 }
 
 .report-expand-toggle {
@@ -651,6 +1019,7 @@ label {
   display: flex;
   gap: 0.4rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .points-inline input {
@@ -711,6 +1080,36 @@ label {
   margin-left: 0.3rem;
 }
 
+input[type="file"] {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+input[type="file"]::file-selector-button,
+input[type="file"]::-webkit-file-upload-button {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.45rem 0.9rem;
+  margin-right: 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="file"]::file-selector-button:hover,
+input[type="file"]::-webkit-file-upload-button:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-glow);
+}
+
 .image-picker-list {
   list-style: none;
   padding: 0;
@@ -735,6 +1134,55 @@ label {
   cursor: pointer;
 }
 
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chip-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.3rem 0 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.4rem 0.25rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.chip button {
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.3rem;
+}
+
+.detention-target-panel {
+  border-left: 2px solid var(--danger);
+  padding: 0.4rem 0.6rem;
+  margin: 0.5rem 0;
+  background: var(--surface-2);
+  border-radius: 0 4px 4px 0;
+}
+
+.detention-target-panel p {
+  margin: 0;
+}
+
 .report-rejection-reason {
   color: var(--danger);
   font-size: 0.85rem;
@@ -754,7 +1202,7 @@ label {
 }
 
 .status-submitted {
-  background: rgba(88, 101, 242, 0.15);
+  background: var(--accent-glow);
   color: var(--accent);
 }
 
@@ -771,6 +1219,131 @@ label {
 .status-deleted {
   background: rgba(154, 161, 172, 0.15);
   color: var(--text-muted);
+}
+
+/* Цветной статус-бар слева на строке рапорта (2px) — тот же смысловой цвет, что
+ * и у бейджа статуса */
+.report-row {
+  border-left: 2px solid var(--border);
+}
+
+.report-row-status-draft,
+.report-row-status-deleted {
+  border-left-color: var(--text-muted);
+}
+
+.report-row-status-submitted {
+  border-left-color: var(--accent);
+}
+
+.report-row-status-approved {
+  border-left-color: var(--success);
+}
+
+.report-row-status-rejected {
+  border-left-color: var(--danger);
+}
+
+/* Плотная таблица личного состава */
+.roster-table-wrap {
+  overflow-x: auto;
+}
+
+.roster-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.roster-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-2);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.roster-table td {
+  padding: 0.45rem 0.75rem;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.roster-table td:first-child {
+  border-left: 2px solid transparent;
+}
+
+.roster-table tbody tr {
+  cursor: pointer;
+}
+
+.roster-table tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.roster-table tbody tr:hover td:first-child {
+  border-left-color: var(--accent);
+}
+
+.roster-member-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Красивый чекбокс-список обязательных требований (вместо прогресс-бара) */
+.requirement-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.requirement-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-muted);
+}
+
+.requirement-item-done {
+  color: var(--text);
+}
+
+.requirement-check {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.requirement-item-done .requirement-check {
+  background: var(--success);
+  border-color: var(--success);
+  box-shadow: 0 0 6px rgba(59, 165, 92, 0.5);
+}
+
+.tag-mandatory {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.4rem;
+  border-radius: 5px;
+  background: var(--accent-glow);
+  color: var(--accent);
+  margin-left: 0.4rem;
 }
 
 .reject-inline {
@@ -808,6 +1381,14 @@ label {
   gap: 0.4rem;
 }
 
+.category-list-nested {
+  margin: 0.35rem 0 0.35rem 1.25rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 .member-list li {
   display: flex;
   align-items: center;
@@ -831,6 +1412,7 @@ label {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .category-manager {
@@ -929,6 +1511,7 @@ label {
   max-width: 420px;
   max-height: 85vh;
   overflow-y: auto;
+  overflow-x: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
   animation: pop-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -967,6 +1550,15 @@ label {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.5rem 0.6rem;
+}
+
+.member-report-list li.clickable-row {
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.member-report-list li.clickable-row:hover {
+  border-color: var(--accent);
 }
 
 .member-report-date {

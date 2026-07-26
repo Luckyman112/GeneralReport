@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { MemberSearchPicker } from "../components/MemberSearchPicker";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { useToast } from "../components/ToastContext";
+import { downloadCsv } from "../utils/csv";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
 
@@ -13,155 +15,54 @@ function formatViolationTarget(v) {
   return "Неизвестно";
 }
 
-function ViolationForm({ onCreated }) {
-  const { token, regiments } = useAuth();
-  const [mode, setMode] = useState("discord");
-  const [members, setMembers] = useState([]);
-  const [targetId, setTargetId] = useState("");
-  const [tiers, setTiers] = useState([]);
-  const [serviceId, setServiceId] = useState("");
-  const [rankId, setRankId] = useState("");
-  const [regimentId, setRegimentId] = useState("");
-  const [callsign, setCallsign] = useState("");
-  const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
+const PUNISHMENT_LABELS = {
+  verbal: "Устное предупреждение",
+  skt: "СКТ",
+  detention: "Задержание",
+  other: "Другое",
+};
 
-  useEffect(() => {
-    api.getViolationTargetCandidates(token).then(setMembers).catch(() => setMembers([]));
-    api.getRanks(token).then(setTiers).catch(() => setTiers([]));
-  }, [token]);
-
-  const isValid =
-    description.trim() &&
-    (mode === "discord" ? Boolean(targetId) : serviceId.trim() && rankId && regimentId && callsign.trim());
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!isValid) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await api.createViolation(token, {
-        targetDiscordId: mode === "discord" ? targetId : null,
-        targetServiceId: mode === "manual" ? serviceId.trim() : null,
-        targetRankId: mode === "manual" ? Number(rankId) : null,
-        targetRegimentId: mode === "manual" ? Number(regimentId) : null,
-        targetCallsign: mode === "manual" ? callsign.trim() : null,
-        description: description.trim(),
-      });
-      setTargetId("");
-      setServiceId("");
-      setRankId("");
-      setRegimentId("");
-      setCallsign("");
-      setDescription("");
-      onCreated();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form className="report-form fade-in-up" onSubmit={handleSubmit}>
-      <h3>Новая запись о нарушении</h3>
-
-      <div className="violation-mode-toggle">
-        <button type="button" className={mode === "discord" ? "primary" : ""} onClick={() => setMode("discord")}>
-          Участник Discord
-        </button>
-        <button type="button" className={mode === "manual" ? "primary" : ""} onClick={() => setMode("manual")}>
-          Вручную (не в Discord)
-        </button>
-      </div>
-
-      {mode === "discord" ? (
-        <label>
-          Нарушитель
-          <MemberSearchPicker members={members} selectedId={targetId} onSelect={setTargetId} />
-        </label>
-      ) : (
-        <>
-          <label>
-            ИДН (4 цифры)
-            <input type="text" maxLength={4} value={serviceId} onChange={(e) => setServiceId(e.target.value)} />
-          </label>
-          <label>
-            Звание
-            <select value={rankId} onChange={(e) => setRankId(e.target.value)}>
-              <option value="">— выбрать —</option>
-              {tiers.map((tier) => (
-                <optgroup key={tier.id} label={tier.name}>
-                  {tier.ranks.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.code} — {r.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-          <label>
-            Формирование
-            <select value={regimentId} onChange={(e) => setRegimentId(e.target.value)}>
-              <option value="">— выбрать —</option>
-              {regiments.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Позывной
-            <input type="text" value={callsign} onChange={(e) => setCallsign(e.target.value)} />
-          </label>
-        </>
-      )}
-
-      <label>
-        Описание нарушения
-        <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </label>
-      {error && <p className="error-text">{error}</p>}
-      <div className="report-form-actions">
-        <button className="primary" type="submit" disabled={submitting || !isValid}>
-          Зафиксировать
-        </button>
-      </div>
-    </form>
-  );
+function formatPunishment(v) {
+  if (!v.punishment_type) return null;
+  const label = v.punishment_type === "other" ? v.punishment_other_text || "Другое" : PUNISHMENT_LABELS[v.punishment_type];
+  return v.punishment_amount ? `${label} — ${v.punishment_amount}` : label;
 }
 
-function ViolationAdminSettings() {
+function ModuleAccessSettings() {
   const { token, regiments } = useAuth();
-  const [writerIds, setWriterIds] = useState([]);
-  const [viewerIds, setViewerIds] = useState([]);
-  const [broadcastTitle, setBroadcastTitle] = useState("");
-  const [broadcastBody, setBroadcastBody] = useState("");
+  const [roles, setRoles] = useState([]);
+  const [access, setAccess] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    api.getViolationSettings(token).then((data) => {
-      setWriterIds(data.violation_writer_regiment_ids);
-      setViewerIds(data.violation_viewer_regiment_ids);
+    Promise.all([api.getDiscordRoles(token), api.getModuleAccess(token)]).then(([rolesData, accessData]) => {
+      setRoles(rolesData);
+      setAccess(accessData);
     });
   }, [token]);
 
-  function toggle(list, setList, id) {
-    setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  function toggleRegiment(field, id) {
+    setAccess((prev) => ({
+      ...prev,
+      [field]: prev[field].includes(id) ? prev[field].filter((x) => x !== id) : [...prev[field], id],
+    }));
   }
 
-  async function handleSaveSettings() {
+  function toggleRole(field, id) {
+    setAccess((prev) => ({
+      ...prev,
+      [field]: prev[field].includes(id) ? prev[field].filter((x) => x !== id) : [...prev[field], id],
+    }));
+  }
+
+  async function handleSave() {
     setSaving(true);
     setError(null);
     setSaved(false);
     try {
-      await api.updateViolationSettings(token, { writer_regiment_ids: writerIds, viewer_regiment_ids: viewerIds });
+      await api.updateModuleAccess(token, access);
       setSaved(true);
     } catch (e) {
       setError(e.message);
@@ -170,79 +71,102 @@ function ViolationAdminSettings() {
     }
   }
 
-  async function handleSendBroadcast(e) {
-    e.preventDefault();
-    if (!broadcastTitle.trim() || !broadcastBody.trim()) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await api.sendBroadcast(token, { title: broadcastTitle.trim(), body: broadcastBody.trim() });
-      setBroadcastTitle("");
-      setBroadcastBody("");
-      setSaved(true);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
-  }
+  if (!access) return <p>Загрузка...</p>;
 
   return (
     <div className="regiment-panel fade-in-up">
       <h4>Настройки модуля (администратор)</h4>
 
-      <p className="hint-text">Кто может заводить записи о нарушениях:</p>
+      <p className="hint-text">Кто может заводить записи о нарушениях (рапорт о задержании) — по формированию:</p>
       <div className="field-tags">
         {regiments.map((r) => (
           <label key={r.id} className="checkbox-label field-tag">
             <input
               type="checkbox"
-              checked={writerIds.includes(r.id)}
-              onChange={() => toggle(writerIds, setWriterIds, r.id)}
+              checked={access.violation_writer_regiment_ids.includes(r.id)}
+              onChange={() => toggleRegiment("violation_writer_regiment_ids", r.id)}
             />
             {r.name}
           </label>
         ))}
       </div>
+      <p className="hint-text">...или по Discord-роли:</p>
+      <div className="field-tags">
+        {roles.map((role) => (
+          <label key={role.id} className="checkbox-label field-tag">
+            <input
+              type="checkbox"
+              checked={access.violation_writer_role_ids.includes(role.id)}
+              onChange={() => toggleRole("violation_writer_role_ids", role.id)}
+            />
+            {role.name}
+          </label>
+        ))}
+      </div>
 
       <p className="hint-text">
-        Кто может видеть весь список (помимо этого, всегда видят командиры/заместители своего формирования):
+        Кто может видеть весь список (помимо этого, всегда видят командиры/заместители своего формирования) — по
+        формированию:
       </p>
       <div className="field-tags">
         {regiments.map((r) => (
           <label key={r.id} className="checkbox-label field-tag">
             <input
               type="checkbox"
-              checked={viewerIds.includes(r.id)}
-              onChange={() => toggle(viewerIds, setViewerIds, r.id)}
+              checked={access.violation_viewer_regiment_ids.includes(r.id)}
+              onChange={() => toggleRegiment("violation_viewer_regiment_ids", r.id)}
             />
             {r.name}
           </label>
         ))}
       </div>
+      <p className="hint-text">...или по Discord-роли:</p>
+      <div className="field-tags">
+        {roles.map((role) => (
+          <label key={role.id} className="checkbox-label field-tag">
+            <input
+              type="checkbox"
+              checked={access.violation_viewer_role_ids.includes(role.id)}
+              onChange={() => toggleRole("violation_viewer_role_ids", role.id)}
+            />
+            {role.name}
+          </label>
+        ))}
+      </div>
+
+      <p className="hint-text">Кто может отправлять объявления всем (кнопка 📢 в шапке):</p>
+      <div className="field-tags">
+        {roles.map((role) => (
+          <label key={role.id} className="checkbox-label field-tag">
+            <input
+              type="checkbox"
+              checked={access.broadcast_role_ids.includes(role.id)}
+              onChange={() => toggleRole("broadcast_role_ids", role.id)}
+            />
+            {role.name}
+          </label>
+        ))}
+      </div>
+
+      <p className="hint-text">Кому в разделе "Рапорты" видна кнопка "Рапорт о задержании" — по Discord-роли:</p>
+      <div className="field-tags">
+        {roles.map((role) => (
+          <label key={role.id} className="checkbox-label field-tag">
+            <input
+              type="checkbox"
+              checked={access.detention_report_role_ids.includes(role.id)}
+              onChange={() => toggleRole("detention_report_role_ids", role.id)}
+            />
+            {role.name}
+          </label>
+        ))}
+      </div>
 
       <div className="report-form-actions">
-        <button onClick={handleSaveSettings} disabled={saving}>
+        <button className="primary" onClick={handleSave} disabled={saving}>
           Сохранить настройки доступа
         </button>
       </div>
-
-      <h4>Отправить объявление всем</h4>
-      <form onSubmit={handleSendBroadcast}>
-        <label>
-          Заголовок
-          <input type="text" value={broadcastTitle} onChange={(e) => setBroadcastTitle(e.target.value)} />
-        </label>
-        <label>
-          Текст
-          <textarea rows={3} value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} />
-        </label>
-        <div className="report-form-actions">
-          <button className="primary" type="submit" disabled={saving}>
-            Отправить
-          </button>
-        </div>
-      </form>
 
       {error && <p className="error-text">{error}</p>}
       {saved && <p className="hint-text">Сохранено.</p>}
@@ -252,16 +176,21 @@ function ViolationAdminSettings() {
 
 export function ViolationsPage() {
   const { token, access, regiments } = useAuth();
+  const showToast = useToast();
   const [violations, setViolations] = useState([]);
   const [regimentFilter, setRegimentFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const regimentsById = Object.fromEntries(regiments.map((r) => [r.id, r]));
 
   async function load() {
     try {
-      setViolations(await api.listViolations(token));
+      setViolations(await api.listViolations(token, { search: search.trim() || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }));
     } catch (e) {
       setError(e.message);
     }
@@ -274,7 +203,14 @@ export function ViolationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Формирования, реально встречающиеся в видимом списке — только по ним и даём фильтровать
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      load().catch((e) => setError(e.message));
+    }, 300);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, dateFrom, dateTo]);
+
   const presentRegimentIds = useMemo(
     () => [...new Set(violations.map((v) => v.target_regiment_id).filter(Boolean))],
     [violations]
@@ -287,34 +223,75 @@ export function ViolationsPage() {
     try {
       await api.deleteViolation(token, id);
       await load();
+      showToast("Запись удалена");
     } catch (e) {
       setError(e.message);
+      showToast(e.message, "error");
     }
+  }
+
+  function exportCsv() {
+    downloadCsv(
+      "violations.csv",
+      ["Нарушитель", "Формирование", "Наказание", "Описание", "Зафиксировал", "Дата"],
+      visibleViolations.map((v) => [
+        formatViolationTarget(v),
+        v.target_regiment_id ? regimentsById[v.target_regiment_id]?.name : "",
+        formatPunishment(v) || "",
+        v.description,
+        formatFullName(v.author),
+        formatMskDate(v.created_at),
+      ])
+    );
   }
 
   if (loading) return <div className="page-loading">Загрузка...</div>;
 
   return (
     <div className="violations-page">
-      <h2>Нарушители</h2>
+      <div className="reports-toolbar">
+        <h2 style={{ margin: 0 }}>Нарушители</h2>
+        {visibleViolations.length > 0 && (
+          <button className="ghost" onClick={exportCsv}>
+            Экспорт в CSV
+          </button>
+        )}
+      </div>
 
       {error && <p className="error-text">{error}</p>}
 
-      {access?.can_write_violations && <ViolationForm onCreated={load} />}
-
-      {presentRegimentIds.length > 1 && (
+      <div className="violations-filters">
         <label className="violation-filter-label">
-          Формирование
-          <select value={regimentFilter} onChange={(e) => setRegimentFilter(e.target.value)}>
-            <option value="">Все формирования</option>
-            {presentRegimentIds.map((id) => (
-              <option key={id} value={id}>
-                {regimentsById[id]?.name || `#${id}`}
-              </option>
-            ))}
-          </select>
+          Поиск (позывной / ИДН / ник)
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Например: Demiyrg"
+          />
         </label>
-      )}
+        <label className="violation-filter-label">
+          С даты
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        </label>
+        <label className="violation-filter-label">
+          По дату
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        </label>
+        {presentRegimentIds.length > 1 && (
+          <label className="violation-filter-label">
+            Формирование
+            <select value={regimentFilter} onChange={(e) => setRegimentFilter(e.target.value)}>
+              <option value="">Все формирования</option>
+              {presentRegimentIds.map((id) => (
+                <option key={id} value={id}>
+                  {regimentsById[id]?.name || `#${id}`}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
 
       {visibleViolations.length === 0 ? (
         <p className="empty-state">Записей о нарушениях нет.</p>
@@ -330,10 +307,15 @@ export function ViolationsPage() {
                 <span className="report-date">{formatMskDate(v.created_at)} МСК</span>
               </div>
               <p className="report-content">{v.description}</p>
+              {formatPunishment(v) && (
+                <p className="hint-text">
+                  <strong>Наказание:</strong> {formatPunishment(v)}
+                </p>
+              )}
               <p className="report-byline">Зафиксировал: {formatFullName(v.author)}</p>
               {access?.is_admin && (
                 <div className="report-row-actions">
-                  <button onClick={() => handleDelete(v.id)}>Удалить</button>
+                  <button onClick={() => setConfirmDeleteId(v.id)}>Удалить</button>
                 </div>
               )}
             </div>
@@ -341,7 +323,17 @@ export function ViolationsPage() {
         </div>
       )}
 
-      {access?.is_admin && <ViolationAdminSettings />}
+      <ConfirmDialog
+        open={confirmDeleteId != null}
+        message="Удалить эту запись о нарушении? Действие необратимо."
+        onConfirm={() => {
+          handleDelete(confirmDeleteId);
+          setConfirmDeleteId(null);
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
+
+      {access?.is_admin && <ModuleAccessSettings />}
     </div>
   );
 }

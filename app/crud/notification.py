@@ -5,11 +5,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import Notification, NotificationRead
 
 
-async def list_for_user(db: AsyncSession, *, user_id: int, commander_regiment_ids: set[int]) -> list[Notification]:
+async def list_for_user(
+    db: AsyncSession, *, user_id: int, commander_regiment_ids: set[int], see_all: bool = False
+) -> list[Notification]:
     """Объявления от администрации (видны всем) + уведомления о нарушениях бойцов
-    своего формирования (видны только командиру/заместителю этого формирования)."""
-    conditions = [Notification.kind == "broadcast"]
-    if commander_regiment_ids:
+    своего формирования (видны только командиру/заместителю этого формирования, либо
+    высшему командованию/админу — see_all — видны для любого формирования) + личные
+    уведомления, адресованные именно этому пользователю (например, решение по своей
+    заявке на повышение)."""
+    conditions = [Notification.kind == "broadcast", Notification.target_user_id == user_id]
+    if see_all:
+        conditions.append(Notification.kind == "violation")
+    elif commander_regiment_ids:
         conditions.append(Notification.regiment_id.in_(commander_regiment_ids))
 
     query = select(Notification).where(or_(*conditions)).order_by(Notification.created_at.desc())
@@ -43,6 +50,18 @@ async def mark_all_read(db: AsyncSession, *, user_id: int, notification_ids: lis
 
 async def create_broadcast(db: AsyncSession, *, title: str, body: str, created_by: int) -> Notification:
     notification = Notification(kind="broadcast", title=title, body=body, created_by=created_by)
+    db.add(notification)
+    await db.commit()
+    await db.refresh(notification)
+    return notification
+
+
+async def create_personal_notification(
+    db: AsyncSession, *, target_user_id: int, title: str, body: str, created_by: int | None = None
+) -> Notification:
+    notification = Notification(
+        kind="personal", title=title, body=body, target_user_id=target_user_id, created_by=created_by
+    )
     db.add(notification)
     await db.commit()
     await db.refresh(notification)

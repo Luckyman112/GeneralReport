@@ -39,6 +39,11 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # Автобэкап по расписанию (см. app/core/backup_scheduler.py) — работает поверх
+    # той же ручной кнопки "Создать бэкап", просто по таймеру
+    auto_backup_enabled: bool = False
+    auto_backup_interval_hours: int = 24
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]

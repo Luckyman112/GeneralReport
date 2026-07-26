@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
+from app.core import discord_client
 from app.crud import app_settings as app_settings_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError
 from app.schemas.app_settings import AppSettingsRead, AppSettingsUpdate
+from app.schemas.regiment_commander import GuildMemberRead
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,27 @@ async def update_app_settings(
         admin_role_id=payload.admin_role_id,
         commander_role_id=payload.commander_role_id,
         deputy_role_id=payload.deputy_role_id,
+        high_command_role_id=payload.high_command_role_id,
+        admin_user_discord_ids=payload.admin_user_discord_ids,
     )
     logger.info("Настройки ролей обновлены через вход по паролю: %s", payload)
     return AppSettingsRead.model_validate(row)
+
+
+@router.get("/discord-members", response_model=list[GuildMemberRead])
+async def get_discord_members(
+    access: AccessContext = Depends(get_access_context),
+) -> list[GuildMemberRead]:
+    """Список участников сервера — для выбора конкретных людей администраторами
+    (в дополнение к роли администратора)."""
+    _require_password_login(access)
+    members = await discord_client.fetch_guild_members()
+    return [
+        GuildMemberRead(
+            discord_id=m["discord_id"],
+            username=m["username"],
+            discord_username=m["username"],
+            avatar_url=m["avatar_url"],
+        )
+        for m in members
+    ]

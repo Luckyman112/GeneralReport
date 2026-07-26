@@ -23,6 +23,7 @@ class UserBrief(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    discord_id: str
     username: str
     nickname_override: str | None
     service_id: str | None

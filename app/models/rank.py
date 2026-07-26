@@ -30,5 +30,8 @@ class Rank(Base):
     code: Mapped[str] = mapped_column(String(16))
     name: Mapped[str] = mapped_column(String(255))
     order: Mapped[int] = mapped_column(Integer)
+    # Своё требование по дням выслуги для перехода именно на это звание — если
+    # задано, перекрывает tier.tenure_days_required для этого конкретного звания
+    tenure_days_required: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     tier: Mapped["RankTier"] = relationship(back_populates="ranks")

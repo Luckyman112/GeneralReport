@@ -20,12 +20,16 @@ class ReportCategoryRead(BaseModel):
     name: str
     fields: list[ReportCategoryField]
     points: int | None = None
+    participant_points: int | None = None
+    is_detention: bool = False
 
 
 class ReportCategoryCreate(BaseModel):
     name: str
     fields: list[ReportCategoryField] = []
     points: int | None = None
+    participant_points: int | None = None
+    is_detention: bool = False
 
 
 class ReportCategoryUpdate(BaseModel):
@@ -36,3 +40,5 @@ class ReportCategoryUpdate(BaseModel):
     name: str | None = None
     fields: list[ReportCategoryField] | None = None
     points: int | None = None
+    participant_points: int | None = None
+    is_detention: bool | None = None

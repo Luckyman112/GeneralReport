@@ -10,4 +10,5 @@ venv/
 .vscode/
 tools/
 uploads/
+backups/
 .claude/

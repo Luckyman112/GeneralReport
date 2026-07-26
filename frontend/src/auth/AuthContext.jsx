@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { api } from "../api/client";
+import { api, clearViewAs, getViewAs, setViewAs } from "../api/client";
 
 const STORAGE_KEY = "collapsar_token";
 
@@ -32,9 +32,14 @@ export function AuthProvider({ children }) {
   // true, пока идёт первичная проверка токена или обмен OAuth-кода
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // "Просмотр от лица" — восстанавливается из sessionStorage (см. client.js), чтобы
+  // пережить обновление страницы; сбрасывается при выходе из аккаунта
+  const [viewAs, setViewAsState] = useState(() => getViewAs());
 
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
+    clearViewAs();
+    setViewAsState({ role: null, regimentId: null });
     setToken(null);
     setUser(null);
     setAccess(null);
@@ -69,6 +74,21 @@ export function AuthProvider({ children }) {
     },
     [applyLoginResult]
   );
+
+  const applyViewAs = useCallback(
+    async (role, regimentId) => {
+      setViewAs(role, regimentId);
+      setViewAsState({ role, regimentId: regimentId ?? null });
+      await loadMe(token);
+    },
+    [loadMe, token]
+  );
+
+  const resetViewAs = useCallback(async () => {
+    clearViewAs();
+    setViewAsState({ role: null, regimentId: null });
+    await loadMe(token);
+  }, [loadMe, token]);
 
   // При первой загрузке страницы: если Discord вернул ?code= — обменять его на токен.
   // Иначе, если токен уже сохранён — проверить его через /api/me.
@@ -119,6 +139,9 @@ export function AuthProvider({ children }) {
     },
     loginWithPassword,
     logout,
+    viewAs,
+    applyViewAs,
+    resetViewAs,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

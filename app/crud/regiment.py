@@ -2,6 +2,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.regiment import Regiment
+from app.models.report_category import ReportCategory
+
+DETENTION_CATEGORY_NAME = "Задержание"
 
 
 async def get_all(db: AsyncSession) -> list[Regiment]:
@@ -18,6 +21,12 @@ async def create(db: AsyncSession, *, name: str, discord_role_id: str, color: st
     db.add(regiment)
     await db.commit()
     await db.refresh(regiment)
+
+    # Категория "задержание" заводится автоматически для каждого формирования —
+    # это системная категория, её не создают и не настраивают вручную (см. is_detention)
+    db.add(ReportCategory(regiment_id=regiment.id, name=DETENTION_CATEGORY_NAME, fields=[], is_detention=True))
+    await db.commit()
+
     return regiment
 
 

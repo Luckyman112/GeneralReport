@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { StatusBadge } from "./StatusBadge";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
+import { formatDetentionTarget, formatPunishmentType } from "../utils/punishment";
 
 const CONTENT_PREVIEW_LENGTH = 320;
 
@@ -10,6 +12,7 @@ export function ReportRow({
   regimentName,
   regimentColor,
   categoryName,
+  targetRegimentName,
   isOwn,
   canManage,
   canSetPoints,
@@ -25,6 +28,7 @@ export function ReportRow({
   const [pointsDraft, setPointsDraft] = useState(report.points ?? "");
   const [showPointsPanel, setShowPointsPanel] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const pointsWrapRef = useRef(null);
 
   useEffect(() => {
@@ -38,6 +42,8 @@ export function ReportRow({
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [showPointsPanel]);
 
+  const detentionTargetName = formatDetentionTarget(report);
+  const punishmentLabel = formatPunishmentType(report);
   const canManageImages = canManage;
   const showPointsGear = canSetPoints || report.points !== null;
   const isLongContent = report.content.length > CONTENT_PREVIEW_LENGTH;
@@ -45,10 +51,7 @@ export function ReportRow({
     isLongContent && !expanded ? `${report.content.slice(0, CONTENT_PREVIEW_LENGTH)}…` : report.content;
 
   return (
-    <div
-      className="report-row fade-in-up"
-      style={regimentColor ? { borderLeft: `3px solid ${regimentColor}` } : undefined}
-    >
+    <div className={`report-row report-row-status-${report.status} fade-in-up`}>
       <div className="report-row-header">
         <span className="report-regiment" style={regimentColor ? { color: regimentColor } : undefined}>
           {regimentName}
@@ -110,6 +113,19 @@ export function ReportRow({
             {formatFullName(report.updated_by_user)}
           </span>
         </p>
+      )}
+
+      {report.target_regiment_id && (
+        <div className="detention-target-panel">
+          <p className="hint-text">
+            Задержан: <strong>{detentionTargetName || "не указан"}</strong>
+            {targetRegimentName && ` · ${targetRegimentName}`}
+          </p>
+          <p className="hint-text">
+            Наказание: <strong>{punishmentLabel}</strong>
+            {report.punishment_amount && ` — ${report.punishment_amount}`}
+          </p>
+        </div>
       )}
 
       <p className="report-content">
@@ -178,7 +194,18 @@ export function ReportRow({
           </>
         )}
 
-        {canManage && report.status !== "deleted" && <button onClick={onDelete}>Удалить</button>}
+        {canManage && report.status !== "deleted" && (
+          <button onClick={() => setConfirmDelete(true)}>Удалить</button>
+        )}
+        <ConfirmDialog
+          open={confirmDelete}
+          message="Удалить этот рапорт? Действие необратимо."
+          onConfirm={() => {
+            setConfirmDelete(false);
+            onDelete();
+          }}
+          onCancel={() => setConfirmDelete(false)}
+        />
       </div>
     </div>
   );

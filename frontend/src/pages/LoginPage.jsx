@@ -8,7 +8,7 @@ export function LoginPage() {
   const [passwordError, setPasswordError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (isAuthenticated) return <Navigate to="/reports" replace />;
+  if (isAuthenticated) return <Navigate to="/main" replace />;
 
   async function handlePasswordLogin(e) {
     e.preventDefault();

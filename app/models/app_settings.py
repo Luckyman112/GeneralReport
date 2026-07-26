@@ -5,20 +5,40 @@ from app.database import Base
 
 
 class AppSettings(Base):
-    """Singleton-таблица (всегда одна строка id=1): ID Discord-ролей админа/командира/
-    заместителя (редактируются только через вход по паролю, см. app/api/app_settings.py)
-    и списки формирований для модуля "Нарушители" (редактируются любым администратором,
-    см. app/api/violations.py) — эти значения можно менять без правки .env и перезапуска
+    """Singleton-таблица (всегда одна строка id=1).
+
+    admin_role_id/commander_role_id/deputy_role_id — редактируются только через вход
+    по паролю (см. app/api/app_settings.py). high_command_role_id и списки для модуля
+    "Нарушители"/рассылки/рапорта о задержании — редактируются любым администратором
+    (см. app/api/violations.py). Всё это можно менять без правки .env и перезапуска
     сервера."""
 
     __tablename__ = "app_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     admin_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Конкретные люди с правами администратора (в дополнение к admin_role_id) —
+    # позволяет назначить админом того, у кого нет/не хочется давать Discord-роль
+    admin_user_discord_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     commander_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     deputy_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    # Формирования, чьи участники могут заводить записи о нарушениях
+    # Высшее командование — как командир/зам, но сразу для всех формирований;
+    # может выдавать выговоры даже командирам. Не совпадает с is_admin.
+    high_command_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # Формирования/Discord-роли, чьи участники могут заводить записи о нарушениях
     violation_writer_regiment_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
-    # Формирования, чьи участники могут просматривать весь список нарушений (помимо
-    # этого, список всегда виден любому командиру/заместителю — см. can_view_violations)
+    violation_writer_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Формирования/Discord-роли, чьи участники могут просматривать весь список
+    # нарушений (помимо этого, список всегда виден командиру/заместителю — своего
+    # формирования, см. can_view_violations)
     violation_viewer_regiment_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    violation_viewer_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+    # Кто может отправлять объявления всем (помимо администратора)
+    broadcast_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+    # Кому в разделе "Рапорты" видна кнопка "Рапорт о задержании" — по ролям и/или
+    # по конкретным людям
+    detention_report_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    detention_report_user_discord_ids: Mapped[list[str]] = mapped_column(JSON, default=list)

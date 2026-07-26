@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
 from app.crud import app_settings as app_settings_crud
+from app.crud import audit_log as audit_log_crud
+from app.crud import points_adjustment as points_adjustment_crud
+from app.crud import promotion as promotion_crud
 from app.crud import rank as rank_crud
 from app.crud import regiment as regiment_crud
 from app.crud import regiment_commander as regiment_commander_crud
@@ -18,13 +21,16 @@ from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
 from app.models.user import User
+from app.schemas.promotion import PointsAdjustmentRead
 from app.schemas.rank import RankRead
 from app.schemas.regiment import DiscordRoleOption, RegimentCreate, RegimentRead, RegimentUpdate
 from app.schemas.regiment_commander import (
     GuildMemberRead,
     MemberProfileUpdate,
+    PointsAdjustmentBody,
     RegimentCommanderCreate,
     RegimentCommanderRead,
+    TenureOverrideUpdate,
 )
 from app.schemas.report import ReportRead
 from app.schemas.report_category import ReportCategoryCreate, ReportCategoryRead, ReportCategoryUpdate
@@ -127,10 +133,9 @@ async def create_category(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> ReportCategoryRead:
-    """Добавить категорию рапорта — командир этого формирования или администратор
-    (заместитель категориями не управляет)."""
+    """Добавить категорию рапорта — только высшее командование или администратор."""
     if not access.can_manage_categories(regiment_id):
-        raise ForbiddenError("Добавлять категории может только командир формирования")
+        raise ForbiddenError("Добавлять категории может только высшее командование или администратор")
     await _get_regiment_or_404(db, regiment_id)
 
     category = await report_category_crud.create(
@@ -139,6 +144,10 @@ async def create_category(
         name=payload.name,
         fields=[f.model_dump() for f in payload.fields],
         points=payload.points,
+        participant_points=payload.participant_points,
+        # is_detention всегда False здесь — категория задержания системная,
+        # заводится автоматически при создании формирования (см. regiment_crud.create)
+        is_detention=False,
     )
     logger.info("%s добавил категорию '%s' формированию %s", access.user.username, category.name, regiment_id)
     return ReportCategoryRead.model_validate(category)
@@ -152,16 +161,19 @@ async def update_category(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> ReportCategoryRead:
-    """Переименовать категорию и/или изменить список полей рапорта — командир этого
-    формирования или администратор."""
+    """Переименовать категорию и/или изменить список полей рапорта — только высшее
+    командование или администратор."""
     if not access.can_manage_categories(regiment_id):
-        raise ForbiddenError("Изменять категории может только командир формирования")
+        raise ForbiddenError("Изменять категории может только высшее командование или администратор")
 
     category = await report_category_crud.get_by_id(db, category_id)
     if category is None or category.regiment_id != regiment_id:
         raise NotFoundError("Категория не найдена")
 
     changes = payload.model_dump(exclude_unset=True)
+    # is_detention системный, вручную не редактируется (категория задержания заводится
+    # автоматически при создании формирования)
+    changes.pop("is_detention", None)
     updated = await report_category_crud.update(db, category, **changes)
     return ReportCategoryRead.model_validate(updated)
 
@@ -173,14 +185,15 @@ async def delete_category(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> None:
-    """Удалить категорию рапорта — командир этого формирования или администратор
-    (заместитель категориями не управляет)."""
+    """Удалить категорию рапорта — только высшее командование или администратор."""
     if not access.can_manage_categories(regiment_id):
-        raise ForbiddenError("Удалять категории может только командир формирования")
+        raise ForbiddenError("Удалять категории может только высшее командование или администратор")
 
     category = await report_category_crud.get_by_id(db, category_id)
     if category is None or category.regiment_id != regiment_id:
         raise NotFoundError("Категория не найдена")
+    if category.is_detention:
+        raise ForbiddenError("Категория задержания системная, её нельзя удалить")
 
     await report_category_crud.delete(db, category)
 
@@ -329,9 +342,13 @@ async def update_member_profile(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> GuildMemberRead:
-    """Единая форма профиля участника формирования — веб-ник, ИДН, звание, позывной,
-    отметка неактивности. Доступно командиру или заместителю (это работа с личным
-    составом, а не управление категориями, которое заместителю недоступно)."""
+    """Единая форма профиля участника формирования — ИДН, звание, позывной, отметка
+    неактивности. Доступно командиру или заместителю (это работа с личным составом,
+    а не управление категориями, которое заместителю недоступно).
+
+    Веб-ник и позывной — одно и то же: отдельного поля "ник" больше нет, при смене
+    позывного nickname_override (то, что показывается в рапортах/статистике)
+    выставляется равным ему автоматически."""
     if not access.is_commander_of(regiment_id):
         raise ForbiddenError("Менять профиль участника может только командир формирования")
     regiment = await _get_regiment_or_404(db, regiment_id)
@@ -342,8 +359,8 @@ async def update_member_profile(
         raise NotFoundError("Участник не найден в этом формировании")
 
     changes = payload.model_dump(exclude_unset=True)
-    if "nickname" in changes:
-        changes["nickname_override"] = changes.pop("nickname") or None
+    if "callsign" in changes:
+        changes["nickname_override"] = changes["callsign"]
     if "rank_id" in changes and changes["rank_id"] is not None:
         rank = await rank_crud.get_by_id(db, changes["rank_id"])
         if rank is None:
@@ -353,7 +370,87 @@ async def update_member_profile(
         db, discord_id=discord_id, fallback_username=member["username"], changes=changes
     )
     logger.info("%s обновил профиль участника %s: %s", access.user.username, discord_id, changes)
+    if access.is_admin or access.is_high_command:
+        await audit_log_crud.log(
+            db,
+            actor_user_id=access.user.id,
+            action="member_profile_edit",
+            details=f"Профиль участника {discord_id} в формировании {regiment_id}: {changes}",
+        )
     return _build_guild_member(member, user)
+
+
+@router.patch("/{regiment_id}/members/{discord_id}/tenure", response_model=GuildMemberRead)
+async def update_member_tenure(
+    regiment_id: int,
+    discord_id: str,
+    payload: TenureOverrideUpdate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> GuildMemberRead:
+    """Админ-панель: вручную скорректировать, сколько дней участник "провёл" в
+    текущем звании — только высшее командование/администратор (не обычный
+    командир/заместитель, это ручной оверрайд критерия повышения)."""
+    if not (access.is_admin or access.is_high_command):
+        raise ForbiddenError("Менять выслугу вручную может только высшее командование или администратор")
+    regiment = await _get_regiment_or_404(db, regiment_id)
+
+    members = await discord_client.fetch_guild_members()
+    member = next((m for m in members if m["discord_id"] == discord_id), None)
+    if member is None or regiment.discord_role_id not in member["roles"]:
+        raise NotFoundError("Участник не найден в этом формировании")
+
+    user = await user_crud.get_by_discord_id(db, discord_id)
+    if user is None or user.rank_id is None:
+        raise NotFoundError("У участника не задано звание")
+
+    user = await user_crud.set_rank_assigned_at(db, user, days_in_rank=payload.days_in_rank)
+    logger.info(
+        "%s вручную выставил выслугу участнику %s: %s дней", access.user.username, discord_id, payload.days_in_rank
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        action="tenure_override",
+        details=f"Выставил выслугу {payload.days_in_rank} дн. участнику {discord_id} в формировании {regiment_id}",
+    )
+    return _build_guild_member(member, user)
+
+
+@router.post("/{regiment_id}/members/{discord_id}/points-adjustment", response_model=PointsAdjustmentRead)
+async def create_points_adjustment(
+    regiment_id: int,
+    discord_id: str,
+    payload: PointsAdjustmentBody,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> PointsAdjustmentRead:
+    """Админ-панель: ручное начисление баллов бойцу в обход рапортов — только
+    высшее командование/администратор."""
+    if not (access.is_admin or access.is_high_command):
+        raise ForbiddenError("Выдавать баллы вручную может только высшее командование или администратор")
+    await _get_regiment_or_404(db, regiment_id)
+
+    user = await user_crud.get_by_discord_id(db, discord_id)
+    if user is None:
+        raise NotFoundError("Участник не найден")
+
+    adjustment = await points_adjustment_crud.create(
+        db,
+        user_id=user.id,
+        regiment_id=regiment_id,
+        points=payload.points,
+        reason=payload.reason,
+        created_by=access.user.id,
+    )
+    await promotion_crud.check_and_create_promotion_request(db, user)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        action="points_adjustment",
+        details=f"Начислил {payload.points} баллов участнику {discord_id} в формировании {regiment_id}: {payload.reason}",
+    )
+    return adjustment
 
 
 @router.get("/{regiment_id}/members/{discord_id}/reports", response_model=list[ReportRead])

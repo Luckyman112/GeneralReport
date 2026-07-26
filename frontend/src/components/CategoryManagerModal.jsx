@@ -12,6 +12,7 @@ function CategoryRow({ category, onChanged, onDeleted }) {
   const [newField, setNewField] = useState("");
   const [newFieldType, setNewFieldType] = useState("text");
   const [pointsDraft, setPointsDraft] = useState(category.points ?? "");
+  const [participantPointsDraft, setParticipantPointsDraft] = useState(category.participant_points ?? "");
   const [error, setError] = useState(null);
 
   async function handleAddField(e) {
@@ -44,6 +45,7 @@ function CategoryRow({ category, onChanged, onDeleted }) {
     try {
       await api.updateCategory(token, category.regiment_id, category.id, {
         points: pointsDraft === "" ? null : Number(pointsDraft),
+        participant_points: participantPointsDraft === "" ? null : Number(participantPointsDraft),
       });
       onChanged();
     } catch (e) {
@@ -54,10 +56,15 @@ function CategoryRow({ category, onChanged, onDeleted }) {
   return (
     <li className="category-row">
       <div className="category-row-header">
-        <strong>{category.name}</strong>
-        <button className="ghost" onClick={() => onDeleted(category.id)}>
-          Удалить категорию
-        </button>
+        <strong>
+          {category.name}
+          {category.is_detention && <span className="detention-badge">задержание (системная)</span>}
+        </strong>
+        {!category.is_detention && (
+          <button className="ghost" onClick={() => onDeleted(category.id)}>
+            Удалить категорию
+          </button>
+        )}
       </div>
       {category.fields.length > 0 && (
         <div className="field-tags">
@@ -96,13 +103,22 @@ function CategoryRow({ category, onChanged, onDeleted }) {
             onChange={(e) => setPointsDraft(e.target.value)}
           />
         </label>
+        <label className="points-inline-label">
+          Баллы участникам (список состава)
+          <input
+            type="number"
+            placeholder="не указано"
+            value={participantPointsDraft}
+            onChange={(e) => setParticipantPointsDraft(e.target.value)}
+          />
+        </label>
         <button type="button" onClick={handleSavePoints}>
           Сохранить баллы
         </button>
       </div>
       <p className="hint-text">
         Начисляются автоматически при одобрении рапорта этой категории, если баллы ещё не
-        выставлены вручную.
+        выставлены вручную. Баллы участникам получает каждый, кто указан в поле "Список состава".
       </p>
 
       {error && <p className="error-text">{error}</p>}
@@ -120,6 +136,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryFields, setNewCategoryFields] = useState([]);
   const [newCategoryPoints, setNewCategoryPoints] = useState("");
+  const [newCategoryParticipantPoints, setNewCategoryParticipantPoints] = useState("");
   const [newFieldDraft, setNewFieldDraft] = useState("");
   const [newFieldDraftType, setNewFieldDraftType] = useState("text");
   const [error, setError] = useState(null);
@@ -166,10 +183,12 @@ export function CategoryManagerModal({ regiments, onClose }) {
         name: newCategoryName.trim(),
         fields: newCategoryFields,
         points: newCategoryPoints === "" ? null : Number(newCategoryPoints),
+        participantPoints: newCategoryParticipantPoints === "" ? null : Number(newCategoryParticipantPoints),
       });
       setNewCategoryName("");
       setNewCategoryFields([]);
       setNewCategoryPoints("");
+      setNewCategoryParticipantPoints("");
       await load(regimentId);
     } catch (e) {
       setError(e.message);
@@ -272,6 +291,15 @@ export function CategoryManagerModal({ regiments, onClose }) {
                   placeholder="не указано"
                   value={newCategoryPoints}
                   onChange={(e) => setNewCategoryPoints(e.target.value)}
+                />
+              </label>
+              <label>
+                Баллы участникам (список состава, необязательно)
+                <input
+                  type="number"
+                  placeholder="не указано"
+                  value={newCategoryParticipantPoints}
+                  onChange={(e) => setNewCategoryParticipantPoints(e.target.value)}
                 />
               </label>
 

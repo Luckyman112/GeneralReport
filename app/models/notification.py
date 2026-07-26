@@ -7,9 +7,10 @@ from app.database import Base
 
 
 class Notification(Base):
-    """Уведомление — либо объявление от администрации (kind="broadcast", видно всем),
-    либо автосозданное при подаче нарушения (kind="violation", видно командиру и
-    заместителю формирования нарушителя — regiment_id)."""
+    """Уведомление — объявление от администрации (kind="broadcast", видно всем),
+    автосозданное при подаче нарушения (kind="violation", видно командиру и
+    заместителю формирования нарушителя — regiment_id), либо личное (kind="personal",
+    видно только target_user_id — например, решение по своей заявке на повышение)."""
 
     __tablename__ = "notifications"
 
@@ -18,9 +19,12 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(255))
     body: Mapped[str] = mapped_column(Text)
     # Для kind="violation" — формирование нарушителя, которому адресовано уведомление.
-    # Для kind="broadcast" — None (видно всем)
+    # Для kind="broadcast"/"personal" — None (broadcast видно всем, personal — только
+    # target_user_id)
     regiment_id: Mapped[int | None] = mapped_column(ForeignKey("regiments.id"), nullable=True)
     violation_id: Mapped[int | None] = mapped_column(ForeignKey("violations.id"), nullable=True)
+    # Только для kind="personal" — кому адресовано
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

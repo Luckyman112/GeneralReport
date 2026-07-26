@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { formatFullName } from "../utils/formatName";
 import { MemberDetailModal } from "./MemberDetailModal";
+import { PromotionReviewModal } from "./PromotionReviewModal";
 
 const NO_RANK_GROUP = "Без звания";
 
@@ -14,6 +16,8 @@ export function RegimentPanel({ regiments, canManageMembers }) {
   const [members, setMembers] = useState([]);
   const [tiers, setTiers] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
+  const [reviewRequestId, setReviewRequestId] = useState(null);
+  const [pendingRequestByDiscordId, setPendingRequestByDiscordId] = useState({});
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   // Защита от гонки: если формирование переключили, пока летел старый запрос,
@@ -42,6 +46,22 @@ export function RegimentPanel({ regiments, canManageMembers }) {
     if (regimentId) loadMembers(regimentId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, regimentId]);
+
+  useEffect(() => {
+    if (!regimentId || !canEditHere) {
+      setPendingRequestByDiscordId({});
+      return;
+    }
+    api
+      .listPromotionRequests(token)
+      .then((requests) => {
+        const byDiscordId = Object.fromEntries(
+          requests.filter((r) => r.regiment_id === Number(regimentId)).map((r) => [r.user.discord_id, r.id])
+        );
+        setPendingRequestByDiscordId(byDiscordId);
+      })
+      .catch(() => setPendingRequestByDiscordId({}));
+  }, [token, regimentId, canEditHere]);
 
   useEffect(() => {
     api.getRanks(token).then(setTiers).catch(() => setTiers([]));
@@ -94,20 +114,52 @@ export function RegimentPanel({ regiments, canManageMembers }) {
           {groups.map((group) => (
             <div key={group.title} className="member-list-group fade-in-up">
               <p className="member-list-group-title">{group.title}</p>
-              <ul className="member-list">
-                {group.members.map((m) => (
-                  <li key={m.discord_id}>
-                    <button
-                      className={`member-button${m.is_inactive ? " member-inactive" : ""}`}
-                      onClick={() => setSelectedMember(m)}
-                    >
-                      {m.avatar_url && <img src={m.avatar_url} alt="" className="member-avatar" />}
-                      <span style={regimentColor ? { color: regimentColor } : undefined}>{m.username}</span>
-                      {m.is_inactive && <span className="member-inactive-badge">неактивен</span>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="roster-table-wrap">
+                <table className="roster-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Участник</th>
+                      <th>Дней в звании</th>
+                      {canEditHere && <th></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.members.map((m) => (
+                      <tr key={m.discord_id} onClick={() => setSelectedMember(m)}>
+                        <td>
+                          <span className={`status-dot ${m.is_inactive ? "status-dot-muted" : "status-dot-accent"}`} />
+                        </td>
+                        <td>
+                          <span className="roster-member-cell">
+                            {m.avatar_url && <img src={m.avatar_url} alt="" className="member-avatar" />}
+                            <span style={regimentColor ? { color: regimentColor } : undefined}>
+                              {formatFullName(m)}
+                            </span>
+                            {m.is_inactive && <span className="member-inactive-badge">неактивен</span>}
+                          </span>
+                        </td>
+                        <td className="mono-num">{m.days_in_rank ?? "—"}</td>
+                        {canEditHere && (
+                          <td>
+                            {pendingRequestByDiscordId[m.discord_id] != null && (
+                              <button
+                                className="primary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReviewRequestId(pendingRequestByDiscordId[m.discord_id]);
+                                }}
+                              >
+                                Доступно повышение
+                              </button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ))}
         </>
@@ -123,6 +175,10 @@ export function RegimentPanel({ regiments, canManageMembers }) {
             loadMembers(regimentId);
           }}
         />
+      )}
+
+      {reviewRequestId && (
+        <PromotionReviewModal requestId={reviewRequestId} onClose={() => setReviewRequestId(null)} />
       )}
     </div>
   );

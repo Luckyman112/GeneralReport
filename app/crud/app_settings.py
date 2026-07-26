@@ -29,9 +29,12 @@ async def update(
     admin_role_id: str | None = None,
     commander_role_id: str | None = None,
     deputy_role_id: str | None = None,
+    high_command_role_id: str | None = None,
+    admin_user_discord_ids: list[str] | None = None,
 ) -> AppSettings:
     """Частичное обновление: None = поле не передано (не трогаем), пустая строка =
-    явно очистить роль (сохраняем как NULL в БД)."""
+    явно очистить роль (сохраняем как NULL в БД). admin_user_discord_ids — список,
+    так что "не передано" отличаем через отдельный сигнальный default (см. эндпоинт)."""
     row = await get(db)
     if admin_role_id is not None:
         row.admin_role_id = admin_role_id or None
@@ -39,25 +42,23 @@ async def update(
         row.commander_role_id = commander_role_id or None
     if deputy_role_id is not None:
         row.deputy_role_id = deputy_role_id or None
+    if high_command_role_id is not None:
+        row.high_command_role_id = high_command_role_id or None
+    if admin_user_discord_ids is not None:
+        row.admin_user_discord_ids = admin_user_discord_ids
     await db.commit()
     await db.refresh(row)
     return row
 
 
-async def update_violation_regiments(
-    db: AsyncSession,
-    *,
-    writer_regiment_ids: list[int] | None = None,
-    viewer_regiment_ids: list[int] | None = None,
-) -> AppSettings:
-    """Списки формирований для модуля "Нарушители". None = поле не передано (не
-    трогаем) — отличать от пустого списка (явно "никто, кроме админа") позволяет
-    exclude_unset в эндпоинте."""
+async def update_module_access(db: AsyncSession, **changes) -> AppSettings:
+    """Настройки доступа к модулю "Нарушители" + рассылке + кнопке рапорта о
+    задержании — только реально переданные клиентом поля (exclude_unset в
+    эндпоинте), поэтому пустой список здесь означает явное "никто" (кроме
+    администратора/высшего командования, у них доступ всегда есть)."""
     row = await get(db)
-    if writer_regiment_ids is not None:
-        row.violation_writer_regiment_ids = writer_regiment_ids
-    if viewer_regiment_ids is not None:
-        row.violation_viewer_regiment_ids = viewer_regiment_ids
+    for key, value in changes.items():
+        setattr(row, key, value)
     await db.commit()
     await db.refresh(row)
     return row

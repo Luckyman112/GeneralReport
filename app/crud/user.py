@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +49,36 @@ async def get_by_discord_ids(db: AsyncSession, discord_ids: list[str]) -> list[U
     return list(result.scalars().all())
 
 
+async def get_by_ids(db: AsyncSession, user_ids: list[int]) -> list[User]:
+    if not user_ids:
+        return []
+    result = await db.execute(select(User).where(User.id.in_(user_ids)))
+    return list(result.scalars().all())
+
+
+async def list_admins_and_high_command(db: AsyncSession) -> list[User]:
+    """Все, кто сейчас является администратором или высшим командованием: по
+    Discord-роли (admin_role_id/high_command_role_id), по явному списку людей
+    (admin_user_discord_ids) или по входу по паролю. Только среди тех, кто хотя бы
+    раз заходил на сайт (есть запись users) — используется для рассылки уведомлений,
+    не для проверки прав доступа (см. app/api/deps.py::get_access_context)."""
+    from app.core.constants import PASSWORD_LOGIN_DISCORD_ID
+    from app.crud import app_settings as app_settings_crud
+
+    app_config = await app_settings_crud.get(db)
+    result = await db.execute(select(User))
+    users = list(result.scalars().all())
+    admin_discord_ids = set(app_config.admin_user_discord_ids or [])
+    return [
+        u
+        for u in users
+        if u.discord_id == PASSWORD_LOGIN_DISCORD_ID
+        or u.discord_id in admin_discord_ids
+        or (app_config.admin_role_id and app_config.admin_role_id in u.roles)
+        or (app_config.high_command_role_id and app_config.high_command_role_id in u.roles)
+    ]
+
+
 async def update_profile(
     db: AsyncSession, *, discord_id: str, fallback_username: str, changes: dict
 ) -> User:
@@ -67,6 +97,16 @@ async def update_profile(
     for key, value in changes.items():
         setattr(user, key, value)
 
+    await db.commit()
+    await db.refresh(user, attribute_names=["rank"])
+    return user
+
+
+async def set_rank_assigned_at(db: AsyncSession, user: User, *, days_in_rank: int) -> User:
+    """Админ-панель: перематывает "дату получения текущего звания" назад на
+    days_in_rank дней от текущего момента — это меняет days_in_rank, который видит
+    и сверяет с требованием по выслуге /me/promotion-status."""
+    user.rank_assigned_at = datetime.now(timezone.utc) - timedelta(days=days_in_rank)
     await db.commit()
     await db.refresh(user, attribute_names=["rank"])
     return user

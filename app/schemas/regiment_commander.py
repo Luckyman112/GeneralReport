@@ -41,13 +41,30 @@ class GuildMemberRead(BaseModel):
 
 
 class MemberProfileUpdate(BaseModel):
-    """Единая форма профиля участника (веб-ник + ИДН + звание + позывной + отметка
+    """Единая форма профиля участника (ИДН + звание + позывной + отметка
     неактивности). Поля, отсутствующие в теле запроса, не изменяются (exclude_unset
     в эндпоинте) — так же, как в ReportCategoryUpdate, это позволяет явно очищать
-    поле, отправив null, не трогая остальные."""
+    поле, отправив null, не трогая остальные.
 
-    nickname: str | None = None
+    Отдельного поля "веб-ник" больше нет — позывной и есть веб-ник (см. комментарий
+    в app/api/regiments.py::update_member_profile)."""
+
     service_id: str | None = None
     callsign: str | None = None
     rank_id: int | None = None
     is_inactive: bool | None = None
+
+
+class TenureOverrideUpdate(BaseModel):
+    """Админ-панель: принудительно выставить, сколько дней участник уже "провёл"
+    в текущем звании (перематывает rank_assigned_at назад на это число дней от
+    текущего момента) — используется, чтобы вручную скорректировать выслугу."""
+
+    days_in_rank: int
+
+
+class PointsAdjustmentBody(BaseModel):
+    """Админ-панель: ручное начисление баллов бойцу в обход рапортов."""
+
+    points: int
+    reason: str

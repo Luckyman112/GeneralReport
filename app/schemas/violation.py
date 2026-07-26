@@ -29,20 +29,11 @@ class ViolationRead(BaseModel):
     target_service_id: str | None
     target_callsign: str | None
     target_rank: RankRead | None
+    punishment_type: str | None = None
+    punishment_other_text: str | None = None
+    punishment_amount: str | None = None
     description: str
     created_at: datetime
     author: UserBrief
 
 
-class ViolationSettingsRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    violation_writer_regiment_ids: list[int]
-    violation_viewer_regiment_ids: list[int]
-
-
-class ViolationSettingsUpdate(BaseModel):
-    """Поля, отсутствующие в теле запроса, не изменяются (exclude_unset в эндпоинте)."""
-
-    writer_regiment_ids: list[int] | None = None
-    viewer_regiment_ids: list[int] | None = None

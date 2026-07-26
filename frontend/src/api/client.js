@@ -9,6 +9,41 @@ class ApiError extends Error {
   }
 }
 
+// "Просмотр от лица" (view as) — реальный админ/высшее командование может
+// временно урезать себе доступ до конкретной роли/формирования, чтобы честно
+// увидеть, что видит и может человек с такими правами. Хранится тут как модульное
+// состояние (не React state), потому что request() — обычная функция, а не хук;
+// переживает перезагрузку страницы через sessionStorage (не localStorage — не
+// должно тянуться в другую вкладку/сессию).
+const VIEW_AS_STORAGE_KEY = "collapsar-view-as";
+let viewAsRole = null;
+let viewAsRegimentId = null;
+try {
+  const saved = JSON.parse(sessionStorage.getItem(VIEW_AS_STORAGE_KEY) || "null");
+  if (saved) {
+    viewAsRole = saved.role;
+    viewAsRegimentId = saved.regimentId;
+  }
+} catch {
+  // повреждённое значение в sessionStorage — просто игнорируем
+}
+
+export function setViewAs(role, regimentId) {
+  viewAsRole = role;
+  viewAsRegimentId = regimentId ?? null;
+  sessionStorage.setItem(VIEW_AS_STORAGE_KEY, JSON.stringify({ role, regimentId: viewAsRegimentId }));
+}
+
+export function clearViewAs() {
+  viewAsRole = null;
+  viewAsRegimentId = null;
+  sessionStorage.removeItem(VIEW_AS_STORAGE_KEY);
+}
+
+export function getViewAs() {
+  return { role: viewAsRole, regimentId: viewAsRegimentId };
+}
+
 /** Обёртка над fetch: подставляет базовый URL, JWT и разбирает ошибки бэкенда.
  * Если body — FormData (загрузка файла), не сериализуем в JSON и не трогаем
  * Content-Type — браузер сам проставит его с нужным boundary. */
@@ -16,6 +51,10 @@ async function request(path, { method = "GET", token, body } = {}) {
   const isFormData = body instanceof FormData;
   const headers = isFormData ? {} : { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (viewAsRole) {
+    headers["X-View-As-Role"] = viewAsRole;
+    if (viewAsRegimentId) headers["X-View-As-Regiment-Id"] = String(viewAsRegimentId);
+  }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
@@ -51,11 +90,42 @@ export const api = {
     const query = params.toString() ? `?${params.toString()}` : "";
     return request(`/api/reports${query}`, { token });
   },
-  createReport: (token, { regimentId, categoryId, content, submit }) =>
+  createReport: (
+    token,
+    {
+      regimentId,
+      categoryId,
+      content,
+      submit,
+      targetDiscordId,
+      targetServiceId,
+      targetRankId,
+      targetRegimentId,
+      targetCallsign,
+      punishmentType,
+      punishmentOtherText,
+      punishmentAmount,
+      participantDiscordIds,
+    }
+  ) =>
     request("/api/reports", {
       method: "POST",
       token,
-      body: { regiment_id: regimentId, category_id: categoryId ?? null, content, submit },
+      body: {
+        regiment_id: regimentId,
+        category_id: categoryId ?? null,
+        content,
+        submit,
+        target_discord_id: targetDiscordId || null,
+        target_service_id: targetServiceId || null,
+        target_rank_id: targetRankId || null,
+        target_regiment_id: targetRegimentId || null,
+        target_callsign: targetCallsign || null,
+        punishment_type: punishmentType || null,
+        punishment_other_text: punishmentOtherText || null,
+        punishment_amount: punishmentAmount || null,
+        participant_discord_ids: participantDiscordIds || [],
+      },
     }),
   updateReportStatus: (token, reportId, { status, rejectionReason }) =>
     request(`/api/reports/${reportId}`, {
@@ -90,11 +160,11 @@ export const api = {
     }),
 
   listCategories: (token, regimentId) => request(`/api/regiments/${regimentId}/categories`, { token }),
-  createCategory: (token, regimentId, { name, fields, points }) =>
+  createCategory: (token, regimentId, { name, fields, points, participantPoints }) =>
     request(`/api/regiments/${regimentId}/categories`, {
       method: "POST",
       token,
-      body: { name, fields: fields || [], points: points ?? null },
+      body: { name, fields: fields || [], points: points ?? null, participant_points: participantPoints ?? null },
     }),
   // Передаём только реально переданные поля (без null-заполнителей) — бэкенд
   // трактует отсутствие ключа как "не менять", а points: null как явную очистку
@@ -132,7 +202,7 @@ export const api = {
   getRanks: (token) => request("/api/ranks", { token }),
 
   getAppSettings: (token) => request("/api/app-settings", { token }),
-  updateAppSettings: (token, { adminRoleId, commanderRoleId, deputyRoleId }) =>
+  updateAppSettings: (token, { adminRoleId, commanderRoleId, deputyRoleId, highCommandRoleId, adminUserDiscordIds }) =>
     request("/api/app-settings", {
       method: "PATCH",
       token,
@@ -140,34 +210,172 @@ export const api = {
         admin_role_id: adminRoleId ?? null,
         commander_role_id: commanderRoleId ?? null,
         deputy_role_id: deputyRoleId ?? null,
+        high_command_role_id: highCommandRoleId ?? null,
+        admin_user_discord_ids: adminUserDiscordIds ?? null,
       },
     }),
+  getAppSettingsMembers: (token) => request("/api/app-settings/discord-members", { token }),
 
-  listViolations: (token) => request("/api/violations", { token }),
-  getViolationTargetCandidates: (token) => request("/api/violations/target-candidates", { token }),
-  createViolation: (token, { targetDiscordId, targetServiceId, targetRankId, targetRegimentId, targetCallsign, description }) =>
-    request("/api/violations", {
-      method: "POST",
-      token,
-      body: {
-        target_discord_id: targetDiscordId || null,
-        target_service_id: targetServiceId || null,
-        target_rank_id: targetRankId || null,
-        target_regiment_id: targetRegimentId || null,
-        target_callsign: targetCallsign || null,
-        description,
-      },
-    }),
+  listViolations: (token, { search, dateFrom, dateTo } = {}) => {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return request(`/api/violations${query}`, { token });
+  },
+  getViolationTargetCandidates: (token, regimentId) =>
+    request(`/api/violations/target-candidates${regimentId ? `?regiment_id=${regimentId}` : ""}`, { token }),
   deleteViolation: (token, violationId) =>
     request(`/api/violations/${violationId}`, { method: "DELETE", token }),
-  getViolationSettings: (token) => request("/api/violations/settings", { token }),
-  updateViolationSettings: (token, changes) =>
-    request("/api/violations/settings", { method: "PATCH", token, body: changes }),
+
+  getModuleAccess: (token) => request("/api/module-access", { token }),
+  updateModuleAccess: (token, changes) =>
+    request("/api/module-access", { method: "PATCH", token, body: changes }),
 
   listNotifications: (token) => request("/api/notifications", { token }),
   markAllNotificationsRead: (token) => request("/api/notifications/read-all", { method: "POST", token }),
   sendBroadcast: (token, { title, body }) =>
     request("/api/notifications/broadcast", { method: "POST", token, body: { title, body } }),
+
+  listReprimands: (token, regimentId) => request(`/api/regiments/${regimentId}/reprimands`, { token }),
+  issueReprimand: (token, regimentId, { targetDiscordId, reason, severity, pointsRequired }) =>
+    request(`/api/regiments/${regimentId}/reprimands`, {
+      method: "POST",
+      token,
+      body: {
+        target_discord_id: targetDiscordId,
+        reason,
+        severity: severity || "strict",
+        points_required: pointsRequired || 0,
+      },
+    }),
+  revokeReprimand: (token, regimentId, reprimandId) =>
+    request(`/api/regiments/${regimentId}/reprimands/${reprimandId}`, { method: "DELETE", token }),
+  // Все выговоры, видимые текущему пользователю (своё/формирование/всё по правам) —
+  // для отдельной страницы "Выговоры", в отличие от listReprimands (по одному формированию)
+  listAllReprimands: (token) => request("/api/reprimands", { token }),
+  selfRevokeReprimand: (token, reprimandId) =>
+    request(`/api/reprimands/${reprimandId}/self-revoke`, { method: "POST", token }),
+  setReprimandAppeal: (token, reprimandId, appealText) =>
+    request(`/api/reprimands/${reprimandId}/appeal`, { method: "PATCH", token, body: { appeal_text: appealText } }),
+
+  listAuditLog: (token) => request("/api/admin/audit-log", { token }),
+
+  getPromotionRequirements: (token, regimentId) =>
+    request(`/api/regiments/${regimentId}/promotion-requirements`, { token }),
+  updatePromotionRequirements: (token, regimentId, items) =>
+    request(`/api/regiments/${regimentId}/promotion-requirements`, {
+      method: "PATCH",
+      token,
+      body: { items },
+    }),
+  updateTierTenure: (token, tierId, tenureDaysRequired) =>
+    request(`/api/ranks/tiers/${tierId}`, {
+      method: "PATCH",
+      token,
+      body: { tenure_days_required: tenureDaysRequired },
+    }),
+  // regimentIds=null — применить сразу ко всем формированиям
+  updateAdminPointsRequired: (token, items, regimentIds = null) =>
+    request("/api/promotion-requirements/admin", {
+      method: "PATCH",
+      token,
+      body: { items, regiment_ids: regimentIds },
+    }),
+  listPromotionRequests: (token) => request("/api/promotion-requests", { token }),
+  approvePromotionRequest: (token, requestId) =>
+    request(`/api/promotion-requests/${requestId}/approve`, { method: "POST", token }),
+  rejectPromotionRequest: (token, requestId) =>
+    request(`/api/promotion-requests/${requestId}/reject`, { method: "POST", token }),
+  getMyPromotionStatus: (token) => request("/api/me/promotion-status", { token }),
+  getMyPromotionHistory: (token) => request("/api/me/promotion-history", { token }),
+  getPromotionReview: (token, requestId) => request(`/api/promotion-requests/${requestId}/review`, { token }),
+  getMemberPromotionStatus: (token, regimentId, discordId) =>
+    request(`/api/regiments/${regimentId}/members/${discordId}/promotion-status`, { token }),
+
+  updateRankTenure: (token, rankId, tenureDaysRequired) =>
+    request(`/api/ranks/${rankId}`, {
+      method: "PATCH",
+      token,
+      body: { tenure_days_required: tenureDaysRequired },
+    }),
+
+  getCategoryRequirements: (token, regimentId) =>
+    request(`/api/regiments/${regimentId}/promotion-category-requirements`, { token }),
+  createLocalCategoryRequirement: (token, regimentId, { rankId, categoryId, countRequired }) =>
+    request(`/api/regiments/${regimentId}/promotion-category-requirements`, {
+      method: "POST",
+      token,
+      body: { rank_id: rankId, category_id: categoryId, count_required: countRequired },
+    }),
+  createMandatoryCategoryRequirement: (token, { rankId, categoryName, categoryFields, countRequired }) =>
+    request("/api/promotion-category-requirements/mandatory", {
+      method: "POST",
+      token,
+      body: {
+        rank_id: rankId,
+        category_name: categoryName,
+        category_fields: categoryFields || [],
+        count_required: countRequired,
+      },
+    }),
+  deleteCategoryRequirement: (token, requirementId) =>
+    request(`/api/promotion-category-requirements/${requirementId}`, { method: "DELETE", token }),
+  overrideCategoryRequirement: (token, { requirementId, targetDiscordId, satisfied }) =>
+    request("/api/promotion-category-requirements/override", {
+      method: "POST",
+      token,
+      body: { requirement_id: requirementId, target_discord_id: targetDiscordId, satisfied },
+    }),
+
+  updateMemberTenure: (token, regimentId, discordId, daysInRank) =>
+    request(`/api/regiments/${regimentId}/members/${discordId}/tenure`, {
+      method: "PATCH",
+      token,
+      body: { days_in_rank: daysInRank },
+    }),
+  issuePointsAdjustment: (token, regimentId, discordId, { points, reason }) =>
+    request(`/api/regiments/${regimentId}/members/${discordId}/points-adjustment`, {
+      method: "POST",
+      token,
+      body: { points, reason },
+    }),
+
+  listLeaveRequests: (token) => request("/api/leave-requests", { token }),
+  createLeaveRequest: (token, { regimentId, startDate, endDate, reason }) =>
+    request("/api/leave-requests", {
+      method: "POST",
+      token,
+      body: { regiment_id: regimentId, start_date: startDate, end_date: endDate, reason },
+    }),
+  approveLeaveRequest: (token, requestId) =>
+    request(`/api/leave-requests/${requestId}/approve`, { method: "POST", token }),
+  rejectLeaveRequest: (token, requestId) =>
+    request(`/api/leave-requests/${requestId}/reject`, { method: "POST", token }),
+
+  getRegimentStats: (token, regimentId, period) =>
+    request(`/api/stats/regiment/${regimentId}?period=${period}`, { token }),
+  getFormationStats: (token, period) => request(`/api/stats/formations?period=${period}`, { token }),
+
+  listBackups: (token) => request("/api/admin/backups", { token }),
+  createBackup: (token) => request("/api/admin/backups", { method: "POST", token }),
+  deleteBackup: (token, filename) => request(`/api/admin/backups/${filename}`, { method: "DELETE", token }),
+  // Скачивание требует авторизации — обычная <a href> ссылка не передаст токен,
+  // поэтому качаем через fetch и подсовываем браузеру blob как файл
+  async downloadBackup(token, filename) {
+    const response = await fetch(`${API_BASE_URL}/api/admin/backups/${filename}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError(response.status, "Не удалось скачать файл");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 export { ApiError };

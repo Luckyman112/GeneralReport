@@ -29,8 +29,11 @@ export function ReportForm({ regiments, onSubmit, onCancel }) {
       .listCategories(token, regimentId)
       .then((data) => {
         if (ignore) return;
-        setCategories(data);
-        setCategoryId(data[0]?.id ?? "");
+        // Категория "задержание" системная — оформляется отдельной кнопкой
+        // "Рапорт о задержании", в обычном списке категорий её не показываем
+        const selectable = data.filter((c) => !c.is_detention);
+        setCategories(selectable);
+        setCategoryId(selectable[0]?.id ?? "");
       })
       .catch(() => {
         if (!ignore) setCategories([]);
@@ -79,6 +82,16 @@ export function ReportForm({ regiments, onSubmit, onCancel }) {
       finalContent = content.trim();
     }
 
+    // Все, кто указан в ростер-полях категории (не важно, сколько таких полей) —
+    // потенциальные получатели баллов за участие (см. ReportCategory.participant_points)
+    const participantDiscordIds = [
+      ...new Set(
+        categoryFields
+          .filter((f) => f.type === "roster")
+          .flatMap((f) => fieldValues[f.name] || [])
+      ),
+    ];
+
     setSubmitting(true);
     try {
       await onSubmit({
@@ -87,6 +100,7 @@ export function ReportForm({ regiments, onSubmit, onCancel }) {
         content: finalContent,
         submit,
         images,
+        participantDiscordIds,
       });
     } finally {
       setSubmitting(false);
