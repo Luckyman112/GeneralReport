@@ -1246,11 +1246,12 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 /* Плотная таблица личного состава */
 .roster-table-wrap {
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .roster-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.88rem;
 }
@@ -1261,13 +1262,24 @@ input[type="file"]::-webkit-file-upload-button:hover {
   background: var(--surface-2);
   font-size: 0.72rem;
   color: var(--text-muted);
+}
+
+.roster-table th:first-child,
+.roster-table td:first-child {
+  width: 1.5rem;
+}
+
+.roster-table th:nth-child(3),
+.roster-table td:nth-child(3) {
+  width: 6.5rem;
   white-space: nowrap;
 }
 
 .roster-table td {
   padding: 0.45rem 0.75rem;
   border-top: 1px solid var(--border);
-  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .roster-table td:first-child {
@@ -1286,10 +1298,70 @@ input[type="file"]::-webkit-file-upload-button:hover {
   border-left-color: var(--accent);
 }
 
+.rank-accordion {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.rank-accordion-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rank-accordion-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: var(--surface-2);
+  border: none;
+  color: var(--text);
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.rank-accordion-header:hover {
+  color: var(--accent);
+}
+
+.rank-accordion-header .hint-text {
+  margin-left: auto;
+}
+
+.rank-accordion-arrow {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  color: var(--text-muted);
+}
+
+.rank-accordion-arrow-open {
+  transform: rotate(90deg);
+}
+
+.rank-accordion-group .member-report-list {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+}
+
 .roster-member-cell {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.roster-member-cell span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Красивый чекбокс-список обязательных требований (вместо прогресс-бара) */
@@ -1399,6 +1471,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
   width: 22px;
   height: 22px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .category-list li {
@@ -1514,6 +1587,33 @@ input[type="file"]::-webkit-file-upload-button:hover {
   overflow-x: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
   animation: pop-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Тонкий скроллбар в теме HUD вместо стандартного толстого системного —
+   везде, где включён overflow (модалки, сайдбар, таблица состава и т.д.) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
 .category-manager-modal {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { SaveBar } from "./SaveBar";
@@ -34,8 +34,23 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [expandedRankKey, setExpandedRankKey] = useState(null);
 
   const totalPoints = reports.reduce((sum, r) => sum + (r.points ?? 0), 0);
+
+  // Рапорты, свёрнутые по званию автора на момент подачи — клик по званию
+  // открывает список рапортов, поданных в этом звании (не показываем все сразу)
+  const reportsByRank = useMemo(() => {
+    const groups = new Map();
+    for (const r of reports) {
+      const key = r.author_rank?.id ?? "none";
+      if (!groups.has(key)) {
+        groups.set(key, { key, rank: r.author_rank, reports: [] });
+      }
+      groups.get(key).reports.push(r);
+    }
+    return Array.from(groups.values());
+  }, [reports]);
   const memberReprimands = reprimands.filter((r) => r.target.discord_id === member.discord_id);
   const hasActiveReprimand = memberReprimands.some((r) => !r.revoked_at && r.severity !== "verbal");
   const memberLeaveRequests = leaveRequests.filter((r) => r.user.discord_id === member.discord_id);
@@ -303,16 +318,38 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
         ) : reports.length === 0 ? (
           <p className="hint-text">Рапортов нет.</p>
         ) : (
-          <ul className="member-report-list">
-            {reports.map((r) => (
-              <li key={r.id}>
-                <StatusBadge status={r.status} />
-                {r.author_rank && <span className="hint-text"> звание: {r.author_rank.code}</span>}
-                {r.points !== null && <span className="category-points-badge"> Баллы: {r.points}</span>}
-                <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
-                <p className="member-report-content">{r.content}</p>
-              </li>
-            ))}
+          <ul className="rank-accordion">
+            {reportsByRank.map((group) => {
+              const isOpen = expandedRankKey === group.key;
+              const groupPoints = group.reports.reduce((sum, r) => sum + (r.points ?? 0), 0);
+              return (
+                <li key={group.key} className="rank-accordion-group">
+                  <button
+                    type="button"
+                    className="rank-accordion-header"
+                    onClick={() => setExpandedRankKey(isOpen ? null : group.key)}
+                  >
+                    <span className={`rank-accordion-arrow ${isOpen ? "rank-accordion-arrow-open" : ""}`}>▸</span>
+                    <span>{group.rank ? `${group.rank.code} — ${group.rank.name}` : "Без звания"}</span>
+                    <span className="hint-text">
+                      {group.reports.length} · {groupPoints} баллов
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <ul className="member-report-list">
+                      {group.reports.map((r) => (
+                        <li key={r.id}>
+                          <StatusBadge status={r.status} />
+                          {r.points !== null && <span className="category-points-badge"> Баллы: {r.points}</span>}
+                          <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
+                          <p className="member-report-content">{r.content}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
 
