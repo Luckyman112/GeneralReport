@@ -287,9 +287,16 @@ async def get_my_promotion_status(
     return await _compute_promotion_status(db, access.user)
 
 
-async def _compute_promotion_status(db: AsyncSession, user) -> PromotionStatusRead:
+async def _compute_promotion_status(
+    db: AsyncSession, user, *, regiment_id: int | None = None
+) -> PromotionStatusRead:
     """Общая логика для /me/promotion-status (сам боец) и обзора командиром
-    прогресса конкретного бойца в его личном деле."""
+    прогресса конкретного бойца в его личном деле.
+
+    regiment_id — если передан явно, формирование берётся по нему напрямую,
+    а не поиском по user.roles (снимок Discord-ролей на момент последнего
+    личного входа бойца на сайт — у бойцов, за которых профиль всегда вела
+    только веб-панель, это поле пустое, и поиск по ролям ничего бы не нашёл)."""
     has_active_reprimand = await reprimand_crud.has_active_reprimand(db, user_id=user.id)
 
     if user.rank_id is None:
@@ -308,9 +315,12 @@ async def _compute_promotion_status(db: AsyncSession, user) -> PromotionStatusRe
     current_rank = await rank_crud.get_by_id(db, user.rank_id)
     next_rank = await rank_crud.get_next_rank(db, user.rank_id)
 
-    regiments = await regiment_crud.get_all(db)
-    role_ids = set(user.roles)
-    regiment = next((r for r in regiments if r.discord_role_id in role_ids), None)
+    if regiment_id is not None:
+        regiment = await regiment_crud.get_by_id(db, regiment_id)
+    else:
+        regiments = await regiment_crud.get_all(db)
+        role_ids = set(user.roles)
+        regiment = next((r for r in regiments if r.discord_role_id in role_ids), None)
 
     days_in_rank = None
     if user.rank_assigned_at is not None:
@@ -344,7 +354,7 @@ async def _compute_promotion_status(db: AsyncSession, user) -> PromotionStatusRe
     is_eligible = days_ok and points_ok and categories_ok and not has_active_reprimand
 
     if is_eligible:
-        await promotion_crud.check_and_create_promotion_request(db, user)
+        await promotion_crud.check_and_create_promotion_request(db, user, regiment_id=regiment.id)
 
     return PromotionStatusRead(
         regiment_id=regiment.id,
@@ -392,7 +402,7 @@ async def get_member_promotion_status(
     if target is None:
         raise NotFoundError("Участник не найден")
 
-    return await _compute_promotion_status(db, target)
+    return await _compute_promotion_status(db, target, regiment_id=regiment_id)
 
 
 @router.get(

@@ -153,10 +153,19 @@ async def decide(db: AsyncSession, request: PromotionRequest, *, approve: bool, 
     return await get_request_by_id(db, request.id)
 
 
-async def check_and_create_promotion_request(db: AsyncSession, user: User) -> PromotionRequest | None:
+async def check_and_create_promotion_request(
+    db: AsyncSession, user: User, *, regiment_id: int | None = None
+) -> PromotionRequest | None:
     """Проверяет, выполнил ли боец критерии для повышения (баллы + дни выслуги, без
     непогашенного выговора), и если да — создаёт заявку. Ничего не делает, если заявка
-    уже есть, критерии не выполнены, или невозможно определить формирование."""
+    уже есть, критерии не выполнены, или невозможно определить формирование.
+
+    regiment_id — если передан явно (например, командир уже открыл личное дело
+    конкретного бойца своего формирования), используется вместо поиска по
+    user.roles. user.roles — это снимок Discord-ролей на момент последнего входа
+    САМОГО бойца на сайт; у бойцов, которых ни разу не открывали через личный
+    вход (ими управляют только через веб-панель), это поле всегда пустое, и
+    поиск формирования по ролям никогда бы не сработал."""
     if user.rank_id is None:
         return None
 
@@ -171,10 +180,13 @@ async def check_and_create_promotion_request(db: AsyncSession, user: User) -> Pr
     if next_rank is None:
         return None
 
-    result = await db.execute(select(Regiment))
-    regiments = list(result.scalars().all())
-    role_ids = set(user.roles)
-    regiment = next((r for r in regiments if r.discord_role_id in role_ids), None)
+    if regiment_id is not None:
+        regiment = await db.get(Regiment, regiment_id)
+    else:
+        result = await db.execute(select(Regiment))
+        regiments = list(result.scalars().all())
+        role_ids = set(user.roles)
+        regiment = next((r for r in regiments if r.discord_role_id in role_ids), None)
     if regiment is None:
         return None
 

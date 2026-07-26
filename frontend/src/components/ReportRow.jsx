@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { StatusBadge } from "./StatusBadge";
 import { formatMskDate } from "../utils/formatDate";
-import { formatFullName } from "../utils/formatName";
+import { formatFullNameAtRank } from "../utils/formatName";
 import { formatDetentionTarget, formatPunishmentType } from "../utils/punishment";
 
 const CONTENT_PREVIEW_LENGTH = 320;
@@ -104,13 +104,13 @@ export function ReportRow({
       </div>
 
       <p className="report-byline">
-        Докладывает: <span style={regimentColor ? { color: regimentColor } : undefined}>{formatFullName(report.author)}</span>
+        Докладывает: <span style={regimentColor ? { color: regimentColor } : undefined}>{formatFullNameAtRank(report.author, report.author_rank)}</span>
       </p>
       {report.status === "approved" && report.updated_by_user && (
         <p className="report-byline">
           Рапорт одобрен:{" "}
           <span style={regimentColor ? { color: regimentColor } : undefined}>
-            {formatFullName(report.updated_by_user)}
+            {formatFullNameAtRank(report.updated_by_user, report.updated_by_rank)}
           </span>
         </p>
       )}

@@ -71,6 +71,8 @@ class ReportRead(BaseModel):
     # Кто последним менял статус — "Рапорт одобрен: ..." имеет смысл показывать
     # только когда status == approved (проверяется на фронте по report.status)
     updated_by_user: UserBrief | None
+    # Звание того, кто менял статус, НА МОМЕНТ этого действия (снимок, как и author_rank)
+    updated_by_rank: RankRead | None = None
 
     target_discord_id: str | None = None
     target_username: str | None = None

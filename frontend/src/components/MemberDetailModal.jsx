@@ -36,7 +36,13 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [error, setError] = useState(null);
   const [expandedRankKey, setExpandedRankKey] = useState(null);
 
-  const totalPoints = reports.reduce((sum, r) => sum + (r.points ?? 0), 0);
+  // Баллы за рапорт (Report.points) относятся к автору рапорта — для рапортов, где
+  // боец лишь указан участником, здесь этой суммы нет (баллы участника хранятся
+  // отдельно на ReportParticipant.points, эта ручка их не отдаёт), поэтому в общий
+  // итог их не включаем, чтобы не приписывать бойцу чужие баллы за рапорт
+  const totalPoints = reports
+    .filter((r) => r.author?.discord_id === member.discord_id)
+    .reduce((sum, r) => sum + (r.points ?? 0), 0);
 
   // Рапорты, свёрнутые по званию автора на момент подачи — клик по званию
   // открывает список рапортов, поданных в этом звании (не показываем все сразу)
@@ -340,7 +346,13 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                       {group.reports.map((r) => (
                         <li key={r.id}>
                           <StatusBadge status={r.status} />
-                          {r.points !== null && <span className="category-points-badge"> Баллы: {r.points}</span>}
+                          <span className="hint-text">
+                            {" "}
+                            {r.author?.discord_id === member.discord_id ? "проводил" : "участвовал"}
+                          </span>
+                          {r.points !== null && r.author?.discord_id === member.discord_id && (
+                            <span className="category-points-badge"> Баллы: {r.points}</span>
+                          )}
                           <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
                           <p className="member-report-content">{r.content}</p>
                         </li>

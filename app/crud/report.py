@@ -14,6 +14,7 @@ _LOAD_OPTIONS = [
     selectinload(Report.updated_by_user).selectinload(User.rank),
     selectinload(Report.target_rank),
     selectinload(Report.author_rank),
+    selectinload(Report.updated_by_rank),
 ]
 
 
@@ -138,10 +139,12 @@ async def update_status(
     *,
     status: ReportStatus,
     updated_by: int,
+    updated_by_rank_id: int | None = None,
     rejection_reason: str | None = None,
 ) -> Report:
     report.status = status
     report.updated_by = updated_by
+    report.updated_by_rank_id = updated_by_rank_id
     report.rejection_reason = rejection_reason
     if status == ReportStatus.DELETED:
         report.deleted_at = datetime.now(timezone.utc)

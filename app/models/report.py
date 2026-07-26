@@ -42,6 +42,10 @@ class Report(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Звание того, кто менял статус, НА МОМЕНТ этого действия — снимок, как и
+    # author_rank_id, чтобы "Рапорт одобрен" не менялось задним числом при
+    # последующих повышениях одобрившего
+    updated_by_rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -71,3 +75,4 @@ class Report(Base):
     updated_by_user: Mapped["User | None"] = relationship(foreign_keys=[updated_by])
     target_rank: Mapped["Rank | None"] = relationship(foreign_keys=[target_rank_id])
     author_rank: Mapped["Rank | None"] = relationship(foreign_keys=[author_rank_id])
+    updated_by_rank: Mapped["Rank | None"] = relationship(foreign_keys=[updated_by_rank_id])

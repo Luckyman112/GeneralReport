@@ -28,23 +28,30 @@ async def award(db: AsyncSession, *, report_id, user_id: int, points: int) -> No
     await db.commit()
 
 
-async def list_reports_since(db: AsyncSession, *, user_id: int, since) -> list[Report]:
-    """Рапорты, где пользователь указан как участник (ростер-поле), с указанной
-    даты — для обзора повышения, где нужно показать не только свои, но и те, за
-    участие в которых были начислены баллы."""
-    result = await db.execute(
-        select(Report)
-        .join(ReportParticipant, ReportParticipant.report_id == Report.id)
-        .where(ReportParticipant.user_id == user_id, Report.created_at >= since)
-        .options(
-            selectinload(Report.images),
-            selectinload(Report.author).selectinload(User.rank),
-            selectinload(Report.updated_by_user).selectinload(User.rank),
-            selectinload(Report.target_rank),
-            selectinload(Report.author_rank),
-        )
-        .order_by(Report.created_at.desc())
+async def list_reports_since(
+    db: AsyncSession, *, user_id: int, since=None, regiment_id: int | None = None
+) -> list[Report]:
+    """Рапорты, где пользователь указан как участник (ростер-поле) — используется и
+    для обзора повышения (since=дата начала текущего звания, чтобы показать только
+    те, за участие в которых были начислены баллы), и для полного личного дела
+    участника (since=None — все рапорты за всё время, regiment_id — сузить до
+    рапортов конкретного формирования)."""
+    query = select(Report).join(ReportParticipant, ReportParticipant.report_id == Report.id).where(
+        ReportParticipant.user_id == user_id
     )
+    if since is not None:
+        query = query.where(Report.created_at >= since)
+    if regiment_id is not None:
+        query = query.where(Report.regiment_id == regiment_id)
+    query = query.options(
+        selectinload(Report.images),
+        selectinload(Report.author).selectinload(User.rank),
+        selectinload(Report.updated_by_user).selectinload(User.rank),
+        selectinload(Report.target_rank),
+        selectinload(Report.author_rank),
+        selectinload(Report.updated_by_rank),
+    ).order_by(Report.created_at.desc())
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 

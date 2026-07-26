@@ -217,6 +217,7 @@ async def update_report_status(
         report,
         status=payload.status,
         updated_by=access.user.id,
+        updated_by_rank_id=access.user.rank_id,
         rejection_reason=payload.rejection_reason,
     )
     logger.info(

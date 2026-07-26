@@ -17,6 +17,7 @@ from app.crud import regiment as regiment_crud
 from app.crud import regiment_commander as regiment_commander_crud
 from app.crud import report as report_crud
 from app.crud import report_category as report_category_crud
+from app.crud import report_participant as report_participant_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
@@ -460,8 +461,10 @@ async def get_member_reports(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> list[ReportRead]:
-    """Все рапорты конкретного участника в этом формировании — виден любому, у кого
-    есть доступ к этому формированию (боец, командир, администратор)."""
+    """Все рапорты конкретного участника в этом формировании — свои (в качестве
+    автора) плюс те, где он указан участником в ростер-поле категории (например,
+    патруль/тренировка со списком состава) — виден любому, у кого есть доступ к
+    этому формированию (боец, командир, администратор)."""
     _require_regiment_access(access, regiment_id)
     await _get_regiment_or_404(db, regiment_id)
 
@@ -469,5 +472,12 @@ async def get_member_reports(
     if user is None:
         return []
 
-    reports = await report_crud.list_reports(db, regiment_ids=[regiment_id], user_id=user.id)
+    own_reports = await report_crud.list_reports(db, regiment_ids=[regiment_id], user_id=user.id)
+    participant_reports = await report_participant_crud.list_reports_since(
+        db, user_id=user.id, regiment_id=regiment_id
+    )
+    reports_by_id = {r.id: r for r in own_reports}
+    for r in participant_reports:
+        reports_by_id.setdefault(r.id, r)
+    reports = sorted(reports_by_id.values(), key=lambda r: r.created_at, reverse=True)
     return [ReportRead.model_validate(r) for r in reports]
