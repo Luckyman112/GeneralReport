@@ -18,3 +18,6 @@ class Regiment(Base):
     # Цвет формирования (hex, например "#5865f2") — влияет на цвет ника бойца и
     # акцент рапортов в интерфейсе. None — используется нейтральный цвет темы.
     color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    # Ссылка на Discord-канал этого формирования — показывается в инфо-панели
+    # формирования, чтобы боец мог быстро перейти в свой канал
+    discord_channel_url: Mapped[str | None] = mapped_column(String(512), nullable=True)

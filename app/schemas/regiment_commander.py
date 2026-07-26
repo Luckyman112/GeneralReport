@@ -34,6 +34,8 @@ class GuildMemberRead(BaseModel):
     # командиром/заместителем формирования
     service_id: str | None = None
     callsign: str | None = None
+    # Steam ID — указан при регистрации, чтобы найти игрока в GMod/Steam
+    steam_id: str | None = None
     rank: RankRead | None = None
     # Сколько дней участник в текущем звании — для сверки с требованием по выслуге
     days_in_rank: int | None = None
@@ -53,6 +55,7 @@ class MemberProfileUpdate(BaseModel):
 
     service_id: str | None = None
     callsign: str | None = None
+    steam_id: str | None = None
     rank_id: int | None = None
     is_inactive: bool | None = None
     # Причина досрочного повышения — учитывается, только если rank_id реально

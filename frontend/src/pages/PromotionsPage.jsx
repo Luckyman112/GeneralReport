@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { PageLoading } from "../components/PageLoading";
 import { PromotionReviewModal } from "../components/PromotionReviewModal";
 import { SaveBar } from "../components/SaveBar";
 import { useToast } from "../components/ToastContext";
@@ -40,6 +41,14 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   const [localCount, setLocalCount] = useState(1);
 
   const ranks = useMemo(() => tiers.flatMap((t) => t.ranks), [tiers]);
+  const requirementsByRankId = useMemo(() => {
+    const map = new Map();
+    for (const req of categoryRequirements) {
+      if (!map.has(req.rank_id)) map.set(req.rank_id, []);
+      map.get(req.rank_id).push(req);
+    }
+    return map;
+  }, [categoryRequirements]);
   const selectableCategories = useMemo(
     () => Object.values(categories).filter((c) => !c.is_detention),
     [categories]
@@ -221,7 +230,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
           </p>
           <ul className="category-list">
             {tier.ranks.map((rank) => {
-              const rankRequirements = categoryRequirements.filter((r) => r.rank_id === rank.id);
+              const rankRequirements = requirementsByRankId.get(rank.id) || [];
               return (
                 <li key={rank.id} className="rank-requirement-card">
                   <div className="rank-requirement-row">
@@ -381,6 +390,7 @@ export function PromotionsPage() {
   const [reviewRequestId, setReviewRequestId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [previewAsSoldier, setPreviewAsSoldier] = useState(false);
 
   const isAdminOrHighCommand = access?.is_admin || access?.is_high_command;
 
@@ -419,20 +429,35 @@ export function PromotionsPage() {
     await loadRequests();
   }
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
 
-  const canEditPoints =
+  const canEditPointsReal =
     regimentId !== ALL_REGIMENTS &&
     (access?.is_admin || access?.is_high_command || (access?.category_manager_regiment_ids || []).includes(Number(regimentId)));
-  const canEditDays = access?.is_admin || access?.is_high_command;
+  const canEditDaysReal = access?.is_admin || access?.is_high_command;
+  const isEditor = canEditPointsReal || canEditDaysReal;
+  const canEditPoints = canEditPointsReal && !previewAsSoldier;
+  const canEditDays = canEditDaysReal && !previewAsSoldier;
 
   return (
     <div className="promotions-page">
-      <h2>Система повышений</h2>
+      <div className="reports-toolbar">
+        <h2>Система повышений</h2>
+        {isEditor && (
+          <button className="ghost" onClick={() => setPreviewAsSoldier((v) => !v)}>
+            {previewAsSoldier ? "Режим редактора" : "Просмотр как боец"}
+          </button>
+        )}
+      </div>
+      {previewAsSoldier && (
+        <p className="hint-text">
+          Вы видите требования так же, как их видит обычный боец — без полей редактирования.
+        </p>
+      )}
 
       {error && <p className="error-text">{error}</p>}
 
-      {requests.length > 0 && (
+      {requests.length > 0 && !previewAsSoldier && (
         <>
           <h3>Заявки на повышение</h3>
           <div className="report-list">

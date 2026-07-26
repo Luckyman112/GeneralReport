@@ -1,34 +1,50 @@
+import { lazy, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { InactiveBlock } from "./components/InactiveBlock";
+import { MaintenanceBanner, MaintenanceBlock, useMaintenanceStatus } from "./components/MaintenanceGate";
 import { Navbar } from "./components/Navbar";
+import { PageLoading } from "./components/PageLoading";
 import { PromotionBanner } from "./components/PromotionBanner";
 import { RegistrationGate } from "./components/RegistrationGate";
 import { ToastProvider } from "./components/ToastContext";
 import { ViewAsBar } from "./components/ViewAsBar";
-import { AdminPanelPage } from "./pages/AdminPanelPage";
-import { BackupsPage } from "./pages/BackupsPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
-import { PromotionsPage } from "./pages/PromotionsPage";
-import { RegistrationsPage } from "./pages/RegistrationsPage";
 import { ReportsPage } from "./pages/ReportsPage";
-import { RegimentsAdminPage } from "./pages/RegimentsAdminPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { ViolationsPage } from "./pages/ViolationsPage";
+
+// Реже посещаемые/административные страницы — code-splitting по роутам, чтобы
+// обычный боец не тянул код админ-панели/бэкапов/настроек при каждой загрузке.
+const AdminPanelPage = lazy(() => import("./pages/AdminPanelPage").then((m) => ({ default: m.AdminPanelPage })));
+const BackupsPage = lazy(() => import("./pages/BackupsPage").then((m) => ({ default: m.BackupsPage })));
+const PromotionsPage = lazy(() => import("./pages/PromotionsPage").then((m) => ({ default: m.PromotionsPage })));
+const RegistrationsPage = lazy(() =>
+  import("./pages/RegistrationsPage").then((m) => ({ default: m.RegistrationsPage }))
+);
+const RegimentsAdminPage = lazy(() =>
+  import("./pages/RegimentsAdminPage").then((m) => ({ default: m.RegimentsAdminPage }))
+);
+const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const ViolationsPage = lazy(() => import("./pages/ViolationsPage").then((m) => ({ default: m.ViolationsPage })));
 
 function Layout({ children }) {
   const { isAuthenticated, user, access } = useAuth();
+  const maintenanceStatus = useMaintenanceStatus();
   const needsRegistration =
     isAuthenticated && user?.registration_status !== "approved" && !access?.is_admin && !access?.is_high_command;
+  const isBlockedByMaintenance =
+    isAuthenticated && maintenanceStatus?.enabled && !access?.is_admin && !access?.is_high_command;
   return (
     <>
+      {isAuthenticated && access?.is_admin && <MaintenanceBanner status={maintenanceStatus} />}
       {isAuthenticated && <PromotionBanner />}
       {isAuthenticated && <Navbar />}
       {isAuthenticated && <ViewAsBar />}
       <main className="page-container">
-        {isAuthenticated && user?.is_inactive ? (
+        {isBlockedByMaintenance ? (
+          <MaintenanceBlock status={maintenanceStatus} />
+        ) : isAuthenticated && user?.is_inactive ? (
           <InactiveBlock />
         ) : needsRegistration ? (
           <RegistrationGate />
@@ -53,6 +69,7 @@ function AppRoutes() {
 
   return (
     <Layout>
+      <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
@@ -132,6 +149,7 @@ function AppRoutes() {
         />
         <Route path="*" element={<Navigate to="/main" replace />} />
       </Routes>
+      </Suspense>
     </Layout>
   );
 }

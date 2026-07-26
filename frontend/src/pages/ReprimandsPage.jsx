@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { EmptyState } from "../components/EmptyState";
+import { PageLoading } from "../components/PageLoading";
 import { useToast } from "../components/ToastContext";
 import { downloadCsv } from "../utils/csv";
 import { formatMskDate } from "../utils/formatDate";
@@ -145,7 +147,7 @@ export function ReprimandsPage() {
     }
   }
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
 
   const reprimandPendingDelete = reprimands.find((r) => r.id === confirmDeleteId) || null;
 
@@ -181,7 +183,7 @@ export function ReprimandsPage() {
       )}
 
       {visibleReprimands.length === 0 ? (
-        <p className="empty-state">Выговоров нет.</p>
+        <EmptyState text="Выговоров нет." />
       ) : (
         <div className="report-list">
           {visibleReprimands.map((r) => {

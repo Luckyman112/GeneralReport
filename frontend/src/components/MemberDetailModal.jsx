@@ -167,6 +167,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{member.username}</h3>
         <p className="hint-text">Discord: {member.discord_username}</p>
+        {member.steam_id && <p className="hint-text">Steam ID: {member.steam_id}</p>}
 
         {canEdit ? (
           <div className="member-profile-form">

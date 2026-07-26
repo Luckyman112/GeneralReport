@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { EmptyState } from "../components/EmptyState";
+import { CheckIcon, CrossIcon } from "../components/icons";
+import { PageLoading } from "../components/PageLoading";
 import { useToast } from "../components/ToastContext";
+import { useLiveEvents } from "../hooks/useLiveEvents";
 
-const POLL_INTERVAL_MS = 20000;
+// SSE обновляет мгновенно — поллинг оставлен редким запасным вариантом
+const POLL_INTERVAL_MS = 60000;
 
 /** Заявки на регистрацию новых бойцов, ожидающие решения — видны только тем
  * формированиям, к которым относится заявитель (по Discord-роли), заместителю/
@@ -15,20 +20,21 @@ export function RegistrationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  function load() {
+  const load = useCallback(() => {
     api
       .listPendingRegistrations(token)
       .then(setRequests)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }
+  }, [token]);
+
+  useLiveEvents("registrations", load);
 
   useEffect(() => {
     load();
     const interval = setInterval(load, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [load]);
 
   async function handleApprove(discordId) {
     try {
@@ -50,7 +56,7 @@ export function RegistrationsPage() {
     }
   }
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
 
   return (
     <div className="violations-page">
@@ -60,7 +66,7 @@ export function RegistrationsPage() {
       {error && <p className="error-text">{error}</p>}
 
       {requests.length === 0 ? (
-        <p className="empty-state">Заявок нет.</p>
+        <EmptyState text="Заявок нет." />
       ) : (
         <div className="report-list">
           {requests.map((r) => (
@@ -75,13 +81,15 @@ export function RegistrationsPage() {
                 ))}
               </div>
               <p className="report-content">
-                ИДН: {r.service_id} · Позывной: {r.callsign}
+                ИДН: {r.service_id} · Позывной: {r.callsign} · Steam ID: {r.steam_id}
               </p>
               <div className="report-row-actions">
-                <button className="primary" onClick={() => handleApprove(r.discord_id)}>
-                  Одобрить
+                <button className="primary icon-button" onClick={() => handleApprove(r.discord_id)}>
+                  <CheckIcon /> Одобрить
                 </button>
-                <button onClick={() => handleReject(r.discord_id)}>Отклонить</button>
+                <button className="icon-button" onClick={() => handleReject(r.discord_id)}>
+                  <CrossIcon /> Отклонить
+                </button>
               </div>
             </div>
           ))}

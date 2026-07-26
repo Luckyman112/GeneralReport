@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 class RegistrationSubmit(BaseModel):
     service_id: str
     callsign: str
+    steam_id: str
 
 
 class PendingRegistrationRead(BaseModel):
@@ -16,5 +17,6 @@ class PendingRegistrationRead(BaseModel):
     avatar_url: str | None
     service_id: str | None
     callsign: str | None
+    steam_id: str | None
     created_at: datetime
     regiment_names: list[str] = []

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
+from app.core.events import event_bus
 from app.crud import notification as notification_crud
 from app.crud import rank as rank_crud
 from app.crud import regiment as regiment_crud
@@ -51,6 +52,7 @@ async def submit_registration(
         changes={
             "service_id": payload.service_id.strip(),
             "callsign": payload.callsign.strip(),
+            "steam_id": payload.steam_id.strip(),
             "nickname_override": payload.callsign.strip(),
             "rank_id": starting_rank.id,
             "registration_status": "pending",
@@ -78,6 +80,7 @@ async def submit_registration(
                     created_by=user.id,
                 )
 
+    event_bus.publish("registrations")
     return UserRead.model_validate(user)
 
 
@@ -105,6 +108,7 @@ async def list_pending_registrations(
                 avatar_url=user.avatar_url,
                 service_id=user.service_id,
                 callsign=user.callsign,
+                steam_id=user.steam_id,
                 created_at=user.created_at,
                 regiment_names=[r.name for r in user_regiments],
             )
@@ -143,6 +147,7 @@ async def approve_registration(
         body="Ваша регистрация одобрена — доступ к рапортам открыт.",
         created_by=access.user.id,
     )
+    event_bus.publish("registrations")
     return UserRead.model_validate(user)
 
 
@@ -161,7 +166,13 @@ async def reject_registration(
         db,
         discord_id=discord_id,
         fallback_username=target.username,
-        changes={"registration_status": "rejected", "service_id": None, "callsign": None, "nickname_override": None},
+        changes={
+            "registration_status": "rejected",
+            "service_id": None,
+            "callsign": None,
+            "steam_id": None,
+            "nickname_override": None,
+        },
     )
     logger.info("%s отклонил регистрацию %s", access.user.username, discord_id)
     await notification_crud.create_personal_notification(
@@ -171,4 +182,5 @@ async def reject_registration(
         body="Ваша заявка на регистрацию отклонена — заполните форму заново.",
         created_by=access.user.id,
     )
+    event_bus.publish("registrations")
     return UserRead.model_validate(user)

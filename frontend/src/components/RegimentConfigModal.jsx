@@ -7,6 +7,7 @@ export function RegimentConfigModal({ regiment, roles, onClose, onSaved }) {
   const [name, setName] = useState(regiment.name);
   const [discordRoleId, setDiscordRoleId] = useState(regiment.discord_role_id);
   const [color, setColor] = useState(regiment.color || "#5865f2");
+  const [discordChannelUrl, setDiscordChannelUrl] = useState(regiment.discord_channel_url || "");
   const [commanders, setCommanders] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [selectedCandidate, setSelectedCandidate] = useState("");
@@ -41,7 +42,12 @@ export function RegimentConfigModal({ regiment, roles, onClose, onSaved }) {
     setSaving(true);
     setError(null);
     try {
-      await api.updateRegiment(token, regiment.id, { name, discordRoleId, color });
+      await api.updateRegiment(token, regiment.id, {
+        name,
+        discordRoleId,
+        color,
+        discordChannelUrl: discordChannelUrl.trim() || null,
+      });
       onSaved();
     } catch (e) {
       setError(e.message);
@@ -107,6 +113,16 @@ export function RegimentConfigModal({ regiment, roles, onClose, onSaved }) {
         <label className="color-picker-label">
           Цвет формирования
           <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
+        </label>
+
+        <label>
+          Ссылка на Discord-канал формирования
+          <input
+            type="text"
+            placeholder="https://discord.com/channels/..."
+            value={discordChannelUrl}
+            onChange={(e) => setDiscordChannelUrl(e.target.value)}
+          />
         </label>
 
         <h4>Командиры</h4>

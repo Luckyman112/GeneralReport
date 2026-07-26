@@ -23,6 +23,9 @@ class User(Base):
     # используются для отображения "полного имени" в рапортах (Докладывает / Одобрил)
     service_id: Mapped[str | None] = mapped_column(String(4), nullable=True)
     callsign: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Steam ID — указывается при регистрации, чтобы командир мог найти игрока в
+    # GMod/Steam (в дополнение к Discord ИДН/нику)
+    steam_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)
     # Момент назначения текущего звания — для отображения выслуги дней в нём
     rank_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

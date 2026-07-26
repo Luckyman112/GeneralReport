@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useLiveEvents } from "../hooks/useLiveEvents";
+import { BellIcon } from "./icons";
 import { formatMskDate } from "../utils/formatDate";
 
-const POLL_INTERVAL_MS = 60000;
+// SSE обновляет мгновенно — поллинг оставлен редким запасным вариантом
+const POLL_INTERVAL_MS = 120000;
 
 export function NotificationBell() {
   const { token } = useAuth();
@@ -13,20 +16,21 @@ export function NotificationBell() {
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setNotifications(await api.listNotifications(token));
     } catch {
       // тихо игнорируем — колокольчик не критичен для основного функционала
     }
-  }
+  }, [token]);
+
+  useLiveEvents("notifications", load);
 
   useEffect(() => {
     load();
     const interval = setInterval(load, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [load]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -53,7 +57,7 @@ export function NotificationBell() {
   return (
     <div className="notification-bell-wrap" ref={wrapRef}>
       <button type="button" className="ghost notification-bell-button" onClick={handleToggle} title="Уведомления">
-        🔔
+        <BellIcon />
         {unreadCount > 0 && <span className="notification-bell-badge">{unreadCount}</span>}
       </button>
 

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
+from app.core.events import event_bus
 from app.crud import leave_request as leave_request_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
@@ -35,6 +36,7 @@ async def create_leave_request(
         reason=payload.reason,
     )
     logger.info("%s подал заявку на отпуск %s - %s", access.user.username, payload.start_date, payload.end_date)
+    event_bus.publish("leave_requests")
     return LeaveRequestRead.model_validate(request)
 
 
@@ -66,6 +68,7 @@ async def approve_leave_request(
 
     updated = await leave_request_crud.decide(db, request, approve=True, decided_by=access.user.id)
     logger.info("%s одобрил заявку на отпуск %s", access.user.username, request_id)
+    event_bus.publish("leave_requests")
     return LeaveRequestRead.model_validate(updated)
 
 
@@ -83,4 +86,5 @@ async def reject_leave_request(
 
     updated = await leave_request_crud.decide(db, request, approve=False, decided_by=access.user.id)
     logger.info("%s отклонил заявку на отпуск %s", access.user.username, request_id)
+    event_bus.publish("leave_requests")
     return LeaveRequestRead.model_validate(updated)

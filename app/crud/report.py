@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -94,6 +94,8 @@ async def list_reports(
     category_id: int | None = None,
     status: ReportStatus | None = None,
     visible_target_regiment_ids: set[int] | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[Report]:
     """Список рапортов с опциональными фильтрами.
 
@@ -130,8 +132,50 @@ async def list_reports(
         # По умолчанию не показываем удалённые рапорты, если статус не запрошен явно
         query = query.where(Report.status != ReportStatus.DELETED)
 
+    if limit is not None:
+        query = query.limit(limit).offset(offset)
+
     result = await db.execute(query)
     return list(result.scalars().all())
+
+
+async def count_reports(
+    db: AsyncSession,
+    *,
+    regiment_ids: list[int] | None = None,
+    user_id: int | None = None,
+    category_id: int | None = None,
+    status: ReportStatus | None = None,
+    visible_target_regiment_ids: set[int] | None = None,
+) -> int:
+    """Тот же набор фильтров, что и list_reports — для отображения "Показать ещё"
+    на фронте (сколько всего рапортов помимо уже загруженных)."""
+    query = select(func.count()).select_from(Report)
+
+    base_conditions = []
+    if regiment_ids is not None:
+        base_conditions.append(Report.regiment_id.in_(regiment_ids))
+    if user_id is not None:
+        base_conditions.append(Report.user_id == user_id)
+
+    if visible_target_regiment_ids:
+        target_clause = and_(
+            Report.target_regiment_id.in_(visible_target_regiment_ids),
+            Report.status != ReportStatus.DRAFT,
+        )
+        query = query.where(or_(and_(*base_conditions), target_clause) if base_conditions else target_clause)
+    elif base_conditions:
+        query = query.where(and_(*base_conditions))
+
+    if category_id is not None:
+        query = query.where(Report.category_id == category_id)
+    if status is not None:
+        query = query.where(Report.status == status)
+    else:
+        query = query.where(Report.status != ReportStatus.DELETED)
+
+    result = await db.execute(query)
+    return int(result.scalar_one())
 
 
 async def update_status(

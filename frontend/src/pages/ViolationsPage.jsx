@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { EmptyState } from "../components/EmptyState";
+import { PageLoading } from "../components/PageLoading";
 import { useToast } from "../components/ToastContext";
 import { downloadCsv } from "../utils/csv";
 import { formatMskDate } from "../utils/formatDate";
@@ -134,7 +136,7 @@ function ModuleAccessSettings() {
         ))}
       </div>
 
-      <p className="hint-text">Кто может отправлять объявления всем (кнопка 📢 в шапке):</p>
+      <p className="hint-text">Кто может отправлять объявления всем (кнопка рассылки в шапке):</p>
       <div className="field-tags">
         {roles.map((role) => (
           <label key={role.id} className="checkbox-label field-tag">
@@ -245,7 +247,7 @@ export function ViolationsPage() {
     );
   }
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
 
   return (
     <div className="violations-page">
@@ -294,7 +296,7 @@ export function ViolationsPage() {
       </div>
 
       {visibleViolations.length === 0 ? (
-        <p className="empty-state">Записей о нарушениях нет.</p>
+        <EmptyState text="Записей о нарушениях нет." />
       ) : (
         <div className="report-list">
           {visibleViolations.map((v) => (

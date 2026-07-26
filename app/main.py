@@ -6,13 +6,17 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.api.app_settings import router as app_settings_router
 from app.api.audit_log import router as audit_log_router
 from app.api.auth import router as auth_router
 from app.api.backups import router as backups_router
+from app.api.events import router as events_router
 from app.api.leave_requests import router as leave_requests_router
+from app.api.maintenance import router as maintenance_router
 from app.api.me import router as me_router
 from app.api.module_access import router as module_access_router
 from app.api.notifications import router as notifications_router
@@ -27,6 +31,7 @@ from app.api.stats import router as stats_router
 from app.api.violations import router as violations_router
 from app.config import settings
 from app.core import backup_scheduler
+from app.core.rate_limit import RateLimitMiddleware
 from app.database import engine
 from app.exceptions import register_exception_handlers
 from app.logging_config import setup_logging
@@ -52,12 +57,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 
 register_exception_handlers(app)
@@ -77,13 +84,26 @@ app.include_router(promotions_router, prefix="/api")
 app.include_router(stats_router, prefix="/api")
 app.include_router(backups_router, prefix="/api")
 app.include_router(registration_router, prefix="/api")
+app.include_router(events_router, prefix="/api")
 app.include_router(leave_requests_router, prefix="/api")
 app.include_router(audit_log_router, prefix="/api")
+app.include_router(maintenance_router, prefix="/api")
 
 
 @app.get("/health", tags=["health"])
-async def health_check() -> dict:
-    return {"status": "ok"}
+async def health_check() -> JSONResponse:
+    """Проверка живости для мониторинга/деплоя — также пингует БД, чтобы отличить
+    "процесс жив" от "процесс жив, но БД недоступна"."""
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        logger.exception("Health-check: БД недоступна")
+        db_ok = False
+
+    payload = {"status": "ok" if db_ok else "degraded", "database": "ok" if db_ok else "unavailable"}
+    return JSONResponse(payload, status_code=200 if db_ok else 503)
 
 
 # Прикреплённые к рапортам картинки — хранятся на диске этого компьютера. Монтируется

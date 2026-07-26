@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { EmptyState } from "../components/EmptyState";
+import { CheckIcon, CrossIcon } from "../components/icons";
+import { LeaveCalendar } from "../components/LeaveCalendar";
+import { PageLoading } from "../components/PageLoading";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
 
@@ -135,7 +139,7 @@ export function LeaveRequestsPage() {
     }
   }
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
 
   return (
     <div className="violations-page">
@@ -153,8 +157,10 @@ export function LeaveRequestsPage() {
         <LeaveRequestForm regiments={ownRegiments} onSubmit={handleCreate} onCancel={() => setShowForm(false)} />
       )}
 
+      {requests.some((r) => r.status === "approved") && <LeaveCalendar requests={requests} />}
+
       {requests.length === 0 ? (
-        <p className="empty-state">Заявок нет.</p>
+        <EmptyState text="Заявок нет." />
       ) : (
         <div className="report-list">
           {requests.map((r) => (
@@ -173,10 +179,12 @@ export function LeaveRequestsPage() {
               )}
               {r.status === "pending" && canDecide(r) && r.user.discord_id !== user?.discord_id && (
                 <div className="report-row-actions">
-                  <button className="primary" onClick={() => handleApprove(r.id)}>
-                    Одобрить
+                  <button className="primary icon-button" onClick={() => handleApprove(r.id)}>
+                    <CheckIcon /> Одобрить
                   </button>
-                  <button onClick={() => handleReject(r.id)}>Отклонить</button>
+                  <button className="icon-button" onClick={() => handleReject(r.id)}>
+                    <CrossIcon /> Отклонить
+                  </button>
                 </div>
               )}
             </div>

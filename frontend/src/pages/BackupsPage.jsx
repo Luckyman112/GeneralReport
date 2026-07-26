@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { EmptyState } from "../components/EmptyState";
+import { PageLoading } from "../components/PageLoading";
 import { formatMskDate } from "../utils/formatDate";
 
 function formatSize(bytes) {
@@ -53,11 +55,12 @@ export function BackupsPage() {
     }
   }
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
 
   return (
     <div className="backups-page">
       <h2>Резервные копии базы данных</h2>
+      <p className="hint-text">Хранятся только 20 последних копий — более старые удаляются автоматически.</p>
 
       <div className="report-form-actions">
         <button className="primary" onClick={handleCreate} disabled={creating}>
@@ -68,7 +71,7 @@ export function BackupsPage() {
       {error && <p className="error-text">{error}</p>}
 
       {backups.length === 0 ? (
-        <p className="empty-state">Резервных копий пока нет.</p>
+        <EmptyState text="Резервных копий пока нет." />
       ) : (
         <ul className="category-list">
           {backups.map((b) => (

@@ -4,6 +4,7 @@
 постоянного gateway-подключения бота и хорошо ложится на модель запрос/ответ FastAPI.
 """
 import logging
+import time
 
 import httpx
 
@@ -92,9 +93,31 @@ def _member_avatar_url(member: dict) -> str | None:
     return f"https://cdn.discordapp.com/avatars/{user['id']}/{avatar_hash}.png"
 
 
+_MEMBERS_CACHE_TTL_SECONDS = 30
+_members_cache: list[dict] | None = None
+_members_cache_at: float = 0.0
+
+
 async def fetch_guild_members() -> list[dict]:
     """Получает всех участников единственного сервера постранично (нужна включённая
-    Server Members Intent). Возвращает {discord_id, username, roles, avatar_url}."""
+    Server Members Intent). Возвращает {discord_id, username, roles, avatar_url}.
+
+    Результат кэшируется на короткое время — состав сервера не меняется
+    ежесекундно, а эта функция дёргается почти на каждое действие с составом
+    (список кандидатов, профиль участника и т.д.), каждый раз постранично обходя
+    Discord API заново."""
+    global _members_cache, _members_cache_at
+    now = time.monotonic()
+    if _members_cache is not None and (now - _members_cache_at) < _MEMBERS_CACHE_TTL_SECONDS:
+        return _members_cache
+
+    members = await _fetch_guild_members_uncached()
+    _members_cache = members
+    _members_cache_at = now
+    return members
+
+
+async def _fetch_guild_members_uncached() -> list[dict]:
     members: list[dict] = []
     after = "0"
 

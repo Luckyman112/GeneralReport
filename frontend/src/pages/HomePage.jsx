@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { DonutChart } from "../components/DonutChart";
 import { PromotionReviewModal } from "../components/PromotionReviewModal";
 import { StatusBadge } from "../components/StatusBadge";
+import { TrendChart } from "../components/TrendChart";
+import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
 
 const PERIODS = [
@@ -158,21 +160,26 @@ function MyLeaveRequests() {
   );
 }
 
-const PROMOTION_STATUS_POLL_INTERVAL_MS = 20000;
+// SSE (см. useLiveEvents) обновляет мгновенно — поллинг оставлен редким запасным
+// вариантом на случай обрыва соединения
+const PROMOTION_STATUS_POLL_INTERVAL_MS = 60000;
 
 function PromotionStatus() {
   const { token } = useAuth();
   const [status, setStatus] = useState(null);
   const [reviewRequestId, setReviewRequestId] = useState(null);
 
+  const load = useCallback(() => {
+    api.getMyPromotionStatus(token).then(setStatus).catch(() => setStatus(null));
+  }, [token]);
+
+  useLiveEvents("promotions", load);
+
   useEffect(() => {
-    function load() {
-      api.getMyPromotionStatus(token).then(setStatus).catch(() => setStatus(null));
-    }
     load();
     const interval = setInterval(load, PROMOTION_STATUS_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [load]);
 
   if (!status) return null;
   if (!status.current_rank) {
@@ -344,6 +351,13 @@ function FormationComparison() {
         </select>
       </div>
       {stats ? <DonutChart data={stats.by_regiment} onSegmentClick={handleRegimentClick} /> : <p>Загрузка...</p>}
+
+      {stats && stats.trend && stats.trend.length > 0 && (
+        <div className="trend-chart-wrap">
+          <h4>Динамика за последние 30 дней</h4>
+          <TrendChart dates={stats.trend_dates} series={stats.trend} />
+        </div>
+      )}
 
       {drillDown && (
         <div className="drilldown-panel">

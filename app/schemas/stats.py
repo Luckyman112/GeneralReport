@@ -19,5 +19,14 @@ class RegimentStatsRead(BaseModel):
     by_category: list[StatBucket]
 
 
+class TrendSeries(BaseModel):
+    id: int
+    label: str
+    color: str | None = None
+    points: list[int]
+
+
 class FormationStatsRead(BaseModel):
     by_regiment: list[StatBucket]
+    trend_dates: list[str] = []
+    trend: list[TrendSeries] = []

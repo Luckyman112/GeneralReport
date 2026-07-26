@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { SaveBar } from "../components/SaveBar";
 import { useToast } from "../components/ToastContext";
+import { downloadCsv } from "../utils/csv";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
 
@@ -13,6 +14,7 @@ function profileSnapshot(member) {
   return {
     serviceId: member?.service_id || "",
     callsign: member?.callsign || "",
+    steamId: member?.steam_id || "",
     rankId: member?.rank?.id ?? "",
   };
 }
@@ -33,6 +35,7 @@ export function AdminPanelPage() {
   const [profileBaseline, setProfileBaseline] = useState(profileSnapshot(null));
   const [serviceId, setServiceId] = useState("");
   const [callsign, setCallsign] = useState("");
+  const [steamId, setSteamId] = useState("");
   const [rankId, setRankId] = useState("");
   const [earlyPromotionReason, setEarlyPromotionReason] = useState("");
   const [daysInRank, setDaysInRank] = useState("");
@@ -47,15 +50,37 @@ export function AdminPanelPage() {
   const [overrideRequirementId, setOverrideRequirementId] = useState("");
   const [overrideSatisfied, setOverrideSatisfied] = useState(true);
 
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
+
   const [auditLog, setAuditLog] = useState([]);
   const [showAuditLog, setShowAuditLog] = useState(false);
+  const [auditActionFilter, setAuditActionFilter] = useState("");
+  const [auditDateFrom, setAuditDateFrom] = useState("");
+  const [auditDateTo, setAuditDateTo] = useState("");
 
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     api.getRanks(token).then(setTiers).catch(() => setTiers([]));
+    api
+      .getMaintenanceStatus()
+      .then((s) => {
+        setMaintenanceEnabled(s.enabled);
+        setMaintenanceMessage(s.message || "");
+      })
+      .catch(() => {});
   }, [token]);
+
+  async function handleMaintenanceSave() {
+    try {
+      await api.updateMaintenance(token, { enabled: maintenanceEnabled, message: maintenanceMessage.trim() || null });
+      showToast("Режим обслуживания обновлён", "success");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
 
   useEffect(() => {
     if (!regimentId) return;
@@ -73,6 +98,7 @@ export function AdminPanelPage() {
     setProfileBaseline(snapshot);
     setServiceId(snapshot.serviceId);
     setCallsign(snapshot.callsign);
+    setSteamId(snapshot.steamId);
     setRankId(snapshot.rankId);
     setDaysInRank(member.days_in_rank ?? "");
   }, [member]);
@@ -80,11 +106,13 @@ export function AdminPanelPage() {
   const isProfileDirty =
     serviceId !== profileBaseline.serviceId ||
     callsign !== profileBaseline.callsign ||
+    steamId !== profileBaseline.steamId ||
     rankId !== profileBaseline.rankId;
 
   function handleResetProfile() {
     setServiceId(profileBaseline.serviceId);
     setCallsign(profileBaseline.callsign);
+    setSteamId(profileBaseline.steamId);
     setRankId(profileBaseline.rankId);
     setEarlyPromotionReason("");
   }
@@ -109,10 +137,11 @@ export function AdminPanelPage() {
     await api.setMemberProfile(token, regimentId, discordId, {
       service_id: serviceId.trim() || null,
       callsign: callsign.trim() || null,
+      steam_id: steamId.trim() || null,
       rank_id: rankId === "" ? null : Number(rankId),
       ...(rankChanged ? { early_promotion_reason: earlyPromotionReason.trim() || null } : {}),
     });
-    setProfileBaseline({ serviceId, callsign, rankId });
+    setProfileBaseline({ serviceId, callsign, steamId, rankId });
     setEarlyPromotionReason("");
   });
 
@@ -152,8 +181,19 @@ export function AdminPanelPage() {
   });
 
   function loadAuditLog() {
-    api.listAuditLog(token).then(setAuditLog).catch((e) => setError(e.message));
+    api
+      .listAuditLog(token, { action: auditActionFilter, dateFrom: auditDateFrom, dateTo: auditDateTo })
+      .then(setAuditLog)
+      .catch((e) => setError(e.message));
     setShowAuditLog(true);
+  }
+
+  function exportAuditLogCsv() {
+    downloadCsv(
+      "audit-log.csv",
+      ["Дата", "Кто", "Действие", "Детали"],
+      auditLog.map((entry) => [formatMskDate(entry.created_at), formatFullName(entry.actor), entry.action, entry.details])
+    );
   }
 
   return (
@@ -201,6 +241,10 @@ export function AdminPanelPage() {
             <label>
               Позывной (он же веб-ник)
               <input type="text" value={callsign} onChange={(e) => setCallsign(e.target.value)} />
+            </label>
+            <label>
+              Steam ID
+              <input type="text" value={steamId} onChange={(e) => setSteamId(e.target.value)} />
             </label>
             <label>
               Звание
@@ -332,11 +376,64 @@ export function AdminPanelPage() {
       )}
 
       <div className="regiment-panel fade-in-up">
+        <h4>Режим обслуживания</h4>
+        <p className="hint-text">
+          Включите на время миграций/восстановления из бэкапа — обычные пользователи увидят экран "Технические
+          работы", вы сохраните доступ и увидите напоминание-баннер сверху.
+        </p>
+        <label className="maintenance-toggle">
+          <input
+            type="checkbox"
+            checked={maintenanceEnabled}
+            onChange={(e) => setMaintenanceEnabled(e.target.checked)}
+          />
+          Включить режим обслуживания
+        </label>
+        <label>
+          Сообщение для пользователей (необязательно)
+          <input
+            type="text"
+            placeholder="Например: обновление сервера, вернёмся через 15 минут"
+            value={maintenanceMessage}
+            onChange={(e) => setMaintenanceMessage(e.target.value)}
+          />
+        </label>
+        <button className="primary" onClick={handleMaintenanceSave}>
+          Сохранить
+        </button>
+      </div>
+
+      <div className="regiment-panel fade-in-up">
         <h4>Журнал действий администрации</h4>
+
+        {showAuditLog && (
+          <div className="audit-log-filters">
+            <label>
+              Действие
+              <input
+                type="text"
+                placeholder="например, reprimand"
+                value={auditActionFilter}
+                onChange={(e) => setAuditActionFilter(e.target.value)}
+              />
+            </label>
+            <label>
+              С даты
+              <input type="date" value={auditDateFrom} onChange={(e) => setAuditDateFrom(e.target.value)} />
+            </label>
+            <label>
+              По дату
+              <input type="date" value={auditDateTo} onChange={(e) => setAuditDateTo(e.target.value)} />
+            </label>
+            <button onClick={loadAuditLog}>Применить</button>
+            {auditLog.length > 0 && <button onClick={exportAuditLogCsv}>Скачать CSV</button>}
+          </div>
+        )}
+
         {!showAuditLog ? (
           <button onClick={loadAuditLog}>Показать журнал</button>
         ) : auditLog.length === 0 ? (
-          <p className="hint-text">Записей пока нет.</p>
+          <p className="hint-text">Записей нет.</p>
         ) : (
           <ul className="member-report-list">
             {auditLog.map((entry) => (

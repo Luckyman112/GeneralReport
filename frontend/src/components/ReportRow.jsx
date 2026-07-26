@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { StatusBadge } from "./StatusBadge";
+import { CheckIcon, CrossIcon, GearIcon, TrashIcon } from "./icons";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullNameAtRank } from "../utils/formatName";
 import { formatDetentionTarget, formatPunishmentType } from "../utils/punishment";
@@ -23,6 +24,9 @@ export function ReportRow({
   onDelete,
   onSetPoints,
   onDeleteImage,
+  selectable,
+  selected,
+  onToggleSelected,
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -54,6 +58,9 @@ export function ReportRow({
   return (
     <div className={`report-row report-row-status-${report.status} fade-in-up`}>
       <div className="report-row-header">
+        {selectable && (
+          <input type="checkbox" checked={Boolean(selected)} onChange={onToggleSelected} className="report-row-checkbox" />
+        )}
         <span className="report-regiment" style={regimentColor ? { color: regimentColor } : undefined}>
           {regimentName}
         </span>
@@ -69,7 +76,8 @@ export function ReportRow({
               title="Баллы за рапорт"
               onClick={() => setShowPointsPanel((v) => !v)}
             >
-              ⚙{report.points !== null && <span className="points-gear-dot" />}
+              <GearIcon />
+              {report.points !== null && <span className="points-gear-dot" />}
             </button>
 
             {showPointsPanel && (
@@ -168,11 +176,13 @@ export function ReportRow({
 
         {canManage && report.status === "submitted" && (
           <>
-            <button className="primary" onClick={onApprove}>
-              Одобрить
+            <button className="primary icon-button" onClick={onApprove}>
+              <CheckIcon /> Одобрить
             </button>
             {!showRejectInput ? (
-              <button onClick={() => setShowRejectInput(true)}>Отклонить</button>
+              <button className="icon-button" onClick={() => setShowRejectInput(true)}>
+                <CrossIcon /> Отклонить
+              </button>
             ) : (
               <span className="reject-inline">
                 <input
@@ -196,7 +206,9 @@ export function ReportRow({
         )}
 
         {(canDelete ?? canManage) && report.status !== "deleted" && (
-          <button onClick={() => setConfirmDelete(true)}>Удалить</button>
+          <button className="icon-button" onClick={() => setConfirmDelete(true)}>
+            <TrashIcon /> Удалить
+          </button>
         )}
         <ConfirmDialog
           open={confirmDelete}

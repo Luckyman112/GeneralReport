@@ -2,6 +2,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.events import event_bus
 from app.models.notification import Notification, NotificationRead
 
 
@@ -53,6 +54,7 @@ async def create_broadcast(db: AsyncSession, *, title: str, body: str, created_b
     db.add(notification)
     await db.commit()
     await db.refresh(notification)
+    event_bus.publish("notifications")
     return notification
 
 
@@ -65,6 +67,7 @@ async def create_personal_notification(
     db.add(notification)
     await db.commit()
     await db.refresh(notification)
+    event_bus.publish("notifications")
     return notification
 
 
@@ -82,4 +85,5 @@ async def create_violation_notification(
     db.add(notification)
     await db.commit()
     await db.refresh(notification)
+    event_bus.publish("notifications")
     return notification

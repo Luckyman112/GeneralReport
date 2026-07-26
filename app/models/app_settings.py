@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, String
+from sqlalchemy import JSON, Boolean, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -46,3 +46,9 @@ class AppSettings(Base):
     # по конкретным людям
     detention_report_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     detention_report_user_discord_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+    # Режим обслуживания — на время миграций/восстановления из бэкапа. Блокирует
+    # доступ всем, кроме администратора (см. MaintenanceMiddleware); сообщение
+    # показывается в баннере на фронте.
+    maintenance_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    maintenance_message: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -1,5 +1,7 @@
 """Статистика по рапортам: кто сколько подал (для страницы "Главное") и сравнение
 активности формирований (только администратор/высшее командование)."""
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +11,9 @@ from app.crud import stats as stats_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
-from app.schemas.stats import FormationStatsRead, RegimentStatsRead, StatBucket
+from app.schemas.stats import FormationStatsRead, RegimentStatsRead, StatBucket, TrendSeries
+
+TREND_DAYS = 30
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -79,4 +83,21 @@ async def get_formation_stats(
         )
         for rid, count in sorted(counts, key=lambda x: -x[1])
     ]
-    return FormationStatsRead(by_regiment=by_regiment)
+
+    today = datetime.now(timezone.utc).date()
+    trend_dates = [(today - timedelta(days=offset)).isoformat() for offset in range(TREND_DAYS - 1, -1, -1)]
+    daily_counts = await stats_crud.count_by_regiment_daily(db, days=TREND_DAYS)
+    counts_by_regiment: dict[int, dict[str, int]] = {}
+    for rid, day, count in daily_counts:
+        counts_by_regiment.setdefault(rid, {})[day] = count
+    trend = [
+        TrendSeries(
+            id=rid,
+            label=regiments[rid].name if rid in regiments else f"#{rid}",
+            color=regiments[rid].color if rid in regiments else None,
+            points=[counts_by_regiment.get(rid, {}).get(d, 0) for d in trend_dates],
+        )
+        for rid in counts_by_regiment
+    ]
+
+    return FormationStatsRead(by_regiment=by_regiment, trend_dates=trend_dates, trend=trend)

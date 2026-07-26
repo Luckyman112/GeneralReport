@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { PageLoading } from "../components/PageLoading";
 import { RegimentConfigModal } from "../components/RegimentConfigModal";
 
 export function RegimentsAdminPage() {
@@ -47,7 +48,7 @@ export function RegimentsAdminPage() {
     }
   }
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
 
   return (
     <div className="regiments-admin-page">

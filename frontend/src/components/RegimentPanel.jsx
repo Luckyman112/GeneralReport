@@ -1,22 +1,37 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatFullName } from "../utils/formatName";
+import { InfoIcon } from "./icons";
 import { MemberDetailModal } from "./MemberDetailModal";
 import { PromotionReviewModal } from "./PromotionReviewModal";
+import { RegimentInfoModal } from "./RegimentInfoModal";
 
 const NO_RANK_GROUP = "Без звания";
-const PENDING_POLL_INTERVAL_MS = 20000;
+// SSE (см. useLiveEvents) обновляет мгновенно — поллинг оставлен редким запасным
+// вариантом на случай обрыва соединения
+const PENDING_POLL_INTERVAL_MS = 60000;
 
 /** Состав формирования (ростер) — клик по участнику открывает его карточку.
  * Участники группируются по составу (звания), от высших к низшим, как в
  * общевойсковой таблице званий. */
-export function RegimentPanel({ regiments, canManageMembers }) {
+export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, focusDiscordId }) {
   const { token } = useAuth();
-  const [regimentId, setRegimentId] = useState(regiments[0]?.id ?? "");
+  const [regimentId, setRegimentId] = useState(initialRegimentId ?? regiments[0]?.id ?? "");
   const [members, setMembers] = useState([]);
   const [tiers, setTiers] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
+  const [showInfo, setShowInfo] = useState(false);
+  const focusedDiscordIdRef = useRef(focusDiscordId ?? null);
+
+  // Переход из глобального поиска — переключаемся на нужное формирование и,
+  // как только состав подгрузится, откроем карточку конкретного бойца
+  useEffect(() => {
+    if (initialRegimentId) setRegimentId(initialRegimentId);
+    focusedDiscordIdRef.current = focusDiscordId ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRegimentId, focusDiscordId]);
   const [reviewRequestId, setReviewRequestId] = useState(null);
   const [pendingRequestByDiscordId, setPendingRequestByDiscordId] = useState({});
   const [error, setError] = useState(null);
@@ -35,7 +50,14 @@ export function RegimentPanel({ regiments, canManageMembers }) {
     setError(null);
     try {
       const data = await api.getMembers(token, id);
-      if (requestIdRef.current === requestId) setMembers(data);
+      if (requestIdRef.current === requestId) {
+        setMembers(data);
+        if (focusedDiscordIdRef.current) {
+          const target = data.find((m) => m.discord_id === focusedDiscordIdRef.current);
+          if (target) setSelectedMember(target);
+          focusedDiscordIdRef.current = null;
+        }
+      }
     } catch (e) {
       if (requestIdRef.current === requestId) setError(e.message);
     } finally {
@@ -48,25 +70,34 @@ export function RegimentPanel({ regiments, canManageMembers }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, regimentId]);
 
+  const loadPending = useCallback(() => {
+    if (!regimentId || !canEditHere) {
+      setPendingRequestByDiscordId({});
+      return;
+    }
+    api
+      .listPromotionRequests(token)
+      .then((requests) => {
+        const byDiscordId = Object.fromEntries(
+          requests.filter((r) => r.regiment_id === Number(regimentId)).map((r) => [r.user.discord_id, r.id])
+        );
+        setPendingRequestByDiscordId(byDiscordId);
+      })
+      .catch(() => setPendingRequestByDiscordId({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, regimentId, canEditHere]);
+
+  useLiveEvents("promotions", loadPending);
+
   useEffect(() => {
     if (!regimentId || !canEditHere) {
       setPendingRequestByDiscordId({});
       return undefined;
     }
-    function loadPending() {
-      api
-        .listPromotionRequests(token)
-        .then((requests) => {
-          const byDiscordId = Object.fromEntries(
-            requests.filter((r) => r.regiment_id === Number(regimentId)).map((r) => [r.user.discord_id, r.id])
-          );
-          setPendingRequestByDiscordId(byDiscordId);
-        })
-        .catch(() => setPendingRequestByDiscordId({}));
-    }
     loadPending();
     // Кнопка "Доступно повышение" не должна висеть после того, как заявку уже
-    // решили на другой странице (например, "Повышения") — обновляем периодически
+    // решили на другой странице (например, "Повышения") — SSE обновляет мгновенно,
+    // это лишь редкий запасной поллинг на случай обрыва соединения
     const interval = setInterval(loadPending, PENDING_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [token, regimentId, canEditHere]);
@@ -100,18 +131,30 @@ export function RegimentPanel({ regiments, canManageMembers }) {
 
   return (
     <div className="regiment-panel">
-      {regiments.length > 1 && (
-        <label>
-          Формирование
-          <select value={regimentId} onChange={(e) => setRegimentId(e.target.value)}>
-            {regiments.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+      <div className="regiment-panel-toolbar">
+        {regiments.length > 1 && (
+          <label>
+            Формирование
+            <select value={regimentId} onChange={(e) => setRegimentId(e.target.value)}>
+              {regiments.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {currentRegiment && (
+          <button
+            type="button"
+            className="ghost icon-button"
+            title="Информация о формировании"
+            onClick={() => setShowInfo(true)}
+          >
+            <InfoIcon /> Инфо
+          </button>
+        )}
+      </div>
 
       {error && <p className="error-text">{error}</p>}
       {loading ? (
@@ -187,6 +230,10 @@ export function RegimentPanel({ regiments, canManageMembers }) {
 
       {reviewRequestId && (
         <PromotionReviewModal requestId={reviewRequestId} onClose={() => setReviewRequestId(null)} />
+      )}
+
+      {showInfo && currentRegiment && (
+        <RegimentInfoModal regiment={currentRegiment} onClose={() => setShowInfo(false)} />
       )}
     </div>
   );

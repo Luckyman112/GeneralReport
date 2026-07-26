@@ -47,7 +47,7 @@ export function getViewAs() {
 /** Обёртка над fetch: подставляет базовый URL, JWT и разбирает ошибки бэкенда.
  * Если body — FormData (загрузка файла), не сериализуем в JSON и не трогаем
  * Content-Type — браузер сам проставит его с нужным boundary. */
-async function request(path, { method = "GET", token, body } = {}) {
+async function request(path, { method = "GET", token, body, withTotal = false } = {}) {
   const isFormData = body instanceof FormData;
   const headers = isFormData ? {} : { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -73,7 +73,12 @@ async function request(path, { method = "GET", token, body } = {}) {
   }
 
   if (response.status === 204) return null;
-  return response.json();
+  const data = await response.json();
+  if (withTotal) {
+    const totalHeader = response.headers.get("X-Total-Count");
+    return { data, total: totalHeader !== null ? Number(totalHeader) : null };
+  }
+  return data;
 }
 
 export const api = {
@@ -82,13 +87,15 @@ export const api = {
   loginWithPassword: (password) => request("/auth/password", { method: "POST", body: { password } }),
   getMe: (token) => request("/api/me", { token }),
 
-  listReports: (token, { status, regimentId, categoryId } = {}) => {
+  listReports: (token, { status, regimentId, categoryId, limit, offset } = {}) => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (regimentId) params.set("regiment_id", regimentId);
     if (categoryId) params.set("category_id", categoryId);
+    if (limit) params.set("limit", limit);
+    if (offset) params.set("offset", offset);
     const query = params.toString() ? `?${params.toString()}` : "";
-    return request(`/api/reports${query}`, { token });
+    return request(`/api/reports${query}`, { token, withTotal: Boolean(limit) });
   },
   createReport: (
     token,
@@ -146,17 +153,22 @@ export const api = {
 
   listRegiments: (token) => request("/api/regiments", { token }),
   getDiscordRoles: (token) => request("/api/regiments/discord-roles", { token }),
-  createRegiment: (token, { name, discordRoleId, color }) =>
+  createRegiment: (token, { name, discordRoleId, color, discordChannelUrl }) =>
     request("/api/regiments", {
       method: "POST",
       token,
-      body: { name, discord_role_id: discordRoleId, color: color || null },
+      body: { name, discord_role_id: discordRoleId, color: color || null, discord_channel_url: discordChannelUrl || null },
     }),
-  updateRegiment: (token, regimentId, { name, discordRoleId, color }) =>
+  updateRegiment: (token, regimentId, { name, discordRoleId, color, discordChannelUrl }) =>
     request(`/api/regiments/${regimentId}`, {
       method: "PATCH",
       token,
-      body: { name: name ?? null, discord_role_id: discordRoleId ?? null, color: color || null },
+      body: {
+        name: name ?? null,
+        discord_role_id: discordRoleId ?? null,
+        color: color || null,
+        discord_channel_url: discordChannelUrl ?? null,
+      },
     }),
 
   listCategories: (token, regimentId) => request(`/api/regiments/${regimentId}/categories`, { token }),
@@ -181,11 +193,11 @@ export const api = {
     request(`/api/regiments/${regimentId}/commander-candidates`, { token }),
   listCommanders: (token, regimentId) => request(`/api/regiments/${regimentId}/commanders`, { token }),
 
-  submitRegistration: (token, { serviceId, callsign }) =>
+  submitRegistration: (token, { serviceId, callsign, steamId }) =>
     request("/api/me/registration", {
       method: "POST",
       token,
-      body: { service_id: serviceId, callsign },
+      body: { service_id: serviceId, callsign, steam_id: steamId },
     }),
   listPendingRegistrations: (token) => request("/api/registrations/pending", { token }),
   approveRegistration: (token, discordId) =>
@@ -249,6 +261,10 @@ export const api = {
   updateModuleAccess: (token, changes) =>
     request("/api/module-access", { method: "PATCH", token, body: changes }),
 
+  getMaintenanceStatus: () => request("/api/maintenance-status", {}),
+  updateMaintenance: (token, { enabled, message }) =>
+    request("/api/admin/maintenance", { method: "PATCH", token, body: { enabled, message } }),
+
   listNotifications: (token) => request("/api/notifications", { token }),
   markAllNotificationsRead: (token) => request("/api/notifications/read-all", { method: "POST", token }),
   sendBroadcast: (token, { title, body }) =>
@@ -276,7 +292,14 @@ export const api = {
   setReprimandAppeal: (token, reprimandId, appealText) =>
     request(`/api/reprimands/${reprimandId}/appeal`, { method: "PATCH", token, body: { appeal_text: appealText } }),
 
-  listAuditLog: (token) => request("/api/admin/audit-log", { token }),
+  listAuditLog: (token, filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.action) params.set("action", filters.action);
+    if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+    if (filters.dateTo) params.set("date_to", filters.dateTo);
+    params.set("limit", filters.limit || 1000);
+    return request(`/api/admin/audit-log?${params.toString()}`, { token });
+  },
 
   getPromotionRequirements: (token, regimentId) =>
     request(`/api/regiments/${regimentId}/promotion-requirements`, { token }),

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { MemberSearchPicker } from "../components/MemberSearchPicker";
+import { PageLoading } from "../components/PageLoading";
 
 export function SettingsPage() {
   const { token } = useAuth();
@@ -80,7 +81,7 @@ export function SettingsPage() {
     }
   }
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
 
   return (
     <div className="settings-page">

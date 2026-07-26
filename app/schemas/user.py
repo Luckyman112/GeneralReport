@@ -16,6 +16,7 @@ class UserRead(BaseModel):
     registration_status: str
     service_id: str | None
     callsign: str | None
+    steam_id: str | None
     created_at: datetime
 
 

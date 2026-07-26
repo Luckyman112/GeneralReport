@@ -2,11 +2,12 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
+from app.core.events import event_bus
 from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
 from app.crud import promotion as promotion_crud
@@ -39,9 +40,12 @@ MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 МБ
 
 @router.get("", response_model=list[ReportRead])
 async def list_reports(
+    response: Response,
     status_filter: ReportStatus | None = Query(default=None, alias="status"),
     regiment_id: int | None = Query(default=None),
     category_id: int | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> list[ReportRead]:
@@ -90,7 +94,19 @@ async def list_reports(
         category_id=category_id,
         status=status_filter,
         visible_target_regiment_ids=visible_target_regiment_ids,
+        limit=limit,
+        offset=offset,
     )
+    if limit is not None:
+        total = await report_crud.count_reports(
+            db,
+            regiment_ids=visible_regiment_ids,
+            user_id=user_id_filter,
+            category_id=category_id,
+            status=status_filter,
+            visible_target_regiment_ids=visible_target_regiment_ids,
+        )
+        response.headers["X-Total-Count"] = str(total)
     return [ReportRead.model_validate(r) for r in reports]
 
 
@@ -135,6 +151,7 @@ async def create_report(
         **target_fields,
     )
     logger.info("Пользователь %s создал рапорт %s (%s)", access.user.username, report.id, status)
+    event_bus.publish("reports")
     return ReportRead.model_validate(report)
 
 
@@ -284,6 +301,7 @@ async def update_report_status(
     if payload.status == ReportStatus.APPROVED:
         await promotion_crud.check_and_create_promotion_request(db, updated.author, regiment_id=updated.regiment_id)
 
+    event_bus.publish("reports")
     return ReportRead.model_validate(updated)
 
 
@@ -317,6 +335,7 @@ async def delete_report(
 
     deleted = await report_crud.soft_delete(db, report, updated_by=access.user.id)
     logger.info("%s удалил рапорт %s", access.user.username, report_id)
+    event_bus.publish("reports")
     return ReportRead.model_validate(deleted)
 
 

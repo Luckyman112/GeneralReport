@@ -1,4 +1,5 @@
 import { Navigate } from "react-router-dom";
+import { PageLoading } from "../components/PageLoading";
 import { useAuth } from "./AuthContext";
 
 export function ProtectedRoute({
@@ -10,7 +11,7 @@ export function ProtectedRoute({
 }) {
   const { isAuthenticated, access, loading } = useAuth();
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (adminOnly && !access?.is_admin) return <Navigate to="/main" replace />;
   if (passwordOnly && !access?.is_password_login) return <Navigate to="/main" replace />;

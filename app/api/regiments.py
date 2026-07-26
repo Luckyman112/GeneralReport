@@ -87,7 +87,11 @@ async def create_regiment(
         raise ForbiddenError("Только администратор может создавать формирования")
 
     regiment = await regiment_crud.create(
-        db, name=payload.name, discord_role_id=payload.discord_role_id, color=payload.color
+        db,
+        name=payload.name,
+        discord_role_id=payload.discord_role_id,
+        color=payload.color,
+        discord_channel_url=payload.discord_channel_url,
     )
     logger.info("Администратор %s создал формирование %s", access.user.username, regiment.name)
     return RegimentRead.model_validate(regiment)
@@ -306,6 +310,7 @@ def _build_guild_member(member: dict, user: User | None) -> GuildMemberRead:
         avatar_url=member["avatar_url"],
         service_id=user.service_id if user else None,
         callsign=user.callsign if user else None,
+        steam_id=user.steam_id if user else None,
         rank=RankRead.model_validate(user.rank) if user and user.rank else None,
         days_in_rank=days_in_rank,
         is_inactive=user.is_inactive if user else False,

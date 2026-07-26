@@ -78,8 +78,22 @@ def run_pg_dump(*, label: str) -> BackupRead:
         logger.error("pg_dump завершился с ошибкой: %s", error_text)
         raise AppError(f"Не удалось создать резервную копию: {error_text[:500]}")
 
+    _rotate_old_backups()
+
     stat = target.stat()
     return BackupRead(filename=filename, size_bytes=stat.st_size, created_at=datetime.now(timezone.utc))
+
+
+def _rotate_old_backups() -> None:
+    """Держим только settings.backup_retention_count последних файлов — старые
+    удаляются автоматически после каждого нового бэкапа (ручного или планового)."""
+    files = sorted(BACKUPS_DIR.glob("*.sql"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old_file in files[settings.backup_retention_count :]:
+        try:
+            old_file.unlink()
+            logger.info("Автоматически удалена старая резервная копия: %s", old_file.name)
+        except OSError as exc:
+            logger.warning("Не удалось удалить старую резервную копию %s: %s", old_file.name, exc)
 
 
 @router.post("", response_model=BackupRead, status_code=201)

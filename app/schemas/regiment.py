@@ -12,12 +12,14 @@ class RegimentRead(BaseModel):
     name: str
     discord_role_id: str
     color: str | None = None
+    discord_channel_url: str | None = None
 
 
 class RegimentCreate(BaseModel):
     name: str
     discord_role_id: str
     color: str | None = None
+    discord_channel_url: str | None = None
 
 
 class RegimentUpdate(BaseModel):
@@ -28,6 +30,7 @@ class RegimentUpdate(BaseModel):
     name: str | None = None
     discord_role_id: str | None = None
     color: str | None = None
+    discord_channel_url: str | None = None
 
 
 class DiscordRoleOption(BaseModel):

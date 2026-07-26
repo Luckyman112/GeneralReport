@@ -56,6 +56,20 @@ async def count_by_regiment(db: AsyncSession, *, cutoff: datetime | None) -> lis
     return list(result.all())
 
 
+async def count_by_regiment_daily(db: AsyncSession, *, days: int) -> list[tuple[int, str, int]]:
+    """Возвращает [(regiment_id, 'YYYY-MM-DD', count), ...] за последние `days` дней —
+    для графика тренда активности формирований."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days - 1)
+    day_expr = func.to_char(Report.created_at, "YYYY-MM-DD")
+    query = (
+        select(Report.regiment_id, day_expr, func.count(Report.id))
+        .where(Report.status != ReportStatus.DELETED, Report.created_at >= cutoff)
+        .group_by(Report.regiment_id, day_expr)
+    )
+    result = await db.execute(query)
+    return list(result.all())
+
+
 async def get_category_names(db: AsyncSession, category_ids: list[int]) -> dict[int, str]:
     if not category_ids:
         return {}

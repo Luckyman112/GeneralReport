@@ -17,8 +17,17 @@ async def get_by_id(db: AsyncSession, regiment_id: int) -> Regiment | None:
     return await db.get(Regiment, regiment_id)
 
 
-async def create(db: AsyncSession, *, name: str, discord_role_id: str, color: str | None = None) -> Regiment:
-    regiment = Regiment(name=name, discord_role_id=discord_role_id, color=color)
+async def create(
+    db: AsyncSession,
+    *,
+    name: str,
+    discord_role_id: str,
+    color: str | None = None,
+    discord_channel_url: str | None = None,
+) -> Regiment:
+    regiment = Regiment(
+        name=name, discord_role_id=discord_role_id, color=color, discord_channel_url=discord_channel_url
+    )
     db.add(regiment)
     await db.commit()
     await db.refresh(regiment)

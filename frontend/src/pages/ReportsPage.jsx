@@ -5,13 +5,22 @@ import { useAuth } from "../auth/AuthContext";
 import { CategoryManagerModal } from "../components/CategoryManagerModal";
 import { CategoryNav } from "../components/CategoryNav";
 import { DetentionReportForm } from "../components/DetentionReportForm";
+import { EmptyState } from "../components/EmptyState";
+import { PageLoading } from "../components/PageLoading";
 import { RegimentPanel } from "../components/RegimentPanel";
 import { ReportForm } from "../components/ReportForm";
 import { ReportRow } from "../components/ReportRow";
+import { useLiveEvents } from "../hooks/useLiveEvents";
+import { downloadCsv } from "../utils/csv";
+import { formatMskDate } from "../utils/formatDate";
+import { formatFullNameAtRank } from "../utils/formatName";
 import { LeaveRequestsPage } from "./LeaveRequestsPage";
 import { ReprimandsPage } from "./ReprimandsPage";
 
-const REPORTS_POLL_INTERVAL_MS = 20000;
+// SSE (см. useLiveEvents) обновляет мгновенно — поллинг оставлен редким запасным
+// вариантом на случай обрыва соединения
+const REPORTS_POLL_INTERVAL_MS = 60000;
+const REPORTS_PAGE_SIZE = 50;
 
 const STATUS_OPTIONS = [
   { value: "", label: "Все статусы" },
@@ -30,6 +39,8 @@ export function ReportsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [regimentFilter, setRegimentFilter] = useState(searchParams.get("regiment") || "");
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") || null);
+  const [focusMemberRegimentId] = useState(searchParams.get("member") ? searchParams.get("regiment") : null);
+  const [focusMemberDiscordId] = useState(searchParams.get("member") || null);
   const [view, setView] = useState("reports"); // "reports" | "reprimands" | "leave"
   const [showForm, setShowForm] = useState(false);
   const [showDetentionForm, setShowDetentionForm] = useState(false);
@@ -65,18 +76,43 @@ export function ReportsPage() {
     return access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).includes(regimentId);
   }
 
+  const [totalReportsCount, setTotalReportsCount] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const loadReports = useCallback(async () => {
     try {
-      const data = await api.listReports(token, {
+      const { data, total } = await api.listReports(token, {
         status: statusFilter || undefined,
         regimentId: regimentFilter || undefined,
         categoryId: categoryFilter || undefined,
+        limit: REPORTS_PAGE_SIZE,
+        offset: 0,
       });
       setReports(data);
+      setTotalReportsCount(total);
     } catch (e) {
       setError(e.message);
     }
   }, [token, statusFilter, regimentFilter, categoryFilter]);
+
+  async function loadMoreReports() {
+    setLoadingMore(true);
+    try {
+      const { data, total } = await api.listReports(token, {
+        status: statusFilter || undefined,
+        regimentId: regimentFilter || undefined,
+        categoryId: categoryFilter || undefined,
+        limit: REPORTS_PAGE_SIZE,
+        offset: reports.length,
+      });
+      setReports((prev) => [...prev, ...data]);
+      setTotalReportsCount(total);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const loadCategories = useCallback(
     async (regimentsData) => {
@@ -106,16 +142,17 @@ export function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useLiveEvents("reports", loadReports);
+
   useEffect(() => {
     loadReports();
-    // Список рапортов обновляется сам по себе — не нужно перезагружать страницу,
-    // чтобы увидеть чужое новое/одобренное действие
+    // SSE обновляет мгновенно — это лишь редкий запасной поллинг на случай обрыва
     const interval = setInterval(loadReports, REPORTS_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [loadReports]);
 
   useEffect(() => {
-    if (searchParams.get("regiment") || searchParams.get("category")) {
+    if (searchParams.get("regiment") || searchParams.get("category") || searchParams.get("member")) {
       setSearchParams({}, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -168,6 +205,56 @@ export function ReportsPage() {
     await loadReports();
   }
 
+  function exportReportsCsv() {
+    downloadCsv(
+      "reports.csv",
+      ["Формирование", "Категория", "Статус", "Баллы", "Автор", "Содержание", "Дата"],
+      reports.map((r) => [
+        regimentsById[r.regiment_id]?.name || `#${r.regiment_id}`,
+        r.category_name || "",
+        r.status,
+        r.points ?? "",
+        formatFullNameAtRank(r.author, r.author_rank),
+        r.content,
+        formatMskDate(r.created_at),
+      ])
+    );
+  }
+
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedReportIds, setSelectedReportIds] = useState(new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
+
+  function toggleBulkMode() {
+    setBulkMode((v) => !v);
+    setSelectedReportIds(new Set());
+  }
+
+  function toggleReportSelected(reportId) {
+    setSelectedReportIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(reportId)) next.delete(reportId);
+      else next.add(reportId);
+      return next;
+    });
+  }
+
+  async function handleBulkDecide(status) {
+    setBulkRunning(true);
+    try {
+      // Одобрение/отклонение каждого рапорта тянет за собой свою логику (баллы,
+      // уведомления, проверка повышения) — поэтому дёргаем ту же одиночную ручку
+      // по очереди, а не отдельный bulk-эндпоинт
+      for (const reportId of selectedReportIds) {
+        await api.updateReportStatus(token, reportId, { status });
+      }
+    } finally {
+      setBulkRunning(false);
+      setSelectedReportIds(new Set());
+      await loadReports();
+    }
+  }
+
   async function handleDelete(reportId) {
     await api.deleteReport(token, reportId);
     await loadReports();
@@ -183,7 +270,7 @@ export function ReportsPage() {
     await loadReports();
   }
 
-  if (loading) return <div className="page-loading">Загрузка...</div>;
+  if (loading) return <PageLoading />;
 
   function handleSelectView(newView, categoryId = null) {
     setView(newView);
@@ -245,7 +332,37 @@ export function ReportsPage() {
             {manageableRegiments.length > 0 && (
               <button onClick={() => setShowCategoryManager(true)}>Категории и поля</button>
             )}
+
+            {(access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0) && (
+              <button className={bulkMode ? "primary" : ""} onClick={toggleBulkMode}>
+                {bulkMode ? "Отменить выбор" : "Выбрать несколько"}
+              </button>
+            )}
+
+            {reports.length > 0 && (
+              <button onClick={exportReportsCsv}>Скачать CSV</button>
+            )}
           </div>
+
+          {bulkMode && (
+            <div className="bulk-actions-bar">
+              <span>{selectedReportIds.size > 0 ? `Выбрано: ${selectedReportIds.size}` : "Отметьте рапорты со статусом «Отправлен»"}</span>
+              <button
+                className="primary icon-button"
+                disabled={selectedReportIds.size === 0 || bulkRunning}
+                onClick={() => handleBulkDecide("approved")}
+              >
+                Одобрить выбранные
+              </button>
+              <button
+                className="icon-button"
+                disabled={selectedReportIds.size === 0 || bulkRunning}
+                onClick={() => handleBulkDecide("rejected")}
+              >
+                Отклонить выбранные
+              </button>
+            </div>
+          )}
 
           {error && <p className="error-text">{error}</p>}
 
@@ -263,7 +380,7 @@ export function ReportsPage() {
           )}
 
           {reports.length === 0 ? (
-            <p className="empty-state">Рапортов пока нет.</p>
+            <EmptyState text="Рапортов пока нет." />
           ) : (
             <div className="report-list">
               {reports.map((report) => (
@@ -284,8 +401,19 @@ export function ReportsPage() {
                   onDelete={() => handleDelete(report.id)}
                   onSetPoints={(points) => handleSetPoints(report.id, points)}
                   onDeleteImage={(imageId) => handleDeleteImage(report.id, imageId)}
+                  selectable={bulkMode && canManage(report) && report.status === "submitted"}
+                  selected={selectedReportIds.has(report.id)}
+                  onToggleSelected={() => toggleReportSelected(report.id)}
                 />
               ))}
+            </div>
+          )}
+
+          {totalReportsCount != null && reports.length < totalReportsCount && (
+            <div className="reports-load-more">
+              <button className="ghost" onClick={loadMoreReports} disabled={loadingMore}>
+                {loadingMore ? "Загрузка..." : `Показать ещё (${totalReportsCount - reports.length})`}
+              </button>
             </div>
           )}
         </div>
@@ -296,6 +424,8 @@ export function ReportsPage() {
           <RegimentPanel
             regiments={regiments.filter((r) => accessibleRegimentIds.includes(r.id))}
             canManageMembers={canManageMembers}
+            initialRegimentId={focusMemberRegimentId ? Number(focusMemberRegimentId) : undefined}
+            focusDiscordId={focusMemberDiscordId}
           />
         </aside>
       )}

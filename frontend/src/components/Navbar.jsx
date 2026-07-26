@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { BroadcastModal } from "./BroadcastModal";
+import { GlobalSearch } from "./GlobalSearch";
+import { MegaphoneIcon } from "./icons";
 import { NotificationBell } from "./NotificationBell";
 
 function buildPositionLabel(access, regiments) {
@@ -53,9 +55,10 @@ export function Navbar() {
         {access?.is_password_login && <Link to="/settings">Настройки</Link>}
       </div>
       <div className="navbar-user">
+        <GlobalSearch />
         {access?.can_send_broadcast && (
           <button className="ghost" title="Объявление всем" onClick={() => setShowBroadcast(true)}>
-            📢
+            <MegaphoneIcon />
           </button>
         )}
         <NotificationBell />

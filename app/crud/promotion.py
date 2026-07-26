@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.events import event_bus
 from app.crud import notification as notification_crud
 from app.crud import points_adjustment as points_adjustment_crud
 from app.crud import rank as rank_crud
@@ -165,6 +166,7 @@ async def decide(db: AsyncSession, request: PromotionRequest, *, approve: bool, 
             mirror_report.updated_by_rank_id = decider.rank_id if decider else None
 
     await db.commit()
+    event_bus.publish("promotions")
     return await get_request_by_id(db, request.id)
 
 
@@ -273,6 +275,7 @@ async def check_and_create_promotion_request(
                 created_by=user.id,
             )
 
+    event_bus.publish("promotions")
     return await get_request_by_id(db, request.id)
 
 

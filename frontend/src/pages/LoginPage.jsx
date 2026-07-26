@@ -50,7 +50,7 @@ export function LoginPage() {
         </form>
       ) : (
         <button type="button" className="login-page-hidden-link" onClick={() => setShowPasswordForm(true)}>
-          ·
+          Вход для администрации
         </button>
       )}
     </div>

@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # той же ручной кнопки "Создать бэкап", просто по таймеру
     auto_backup_enabled: bool = False
     auto_backup_interval_hours: int = 24
+    # Сколько последних файлов резервных копий хранить — старше N-го автоматически
+    # удаляются после каждого нового бэкапа (ручного или по расписанию)
+    backup_retention_count: int = 20
 
     @property
     def allowed_origins_list(self) -> list[str]:

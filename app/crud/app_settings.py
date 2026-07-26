@@ -1,3 +1,5 @@
+import time
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -5,10 +7,24 @@ from app.models.app_settings import AppSettings
 
 SETTINGS_ID = 1
 
+# app_settings читается почти на каждый запрос (get_access_context и т.д.) — это
+# singleton-строка, которая меняется очень редко, так что держим короткий кэш в
+# памяти процесса вместо похода в БД на каждый чих. Кэшируем "снимок" (expunge из
+# сессии) — атрибуты уже загружены и не протухают при закрытии чужой сессии,
+# в отличие от обычного ORM-объекта, который SQLAlchemy expire'ит после commit.
+_CACHE_TTL_SECONDS = 30
+_cached_row: AppSettings | None = None
+_cached_at: float = 0.0
 
-async def get(db: AsyncSession) -> AppSettings:
-    """Возвращает singleton-строку настроек, создавая её при первом обращении
-    с бутстрап-значениями из .env (для admin/commander; для deputy фолбэка нет)."""
+
+def _remember(row: AppSettings, db: AsyncSession) -> None:
+    global _cached_row, _cached_at
+    db.expunge(row)
+    _cached_row = row
+    _cached_at = time.monotonic()
+
+
+async def _fetch_live(db: AsyncSession) -> AppSettings:
     row = await db.get(AppSettings, SETTINGS_ID)
     if row is None:
         row = AppSettings(
@@ -20,6 +36,19 @@ async def get(db: AsyncSession) -> AppSettings:
         db.add(row)
         await db.commit()
         await db.refresh(row)
+    return row
+
+
+async def get(db: AsyncSession) -> AppSettings:
+    """Возвращает singleton-строку настроек (из короткого кэша, если он ещё свежий),
+    создавая её при первом обращении с бутстрап-значениями из .env (для
+    admin/commander; для deputy фолбэка нет)."""
+    now = time.monotonic()
+    if _cached_row is not None and (now - _cached_at) < _CACHE_TTL_SECONDS:
+        return _cached_row
+
+    row = await _fetch_live(db)
+    _remember(row, db)
     return row
 
 
@@ -36,7 +65,7 @@ async def update(
     """Частичное обновление: None = поле не передано (не трогаем), пустая строка =
     явно очистить роль (сохраняем как NULL в БД). admin_user_discord_ids — список,
     так что "не передано" отличаем через отдельный сигнальный default (см. эндпоинт)."""
-    row = await get(db)
+    row = await _fetch_live(db)
     if admin_role_id is not None:
         row.admin_role_id = admin_role_id or None
     if commander_role_id is not None:
@@ -51,6 +80,17 @@ async def update(
         row.founder_role_id = founder_role_id or None
     await db.commit()
     await db.refresh(row)
+    _remember(row, db)
+    return row
+
+
+async def set_maintenance_mode(db: AsyncSession, *, enabled: bool, message: str | None) -> AppSettings:
+    row = await _fetch_live(db)
+    row.maintenance_mode = enabled
+    row.maintenance_message = message
+    await db.commit()
+    await db.refresh(row)
+    _remember(row, db)
     return row
 
 
@@ -59,9 +99,10 @@ async def update_module_access(db: AsyncSession, **changes) -> AppSettings:
     задержании — только реально переданные клиентом поля (exclude_unset в
     эндпоинте), поэтому пустой список здесь означает явное "никто" (кроме
     администратора/высшего командования, у них доступ всегда есть)."""
-    row = await get(db)
+    row = await _fetch_live(db)
     for key, value in changes.items():
         setattr(row, key, value)
     await db.commit()
     await db.refresh(row)
+    _remember(row, db)
     return row
