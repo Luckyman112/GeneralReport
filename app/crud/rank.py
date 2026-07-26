@@ -14,6 +14,11 @@ async def get_by_id(db: AsyncSession, rank_id: int) -> Rank | None:
     return await db.get(Rank, rank_id)
 
 
+async def get_by_code(db: AsyncSession, code: str) -> Rank | None:
+    result = await db.execute(select(Rank).where(Rank.code == code))
+    return result.scalar_one_or_none()
+
+
 async def get_tier_by_id(db: AsyncSession, tier_id: int) -> RankTier | None:
     return await db.get(RankTier, tier_id, options=[selectinload(RankTier.ranks)], populate_existing=True)
 

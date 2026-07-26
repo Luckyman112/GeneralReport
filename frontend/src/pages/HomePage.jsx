@@ -158,12 +158,20 @@ function MyLeaveRequests() {
   );
 }
 
+const PROMOTION_STATUS_POLL_INTERVAL_MS = 20000;
+
 function PromotionStatus() {
   const { token } = useAuth();
   const [status, setStatus] = useState(null);
+  const [reviewRequestId, setReviewRequestId] = useState(null);
 
   useEffect(() => {
-    api.getMyPromotionStatus(token).then(setStatus).catch(() => setStatus(null));
+    function load() {
+      api.getMyPromotionStatus(token).then(setStatus).catch(() => setStatus(null));
+    }
+    load();
+    const interval = setInterval(load, PROMOTION_STATUS_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [token]);
 
   if (!status) return null;
@@ -216,12 +224,18 @@ function PromotionStatus() {
               У вас есть непогашенный (строгий) выговор — повышение недоступно, пока он не будет снят.
             </p>
           )}
-          {status.is_eligible && !status.has_active_reprimand && (
-            <p className="hint-text">Все критерии выполнены — заявка на повышение отправлена автоматически.</p>
+          {status.pending_request_id != null && (
+            <p className="clickable-row" onClick={() => setReviewRequestId(status.pending_request_id)}>
+              <StatusBadge status="submitted" /> Повышение уже доступно и ожидает одобрения командующего состава →
+            </p>
           )}
         </>
       ) : (
         <p className="hint-text">Вы на высшем звании.</p>
+      )}
+
+      {reviewRequestId && (
+        <PromotionReviewModal requestId={reviewRequestId} onClose={() => setReviewRequestId(null)} />
       )}
     </div>
   );

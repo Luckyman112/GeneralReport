@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { CategoryManagerModal } from "../components/CategoryManagerModal";
@@ -9,6 +10,8 @@ import { ReportForm } from "../components/ReportForm";
 import { ReportRow } from "../components/ReportRow";
 import { LeaveRequestsPage } from "./LeaveRequestsPage";
 import { ReprimandsPage } from "./ReprimandsPage";
+
+const REPORTS_POLL_INTERVAL_MS = 20000;
 
 const STATUS_OPTIONS = [
   { value: "", label: "Все статусы" },
@@ -21,11 +24,12 @@ const STATUS_OPTIONS = [
 
 export function ReportsPage() {
   const { token, user, access, regiments: allRegiments } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [regiments, setRegiments] = useState([]);
   const [reports, setReports] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
-  const [regimentFilter, setRegimentFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState(null);
+  const [regimentFilter, setRegimentFilter] = useState(searchParams.get("regiment") || "");
+  const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") || null);
   const [view, setView] = useState("reports"); // "reports" | "reprimands" | "leave"
   const [showForm, setShowForm] = useState(false);
   const [showDetentionForm, setShowDetentionForm] = useState(false);
@@ -104,10 +108,31 @@ export function ReportsPage() {
 
   useEffect(() => {
     loadReports();
+    // Список рапортов обновляется сам по себе — не нужно перезагружать страницу,
+    // чтобы увидеть чужое новое/одобренное действие
+    const interval = setInterval(loadReports, REPORTS_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [loadReports]);
 
+  useEffect(() => {
+    if (searchParams.get("regiment") || searchParams.get("category")) {
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function canManage(report) {
+    // Дубликат заявки на повышение — решение принимается на странице "Повышения",
+    // здесь его одобрить/отклонить/удалить нельзя (см. app/api/reports.py)
+    if (categoriesById[report.category_id]?.is_promotion) return false;
     return access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).includes(report.regiment_id);
+  }
+
+  function canDelete(report) {
+    if (!canManage(report)) return false;
+    // Аннулировать рапорт о задержании может только администратор
+    if (categoriesById[report.category_id]?.is_detention) return Boolean(access?.is_admin);
+    return true;
   }
 
   async function handleCreate({ regimentId, categoryId, content, submit, images, participantDiscordIds }) {
@@ -251,6 +276,7 @@ export function ReportsPage() {
                   targetRegimentName={report.target_regiment_id ? regimentsById[report.target_regiment_id]?.name : null}
                   isOwn={report.user_id === user?.id}
                   canManage={canManage(report)}
+                  canDelete={canDelete(report)}
                   canSetPoints={canSetPoints(report.regiment_id)}
                   onSubmitDraft={() => handleSubmitDraft(report.id)}
                   onApprove={() => handleApprove(report.id)}

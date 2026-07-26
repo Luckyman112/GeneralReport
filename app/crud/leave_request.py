@@ -7,7 +7,10 @@ from sqlalchemy.orm import selectinload
 from app.models.leave_request import LeaveRequest
 from app.models.user import User
 
-_LOAD_OPTIONS = [selectinload(LeaveRequest.user).selectinload(User.rank)]
+_LOAD_OPTIONS = [
+    selectinload(LeaveRequest.user).selectinload(User.rank),
+    selectinload(LeaveRequest.decided_by_user).selectinload(User.rank),
+]
 
 
 async def create(

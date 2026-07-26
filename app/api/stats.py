@@ -35,7 +35,7 @@ async def get_regiment_stats(
     by_person = [
         StatBucket(
             id=user_id,
-            label=(users[user_id].nickname_override or users[user_id].username) if user_id in users else "?",
+            label=user_crud.format_full_name(users[user_id]) if user_id in users else "?",
             count=count,
             discord_id=users[user_id].discord_id if user_id in users else None,
         )

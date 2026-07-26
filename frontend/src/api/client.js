@@ -180,6 +180,18 @@ export const api = {
   getCommanderCandidates: (token, regimentId) =>
     request(`/api/regiments/${regimentId}/commander-candidates`, { token }),
   listCommanders: (token, regimentId) => request(`/api/regiments/${regimentId}/commanders`, { token }),
+
+  submitRegistration: (token, { serviceId, callsign }) =>
+    request("/api/me/registration", {
+      method: "POST",
+      token,
+      body: { service_id: serviceId, callsign },
+    }),
+  listPendingRegistrations: (token) => request("/api/registrations/pending", { token }),
+  approveRegistration: (token, discordId) =>
+    request(`/api/registrations/${discordId}/approve`, { method: "POST", token }),
+  rejectRegistration: (token, discordId) =>
+    request(`/api/registrations/${discordId}/reject`, { method: "POST", token }),
   addCommander: (token, regimentId, { discordId, username, roleType }) =>
     request(`/api/regiments/${regimentId}/commanders`, {
       method: "POST",
@@ -202,7 +214,10 @@ export const api = {
   getRanks: (token) => request("/api/ranks", { token }),
 
   getAppSettings: (token) => request("/api/app-settings", { token }),
-  updateAppSettings: (token, { adminRoleId, commanderRoleId, deputyRoleId, highCommandRoleId, adminUserDiscordIds }) =>
+  updateAppSettings: (
+    token,
+    { adminRoleId, commanderRoleId, deputyRoleId, highCommandRoleId, adminUserDiscordIds, founderRoleId }
+  ) =>
     request("/api/app-settings", {
       method: "PATCH",
       token,
@@ -212,6 +227,7 @@ export const api = {
         deputy_role_id: deputyRoleId ?? null,
         high_command_role_id: highCommandRoleId ?? null,
         admin_user_discord_ids: adminUserDiscordIds ?? null,
+        founder_role_id: founderRoleId ?? null,
       },
     }),
   getAppSettingsMembers: (token) => request("/api/app-settings/discord-members", { token }),

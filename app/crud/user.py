@@ -7,6 +7,15 @@ from sqlalchemy.orm import selectinload
 from app.models.user import User
 
 
+def format_full_name(user: User) -> str:
+    """Полное имя для отображения ("ИДН Звание Позывной"), как formatFullName на
+    фронте — используется там, где формируется текст на бэкенде (например, метки
+    в статистике)."""
+    if user.service_id and user.rank and user.callsign:
+        return f"{user.service_id} {user.rank.code} {user.callsign}"
+    return user.nickname_override or user.username
+
+
 async def get_by_discord_id(db: AsyncSession, discord_id: str) -> User | None:
     result = await db.execute(select(User).where(User.discord_id == discord_id))
     return result.scalar_one_or_none()
@@ -49,10 +58,18 @@ async def get_by_discord_ids(db: AsyncSession, discord_ids: list[str]) -> list[U
     return list(result.scalars().all())
 
 
+async def list_pending_registrations(db: AsyncSession) -> list[User]:
+    """Заявки на регистрацию, уже реально поданные (service_id заполнен) и ещё
+    не решённые — "pending" сразу после логина, до заполнения формы, сюда не
+    попадает, чтобы не путать с уже отправленной на рассмотрение заявкой."""
+    result = await db.execute(select(User).where(User.registration_status == "pending", User.service_id.isnot(None)))
+    return list(result.scalars().all())
+
+
 async def get_by_ids(db: AsyncSession, user_ids: list[int]) -> list[User]:
     if not user_ids:
         return []
-    result = await db.execute(select(User).where(User.id.in_(user_ids)))
+    result = await db.execute(select(User).where(User.id.in_(user_ids)).options(selectinload(User.rank)))
     return list(result.scalars().all())
 
 
@@ -76,6 +93,7 @@ async def list_admins_and_high_command(db: AsyncSession) -> list[User]:
         or u.discord_id in admin_discord_ids
         or (app_config.admin_role_id and app_config.admin_role_id in u.roles)
         or (app_config.high_command_role_id and app_config.high_command_role_id in u.roles)
+        or (app_config.founder_role_id and app_config.founder_role_id in u.roles)
     ]
 
 
@@ -91,11 +109,25 @@ async def update_profile(
         user = User(discord_id=discord_id, username=fallback_username, avatar_url=None, roles=[])
         db.add(user)
 
+    # Переключение "неактивен" false->true — это фактически "выгнать" бойца из
+    # формирования: профиль обнуляется, чтобы при реактивации он обязательно
+    # прошёл регистрацию заново (см. app/api/registration.py), а не сохранил
+    # старые ИДН/звание/позывной как ни в чём не бывало
+    became_inactive = changes.get("is_inactive") is True and not user.is_inactive
+
     if "rank_id" in changes and changes["rank_id"] != user.rank_id:
         user.rank_assigned_at = datetime.now(timezone.utc) if changes["rank_id"] is not None else None
 
     for key, value in changes.items():
         setattr(user, key, value)
+
+    if became_inactive:
+        user.registration_status = "pending"
+        user.service_id = None
+        user.callsign = None
+        user.nickname_override = None
+        user.rank_id = None
+        user.rank_assigned_at = None
 
     await db.commit()
     await db.refresh(user, attribute_names=["rank"])

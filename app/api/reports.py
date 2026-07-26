@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
+from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
 from app.crud import promotion as promotion_crud
 from app.crud import rank as rank_crud
@@ -48,6 +49,9 @@ async def list_reports(
     рапорты своего формирования, администратор — все рапорты всех формирований."""
     if not access.has_access:
         raise ForbiddenError("У вас нет доступа ни к одному формированию")
+
+    if not (access.is_admin or access.is_high_command) and access.user.registration_status != "approved":
+        raise ForbiddenError("Регистрация ещё не пройдена или не одобрена — рапорты недоступны")
 
     visible_target_regiment_ids: set[int] | None = None
     if access.is_admin or access.is_high_command:
@@ -100,6 +104,9 @@ async def create_report(
     if access.user.is_inactive:
         raise ForbiddenError("Вы отмечены как неактивный боец и не можете создавать рапорты")
 
+    if not (access.is_admin or access.is_high_command) and access.user.registration_status != "approved":
+        raise ForbiddenError("Регистрация ещё не пройдена или не одобрена — рапорты недоступны")
+
     allowed_regiments = access.commander_regiment_ids | access.soldier_regiment_ids
     if not (access.is_admin or access.is_high_command) and payload.regiment_id not in allowed_regiments:
         raise ForbiddenError("Вы не состоите в этом формировании")
@@ -107,6 +114,8 @@ async def create_report(
     target_fields: dict = {}
     if payload.category_id is not None:
         category = await report_category_crud.get_by_id(db, payload.category_id)
+        if category is not None and category.is_promotion:
+            raise ForbiddenError("Категория «Повышение» системная — рапорт в ней создаётся автоматически")
         if category is not None and category.is_detention:
             if not access.can_file_detention_report:
                 raise ForbiddenError("Подавать рапорт о задержании может только назначенный администратором круг лиц")
@@ -206,6 +215,12 @@ async def update_report_status(
     if report.category_id is not None:
         category = await report_category_crud.get_by_id(db, report.category_id)
 
+    if category is not None and category.is_promotion:
+        raise ForbiddenError(
+            "Это дубликат заявки на повышение — решение принимается на странице «Повышения», "
+            "а не здесь, чтобы не разойтись с фактическим статусом заявки"
+        )
+
     # Автоначисление балла категории при одобрении — только если рапорту ещё не
     # выставлен балл вручную, и у его категории задан балл по умолчанию
     if payload.status == ReportStatus.APPROVED and report.points is None and category is not None:
@@ -264,10 +279,10 @@ async def update_report_status(
                 await report_participant_crud.award(
                     db, report_id=updated.id, user_id=participant.id, points=category.participant_points
                 )
-                await promotion_crud.check_and_create_promotion_request(db, participant)
+                await promotion_crud.check_and_create_promotion_request(db, participant, regiment_id=updated.regiment_id)
 
     if payload.status == ReportStatus.APPROVED:
-        await promotion_crud.check_and_create_promotion_request(db, updated.author)
+        await promotion_crud.check_and_create_promotion_request(db, updated.author, regiment_id=updated.regiment_id)
 
     return ReportRead.model_validate(updated)
 
@@ -278,16 +293,30 @@ async def delete_report(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> ReportRead:
-    """Мягкое удаление рапорта — только командир формирования или администратор."""
+    """Мягкое удаление рапорта — командир формирования или администратор; рапорт о
+    задержании — только администратор (аннулировать обвинение может лишь он)."""
     report = await report_crud.get_by_id(db, report_id)
     if report is None:
         raise NotFoundError("Рапорт не найден")
 
-    if not access.is_commander_of(report.regiment_id):
+    category = None
+    if report.category_id is not None:
+        category = await report_category_crud.get_by_id(db, report.category_id)
+
+    if category is not None and category.is_detention:
+        if not access.is_admin:
+            raise ForbiddenError("Аннулировать рапорт о задержании может только администратор")
+        await audit_log_crud.log(
+            db,
+            actor_user_id=access.user.id,
+            action="detention_report_delete",
+            details=f"Удалил рапорт о задержании {report_id} (формирование {report.regiment_id})",
+        )
+    elif not access.is_commander_of(report.regiment_id):
         raise ForbiddenError("Удалять рапорт может только командир формирования")
 
     deleted = await report_crud.soft_delete(db, report, updated_by=access.user.id)
-    logger.info("Командир %s удалил рапорт %s", access.user.username, report_id)
+    logger.info("%s удалил рапорт %s", access.user.username, report_id)
     return ReportRead.model_validate(deleted)
 
 

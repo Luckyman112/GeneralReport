@@ -50,6 +50,7 @@ async def list_reports_since(
         selectinload(Report.target_rank),
         selectinload(Report.author_rank),
         selectinload(Report.updated_by_rank),
+        selectinload(Report.category),
     ).order_by(Report.created_at.desc())
     result = await db.execute(query)
     return list(result.scalars().all())

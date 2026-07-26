@@ -38,6 +38,8 @@ class GuildMemberRead(BaseModel):
     # Сколько дней участник в текущем звании — для сверки с требованием по выслуге
     days_in_rank: int | None = None
     is_inactive: bool = False
+    early_promoted_by_username: str | None = None
+    early_promotion_reason: str | None = None
 
 
 class MemberProfileUpdate(BaseModel):
@@ -53,6 +55,9 @@ class MemberProfileUpdate(BaseModel):
     callsign: str | None = None
     rank_id: int | None = None
     is_inactive: bool | None = None
+    # Причина досрочного повышения — учитывается, только если rank_id реально
+    # меняется (см. app/api/regiments.py::update_member_profile)
+    early_promotion_reason: str | None = None
 
 
 class TenureOverrideUpdate(BaseModel):

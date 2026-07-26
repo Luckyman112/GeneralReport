@@ -7,6 +7,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
 
   if (isAuthenticated) return <Navigate to="/main" replace />;
 
@@ -33,18 +34,25 @@ export function LoginPage() {
         Войти через Discord
       </button>
 
-      <form className="password-login-form" onSubmit={handlePasswordLogin}>
-        <input
-          type="password"
-          placeholder="Пароль администратора"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button type="submit" disabled={submitting}>
-          Войти по паролю
+      {showPasswordForm ? (
+        <form className="password-login-form" onSubmit={handlePasswordLogin}>
+          <input
+            type="password"
+            placeholder="Пароль администратора"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoFocus
+          />
+          <button type="submit" disabled={submitting}>
+            Войти по паролю
+          </button>
+          {passwordError && <p className="error-text">{passwordError}</p>}
+        </form>
+      ) : (
+        <button type="button" className="login-page-hidden-link" onClick={() => setShowPasswordForm(true)}>
+          ·
         </button>
-        {passwordError && <p className="error-text">{passwordError}</p>}
-      </form>
+      )}
     </div>
   );
 }

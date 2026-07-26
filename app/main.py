@@ -18,6 +18,7 @@ from app.api.module_access import router as module_access_router
 from app.api.notifications import router as notifications_router
 from app.api.promotions import router as promotions_router
 from app.api.ranks import router as ranks_router
+from app.api.registration import router as registration_router
 from app.api.regiments import router as regiments_router
 from app.api.reprimands import regiment_router as reprimands_regiment_router
 from app.api.reprimands import router as reprimands_router
@@ -75,6 +76,7 @@ app.include_router(reprimands_regiment_router, prefix="/api")
 app.include_router(promotions_router, prefix="/api")
 app.include_router(stats_router, prefix="/api")
 app.include_router(backups_router, prefix="/api")
+app.include_router(registration_router, prefix="/api")
 app.include_router(leave_requests_router, prefix="/api")
 app.include_router(audit_log_router, prefix="/api")
 

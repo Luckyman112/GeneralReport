@@ -142,6 +142,7 @@ export function AuthProvider({ children }) {
     viewAs,
     applyViewAs,
     resetViewAs,
+    refreshMe: () => loadMe(token),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

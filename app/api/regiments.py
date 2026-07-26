@@ -309,6 +309,8 @@ def _build_guild_member(member: dict, user: User | None) -> GuildMemberRead:
         rank=RankRead.model_validate(user.rank) if user and user.rank else None,
         days_in_rank=days_in_rank,
         is_inactive=user.is_inactive if user else False,
+        early_promoted_by_username=user.early_promoted_by_username if user else None,
+        early_promotion_reason=user.early_promotion_reason if user else None,
     )
 
 
@@ -360,12 +362,20 @@ async def update_member_profile(
         raise NotFoundError("Участник не найден в этом формировании")
 
     changes = payload.model_dump(exclude_unset=True)
+    early_promotion_reason = changes.pop("early_promotion_reason", None)
     if "callsign" in changes:
         changes["nickname_override"] = changes["callsign"]
     if "rank_id" in changes and changes["rank_id"] is not None:
         rank = await rank_crud.get_by_id(db, changes["rank_id"])
         if rank is None:
             raise NotFoundError("Звание не найдено")
+
+    existing_user = await user_crud.get_by_discord_id(db, discord_id)
+    if "rank_id" in changes and changes["rank_id"] != (existing_user.rank_id if existing_user else None):
+        # Смена звания вручную (не через обычную заявку) — фиксируем, кто и почему,
+        # чтобы это было видно в личном деле бойца (см. GuildMemberRead)
+        changes["early_promoted_by_username"] = access.user.username
+        changes["early_promotion_reason"] = early_promotion_reason
 
     user = await user_crud.update_profile(
         db, discord_id=discord_id, fallback_username=member["username"], changes=changes
@@ -444,7 +454,7 @@ async def create_points_adjustment(
         reason=payload.reason,
         created_by=access.user.id,
     )
-    await promotion_crud.check_and_create_promotion_request(db, user)
+    await promotion_crud.check_and_create_promotion_request(db, user, regiment_id=regiment_id)
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,

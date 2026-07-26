@@ -11,6 +11,7 @@ export function SettingsPage() {
   const [commanderRoleId, setCommanderRoleId] = useState("");
   const [deputyRoleId, setDeputyRoleId] = useState("");
   const [highCommandRoleId, setHighCommandRoleId] = useState("");
+  const [founderRoleId, setFounderRoleId] = useState("");
   const [adminUserDiscordIds, setAdminUserDiscordIds] = useState([]);
   const [addAdminId, setAddAdminId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -35,6 +36,7 @@ export function SettingsPage() {
         setDeputyRoleId(current.deputy_role_id || "");
         setHighCommandRoleId(current.high_command_role_id || "");
         setAdminUserDiscordIds(current.admin_user_discord_ids || []);
+        setFounderRoleId(current.founder_role_id || "");
       } catch (e) {
         setError(e.message);
       } finally {
@@ -68,6 +70,7 @@ export function SettingsPage() {
         deputyRoleId,
         highCommandRoleId,
         adminUserDiscordIds,
+        founderRoleId,
       });
       setSaved(true);
     } catch (e) {
@@ -120,6 +123,18 @@ export function SettingsPage() {
             ))}
           </ul>
         )}
+
+        <label>
+          Роль основателя (полные права администратора, для аудита действий)
+          <select value={founderRoleId} onChange={(e) => setFounderRoleId(e.target.value)}>
+            <option value="">— не выбрано —</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label>
           Роль командира

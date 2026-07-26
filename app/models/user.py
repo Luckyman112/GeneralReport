@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -31,5 +31,19 @@ class User(Base):
     # Неактивный боец не может создавать рапорты и видит блокирующий экран вместо
     # интерфейса — переключается командиром/заместителем формирования
     is_inactive: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    # Регистрация нового бойца: "pending" (по умолчанию для всех НОВЫХ пользователей —
+    # видит форму регистрации/ожидания вместо интерфейса, не может подавать и видеть
+    # рапорты), "approved" (одобрил зам+/командир его формирования — полный доступ),
+    # "rejected" (отклонено — доступ закрыт, можно подать заявку заново). Уже
+    # существовавшие на момент введения этой колонки пользователи имеют "approved"
+    # (см. миграцию 0027) — регистрацию заново не проходят.
+    registration_status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+
+    # Заполняется, когда звание меняют вручную (не через обычную заявку на
+    # повышение) — командир/заместитель/админ, снимок ника + причина; очищается
+    # при следующем обычном одобрении заявки (см. app/crud/promotion.py::decide)
+    early_promoted_by_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    early_promotion_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

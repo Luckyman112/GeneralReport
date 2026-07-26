@@ -29,6 +29,10 @@ class ReportCategory(Base):
     # "Нарушителях" (см. app/api/reports.py) — заводить/снимать флаг может только
     # высшее командование/администратор, как и всю остальную категорию
     is_detention: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Категория "Повышение" — сюда системно дублируются заявки на повышение (см.
+    # app/crud/promotion.py), заводится автоматически при создании формирования,
+    # как и is_detention; вручную рапорт в ней не создать (см. app/api/reports.py)
+    is_promotion: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Балл, который получает КАЖДЫЙ участник рапорта (из ростер-полей, не автор) при
     # одобрении — настраивает полноправный командир/высшее командование/админ,
     # так же как обычные points. None — участникам баллы не начисляются.

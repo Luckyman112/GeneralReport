@@ -9,6 +9,7 @@ class AppSettingsRead(BaseModel):
     deputy_role_id: str | None
     high_command_role_id: str | None
     admin_user_discord_ids: list[str]
+    founder_role_id: str | None
 
 
 class AppSettingsUpdate(BaseModel):
@@ -17,3 +18,4 @@ class AppSettingsUpdate(BaseModel):
     deputy_role_id: str | None = None
     high_command_role_id: str | None = None
     admin_user_discord_ids: list[str] | None = None
+    founder_role_id: str | None = None

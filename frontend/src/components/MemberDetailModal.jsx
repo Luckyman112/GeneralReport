@@ -5,6 +5,7 @@ import { SaveBar } from "./SaveBar";
 import { useToast } from "./ToastContext";
 import { StatusBadge } from "./StatusBadge";
 import { formatMskDate } from "../utils/formatDate";
+import { formatFullName } from "../utils/formatName";
 
 function profileSnapshot(member) {
   return {
@@ -35,6 +36,8 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [expandedRankKey, setExpandedRankKey] = useState(null);
+  const [showReprimandHistory, setShowReprimandHistory] = useState(false);
+  const [earlyPromotionReason, setEarlyPromotionReason] = useState("");
 
   // Баллы за рапорт (Report.points) относятся к автору рапорта — для рапортов, где
   // боец лишь указан участником, здесь этой суммы нет (баллы участника хранятся
@@ -58,6 +61,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     return Array.from(groups.values());
   }, [reports]);
   const memberReprimands = reprimands.filter((r) => r.target.discord_id === member.discord_id);
+  const activeReprimands = memberReprimands.filter((r) => !r.revoked_at);
   const hasActiveReprimand = memberReprimands.some((r) => !r.revoked_at && r.severity !== "verbal");
   const memberLeaveRequests = leaveRequests.filter((r) => r.user.discord_id === member.discord_id);
 
@@ -131,19 +135,23 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     setCallsign(baseline.callsign);
     setRankId(baseline.rankId);
     setIsInactive(baseline.isInactive);
+    setEarlyPromotionReason("");
   }
 
   async function handleSaveProfile() {
     setSaving(true);
     setError(null);
     try {
+      const rankChanged = rankId !== baseline.rankId;
       await api.setMemberProfile(token, regimentId, member.discord_id, {
         service_id: serviceId.trim() || null,
         callsign: callsign.trim() || null,
         rank_id: rankId === "" ? null : Number(rankId),
         is_inactive: isInactive,
+        ...(rankChanged ? { early_promotion_reason: earlyPromotionReason.trim() || null } : {}),
       });
       setBaseline({ serviceId, callsign, rankId, isInactive });
+      setEarlyPromotionReason("");
       showToast("Профиль сохранён");
       onSaved();
     } catch (e) {
@@ -191,10 +199,31 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
               Позывной (он же веб-ник — используется везде, включая рапорты)
               <input type="text" value={callsign} onChange={(e) => setCallsign(e.target.value)} />
             </label>
+            {rankId !== baseline.rankId && (
+              <label>
+                Причина досрочного повышения
+                <input
+                  type="text"
+                  value={earlyPromotionReason}
+                  onChange={(e) => setEarlyPromotionReason(e.target.value)}
+                />
+              </label>
+            )}
+            {member.early_promoted_by_username && (
+              <p className="hint-text">
+                Досрочно повысил: {member.early_promoted_by_username}
+                {member.early_promotion_reason && ` — ${member.early_promotion_reason}`}
+              </p>
+            )}
             <label className="checkbox-label">
               <input type="checkbox" checked={isInactive} onChange={(e) => setIsInactive(e.target.checked)} />
               Неактивен (не может писать рапорта)
             </label>
+            {isInactive && !baseline.isInactive && (
+              <p className="error-text">
+                При сохранении профиль обнулится (ИДН/звание/позывной) — при реактивации боец пройдёт регистрацию заново.
+              </p>
+            )}
             <SaveBar
               visible={isDirty}
               saving={saving}
@@ -250,9 +279,43 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
         <h4>
           Выговоры {hasActiveReprimand && <span className="member-inactive-badge">есть непогашенный (строгий)</span>}
         </h4>
-        {memberReprimands.length === 0 ? (
-          <p className="hint-text">Выговоров нет.</p>
+        {activeReprimands.length === 0 ? (
+          <p className="hint-text">Активных выговоров нет.</p>
         ) : (
+          <ul className="member-report-list">
+            {activeReprimands.map((r) => (
+              <li key={r.id}>
+                <span className="error-text">действует</span>{" "}
+                <span className="hint-text">{r.severity === "verbal" ? "устный" : "строгий"}</span>
+                {r.auto_escalated && <span className="hint-text"> (авто-эскалация)</span>}
+                <span className="member-report-date">{formatMskDate(r.issued_at)} МСК</span>
+                <p className="member-report-content">{r.reason}</p>
+                {r.points_required > 0 && (
+                  <p className="hint-text">
+                    Для снятия нужно баллов: {r.points_required} (набрано: {r.points_earned})
+                  </p>
+                )}
+                {canEdit && (
+                  <button className="ghost" onClick={() => handleRevokeReprimand(r.id)}>
+                    Снять
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {memberReprimands.length > 0 && (
+          <button
+            type="button"
+            className="ghost rank-accordion-header"
+            onClick={() => setShowReprimandHistory((v) => !v)}
+          >
+            <span className={`rank-accordion-arrow ${showReprimandHistory ? "rank-accordion-arrow-open" : ""}`}>▸</span>
+            <span>История выговоров ({memberReprimands.length})</span>
+          </button>
+        )}
+        {showReprimandHistory && (
           <ul className="member-report-list">
             {memberReprimands.map((r) => (
               <li key={r.id}>
@@ -267,11 +330,6 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                   <p className="hint-text">
                     Для снятия нужно баллов: {r.points_required} (набрано: {r.points_earned})
                   </p>
-                )}
-                {canEdit && !r.revoked_at && (
-                  <button className="ghost" onClick={() => handleRevokeReprimand(r.id)}>
-                    Снять
-                  </button>
                 )}
               </li>
             ))}
@@ -313,6 +371,9 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                   {r.start_date} — {r.end_date}
                 </span>
                 <p className="member-report-content">{r.reason}</p>
+                {r.decided_by_user && (
+                  <p className="hint-text">Решение: {formatFullName(r.decided_by_user)}</p>
+                )}
               </li>
             ))}
           </ul>

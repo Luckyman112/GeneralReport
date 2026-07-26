@@ -34,6 +34,7 @@ export function AdminPanelPage() {
   const [serviceId, setServiceId] = useState("");
   const [callsign, setCallsign] = useState("");
   const [rankId, setRankId] = useState("");
+  const [earlyPromotionReason, setEarlyPromotionReason] = useState("");
   const [daysInRank, setDaysInRank] = useState("");
 
   const [adjustmentPoints, setAdjustmentPoints] = useState("");
@@ -85,6 +86,7 @@ export function AdminPanelPage() {
     setServiceId(profileBaseline.serviceId);
     setCallsign(profileBaseline.callsign);
     setRankId(profileBaseline.rankId);
+    setEarlyPromotionReason("");
   }
 
   function report(fn) {
@@ -103,12 +105,15 @@ export function AdminPanelPage() {
   }
 
   const handleSaveProfile = report(async () => {
+    const rankChanged = rankId !== profileBaseline.rankId;
     await api.setMemberProfile(token, regimentId, discordId, {
       service_id: serviceId.trim() || null,
       callsign: callsign.trim() || null,
       rank_id: rankId === "" ? null : Number(rankId),
+      ...(rankChanged ? { early_promotion_reason: earlyPromotionReason.trim() || null } : {}),
     });
     setProfileBaseline({ serviceId, callsign, rankId });
+    setEarlyPromotionReason("");
   });
 
   const handleSaveTenure = report(async () => {
@@ -212,6 +217,23 @@ export function AdminPanelPage() {
                 ))}
               </select>
             </label>
+            {rankId !== profileBaseline.rankId && (
+              <label>
+                Причина досрочного повышения
+                <input
+                  type="text"
+                  value={earlyPromotionReason}
+                  onChange={(e) => setEarlyPromotionReason(e.target.value)}
+                  placeholder="например: заслуга в операции"
+                />
+              </label>
+            )}
+            {member.early_promoted_by_username && (
+              <p className="hint-text">
+                Досрочно повысил: {member.early_promoted_by_username}
+                {member.early_promotion_reason && ` — ${member.early_promotion_reason}`}
+              </p>
+            )}
             <SaveBar
               visible={isProfileDirty}
               saving={false}

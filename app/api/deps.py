@@ -187,6 +187,7 @@ async def get_access_context(
         is_password_login
         or (app_config.admin_role_id in role_ids)
         or user.discord_id in (app_config.admin_user_discord_ids or [])
+        or (app_config.founder_role_id and app_config.founder_role_id in role_ids)
     )
     is_high_command = bool(app_config.high_command_role_id) and app_config.high_command_role_id in role_ids
     has_commander_role = app_config.commander_role_id in role_ids or app_config.deputy_role_id in role_ids

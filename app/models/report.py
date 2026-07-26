@@ -76,3 +76,8 @@ class Report(Base):
     target_rank: Mapped["Rank | None"] = relationship(foreign_keys=[target_rank_id])
     author_rank: Mapped["Rank | None"] = relationship(foreign_keys=[author_rank_id])
     updated_by_rank: Mapped["Rank | None"] = relationship(foreign_keys=[updated_by_rank_id])
+    category: Mapped["ReportCategory | None"] = relationship()
+
+    @property
+    def category_name(self) -> str | None:
+        return self.category.name if self.category else None

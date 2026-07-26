@@ -208,7 +208,12 @@ input[type="number"] {
 }
 
 .fade-in-up {
-  animation: fade-in-up 0.25s ease both;
+  /* backwards, не both: "both" оставляет transform (даже translateY(0)) на
+     элементе НАВСЕГДА после конца анимации, а любой transform на предке создаёт
+     новый containing block — вложенные модалки (position: fixed) с таким предком
+     "прилипают" к нему вместо центрирования на весь экран. Итоговый визуальный
+     эффект тот же (translateY(0) == без transform), просто без побочного эффекта. */
+  animation: fade-in-up 0.25s ease backwards;
 }
 
 body {
@@ -567,6 +572,22 @@ label {
 
 .inactive-block h2 {
   color: var(--danger);
+}
+
+.login-page-hidden-link {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  opacity: 0.25;
+  font-size: 1.1rem;
+  padding: 1rem;
+  cursor: default;
+  transition: opacity 0.2s ease;
+}
+
+.login-page-hidden-link:hover {
+  opacity: 0.6;
+  cursor: pointer;
 }
 
 .login-page {
@@ -1034,8 +1055,21 @@ label {
 }
 
 .category-points-badge {
-  font-size: 0.8rem;
-  color: var(--warning);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-glow);
+  padding: 0.1rem 0.5rem;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.rank-requirement-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .member-profile-form {
@@ -1456,9 +1490,20 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .category-list-nested {
   margin: 0.35rem 0 0.35rem 1.25rem;
   padding-left: 0.6rem;
-  border-left: 2px solid var(--border);
+  border-left: 2px solid var(--accent);
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+/* Карточка одного звания в требованиях по повышению — рамка держит заголовок
+   звания и вложенные под ним требования визуально вместе, чтобы не приходилось
+   вычислять на глаз, какое требование к какому званию относится */
+.category-list li.rank-requirement-card {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  background: var(--surface-2);
 }
 
 .member-list li {

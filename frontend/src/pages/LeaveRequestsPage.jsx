@@ -168,6 +168,9 @@ export function LeaveRequestsPage() {
               </div>
               <p className="report-content">{r.reason}</p>
               <p className="report-byline">Подана: {formatMskDate(r.created_at)} МСК</p>
+              {r.decided_by_user && (
+                <p className="report-byline">Решение: {formatFullName(r.decided_by_user)}</p>
+              )}
               {r.status === "pending" && canDecide(r) && r.user.discord_id !== user?.discord_id && (
                 <div className="report-row-actions">
                   <button className="primary" onClick={() => handleApprove(r.id)}>

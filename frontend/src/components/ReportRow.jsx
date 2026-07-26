@@ -15,6 +15,7 @@ export function ReportRow({
   targetRegimentName,
   isOwn,
   canManage,
+  canDelete,
   canSetPoints,
   onSubmitDraft,
   onApprove,
@@ -194,7 +195,7 @@ export function ReportRow({
           </>
         )}
 
-        {canManage && report.status !== "deleted" && (
+        {(canDelete ?? canManage) && report.status !== "deleted" && (
           <button onClick={() => setConfirmDelete(true)}>Удалить</button>
         )}
         <ConfirmDialog

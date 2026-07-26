@@ -59,8 +59,9 @@ function CategoryRow({ category, onChanged, onDeleted }) {
         <strong>
           {category.name}
           {category.is_detention && <span className="detention-badge">задержание (системная)</span>}
+          {category.is_promotion && <span className="detention-badge">повышение (системная)</span>}
         </strong>
-        {!category.is_detention && (
+        {!category.is_detention && !category.is_promotion && (
           <button className="ghost" onClick={() => onDeleted(category.id)}>
             Удалить категорию
           </button>

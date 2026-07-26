@@ -56,6 +56,7 @@ class ReportRead(BaseModel):
     user_id: int
     regiment_id: int
     category_id: int | None
+    category_name: str | None = None
     content: str
     status: ReportStatus
     points: int | None

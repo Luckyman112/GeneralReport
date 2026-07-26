@@ -13,6 +13,9 @@ class UserRead(BaseModel):
     username: str
     avatar_url: str | None
     is_inactive: bool
+    registration_status: str
+    service_id: str | None
+    callsign: str | None
     created_at: datetime
 
 

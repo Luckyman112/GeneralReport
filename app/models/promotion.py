@@ -1,13 +1,16 @@
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.rank import Rank
+    from app.models.report import Report
     from app.models.report_category import ReportCategory
     from app.models.user import User
 
@@ -99,7 +102,12 @@ class PromotionRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Рапорт-дубликат заявки в системной категории "Повышение" (см. app/crud/promotion.py) —
+    # его статус синхронизируется с решением по заявке (odобрено/отклонено)
+    mirror_report_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("reports.id"), nullable=True)
 
     user: Mapped["User"] = relationship(foreign_keys=[user_id])
     from_rank: Mapped["Rank | None"] = relationship(foreign_keys=[from_rank_id])
     to_rank: Mapped["Rank"] = relationship(foreign_keys=[to_rank_id])
+    decided_by_user: Mapped["User | None"] = relationship(foreign_keys=[decided_by])
+    mirror_report: Mapped["Report | None"] = relationship(foreign_keys=[mirror_report_id])

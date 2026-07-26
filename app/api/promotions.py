@@ -38,6 +38,7 @@ from app.schemas.promotion import (
 )
 from app.schemas.rank import RankRead
 from app.schemas.report import ReportRead
+from app.schemas.user import UserBrief
 
 logger = logging.getLogger(__name__)
 
@@ -244,10 +245,14 @@ async def get_promotion_review(
     )
 
     return PromotionReviewRead(
+        regiment_id=request.regiment_id,
+        status=request.status,
         from_rank=RankRead.model_validate(request.from_rank) if request.from_rank else None,
         to_rank=RankRead.model_validate(request.to_rank),
         period_start=period_start,
         period_end=period_end,
+        decided_by=UserBrief.model_validate(request.decided_by_user) if request.decided_by_user else None,
+        decided_at=request.decided_at,
         reports=[ReportRead.model_validate(r) for r in reports],
         category_requirements=[
             CategoryRequirementStatus(
@@ -356,6 +361,8 @@ async def _compute_promotion_status(
     if is_eligible:
         await promotion_crud.check_and_create_promotion_request(db, user, regiment_id=regiment.id)
 
+    pending_request = await promotion_crud.get_pending_for_user(db, user_id=user.id)
+
     return PromotionStatusRead(
         regiment_id=regiment.id,
         current_rank=RankRead.model_validate(current_rank) if current_rank else None,
@@ -366,6 +373,7 @@ async def _compute_promotion_status(
         points_required=points_required,
         has_active_reprimand=has_active_reprimand,
         is_eligible=is_eligible,
+        pending_request_id=pending_request.id if pending_request else None,
         category_requirements=[
             CategoryRequirementStatus(
                 requirement_id=status.requirement_id,

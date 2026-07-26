@@ -6,6 +6,7 @@ import { MemberDetailModal } from "./MemberDetailModal";
 import { PromotionReviewModal } from "./PromotionReviewModal";
 
 const NO_RANK_GROUP = "Без звания";
+const PENDING_POLL_INTERVAL_MS = 20000;
 
 /** Состав формирования (ростер) — клик по участнику открывает его карточку.
  * Участники группируются по составу (звания), от высших к низшим, как в
@@ -50,17 +51,24 @@ export function RegimentPanel({ regiments, canManageMembers }) {
   useEffect(() => {
     if (!regimentId || !canEditHere) {
       setPendingRequestByDiscordId({});
-      return;
+      return undefined;
     }
-    api
-      .listPromotionRequests(token)
-      .then((requests) => {
-        const byDiscordId = Object.fromEntries(
-          requests.filter((r) => r.regiment_id === Number(regimentId)).map((r) => [r.user.discord_id, r.id])
-        );
-        setPendingRequestByDiscordId(byDiscordId);
-      })
-      .catch(() => setPendingRequestByDiscordId({}));
+    function loadPending() {
+      api
+        .listPromotionRequests(token)
+        .then((requests) => {
+          const byDiscordId = Object.fromEntries(
+            requests.filter((r) => r.regiment_id === Number(regimentId)).map((r) => [r.user.discord_id, r.id])
+          );
+          setPendingRequestByDiscordId(byDiscordId);
+        })
+        .catch(() => setPendingRequestByDiscordId({}));
+    }
+    loadPending();
+    // Кнопка "Доступно повышение" не должна висеть после того, как заявку уже
+    // решили на другой странице (например, "Повышения") — обновляем периодически
+    const interval = setInterval(loadPending, PENDING_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [token, regimentId, canEditHere]);
 
   useEffect(() => {

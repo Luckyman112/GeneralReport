@@ -223,9 +223,9 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
             {tier.ranks.map((rank) => {
               const rankRequirements = categoryRequirements.filter((r) => r.rank_id === rank.id);
               return (
-                <li key={rank.id}>
-                  <div>
-                    {rank.code} — {rank.name}
+                <li key={rank.id} className="rank-requirement-card">
+                  <div className="rank-requirement-row">
+                    <strong>{rank.code} — {rank.name}</strong>
                     {canEditDays && !isAllMode && (
                       <span className="points-inline">
                         админ. база:

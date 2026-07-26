@@ -44,6 +44,9 @@ export function Navbar() {
         <Link to="/reports">Рапорты</Link>
         {access?.can_view_violations && <Link to="/violations">Нарушители</Link>}
         <Link to="/promotions">Повышения</Link>
+        {(access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0) && (
+          <Link to="/registrations">Регистрации</Link>
+        )}
         {access?.is_admin && <Link to="/regiments">Формирования</Link>}
         {access?.is_admin && <Link to="/admin-panel">Админ-панель</Link>}
         {access?.is_admin && <Link to="/backups">Резервные копии</Link>}

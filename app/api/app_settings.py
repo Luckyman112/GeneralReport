@@ -47,6 +47,7 @@ async def update_app_settings(
         deputy_role_id=payload.deputy_role_id,
         high_command_role_id=payload.high_command_role_id,
         admin_user_discord_ids=payload.admin_user_discord_ids,
+        founder_role_id=payload.founder_role_id,
     )
     logger.info("Настройки ролей обновлены через вход по паролю: %s", payload)
     return AppSettingsRead.model_validate(row)

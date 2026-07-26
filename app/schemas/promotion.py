@@ -76,6 +76,7 @@ class PromotionStatusRead(BaseModel):
     points_required: int
     has_active_reprimand: bool
     is_eligible: bool
+    pending_request_id: int | None = None
     category_requirements: list[CategoryRequirementStatus] = []
 
 
@@ -117,10 +118,14 @@ class PromotionReviewRead(BaseModel):
     видит все рапорты бойца за текущее звание (с даты назначения) и выполненные
     требования по категориям для следующего звания."""
 
+    regiment_id: int
+    status: str
     from_rank: RankRead | None
     to_rank: RankRead
     period_start: datetime | None
     period_end: datetime
+    decided_by: UserBrief | None = None
+    decided_at: datetime | None = None
     reports: list[ReportRead] = []
     category_requirements: list[CategoryRequirementStatus] = []
 

@@ -15,6 +15,7 @@ _LOAD_OPTIONS = [
     selectinload(Report.target_rank),
     selectinload(Report.author_rank),
     selectinload(Report.updated_by_rank),
+    selectinload(Report.category),
 ]
 
 

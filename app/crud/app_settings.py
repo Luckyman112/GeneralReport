@@ -31,6 +31,7 @@ async def update(
     deputy_role_id: str | None = None,
     high_command_role_id: str | None = None,
     admin_user_discord_ids: list[str] | None = None,
+    founder_role_id: str | None = None,
 ) -> AppSettings:
     """Частичное обновление: None = поле не передано (не трогаем), пустая строка =
     явно очистить роль (сохраняем как NULL в БД). admin_user_discord_ids — список,
@@ -46,6 +47,8 @@ async def update(
         row.high_command_role_id = high_command_role_id or None
     if admin_user_discord_ids is not None:
         row.admin_user_discord_ids = admin_user_discord_ids
+    if founder_role_id is not None:
+        row.founder_role_id = founder_role_id or None
     await db.commit()
     await db.refresh(row)
     return row

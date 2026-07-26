@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "./StatusBadge";
 import { formatMskDate } from "../utils/formatDate";
+import { formatFullNameAtRank } from "../utils/formatName";
 
 /** Обзор для командира: рапорты бойца за текущее звание (с даты назначения до
  * сейчас) + выполненные требования по категориям для следующего звания. Открывается
  * кнопкой "Доступно повышение" в таблице состава. */
 export function PromotionReviewModal({ requestId, onClose }) {
   const { token } = useAuth();
+  const navigate = useNavigate();
   const [review, setReview] = useState(null);
   const [error, setError] = useState(null);
 
@@ -18,6 +21,11 @@ export function PromotionReviewModal({ requestId, onClose }) {
       .then(setReview)
       .catch((e) => setError(e.message));
   }, [token, requestId]);
+
+  function goToReport(report) {
+    onClose();
+    navigate(`/reports?regiment=${report.regiment_id}&category=${report.category_id ?? ""}`);
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -38,6 +46,13 @@ export function PromotionReviewModal({ requestId, onClose }) {
               Период: {review.period_start ? formatMskDate(review.period_start) : "—"} — {formatMskDate(review.period_end)}{" "}
               МСК
             </p>
+            {review.status !== "pending" && (
+              <p className="hint-text">
+                {review.status === "approved" ? "Одобрил" : "Отклонил"}:{" "}
+                {review.decided_by ? formatFullNameAtRank(review.decided_by, review.decided_by.rank) : "—"}
+                {review.decided_at && ` · ${formatMskDate(review.decided_at)} МСК`}
+              </p>
+            )}
 
             {review.category_requirements.length > 0 && (
               <>
@@ -65,8 +80,9 @@ export function PromotionReviewModal({ requestId, onClose }) {
             ) : (
               <ul className="member-report-list">
                 {review.reports.map((r) => (
-                  <li key={r.id}>
+                  <li key={r.id} className="clickable-row" onClick={() => goToReport(r)}>
                     <StatusBadge status={r.status} />
+                    {r.category_name && <span className="report-category"> {r.category_name}</span>}
                     {r.points !== null && <span className="category-points-badge"> Баллы: {r.points}</span>}
                     <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
                     <p className="member-report-content">{r.content}</p>

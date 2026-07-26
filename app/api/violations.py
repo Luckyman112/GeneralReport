@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
+from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
 from app.crud import rank as rank_crud
 from app.crud import regiment as regiment_crud
@@ -180,3 +181,9 @@ async def delete_violation(
 
     await violation_crud.delete(db, violation)
     logger.info("%s удалил запись о нарушении %s", access.user.username, violation_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        action="violation_delete",
+        details=f"Удалил запись о нарушении #{violation_id}",
+    )

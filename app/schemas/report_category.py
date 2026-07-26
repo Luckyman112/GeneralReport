@@ -22,6 +22,7 @@ class ReportCategoryRead(BaseModel):
     points: int | None = None
     participant_points: int | None = None
     is_detention: bool = False
+    is_promotion: bool = False
 
 
 class ReportCategoryCreate(BaseModel):

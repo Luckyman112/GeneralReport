@@ -29,4 +29,5 @@ class LeaveRequestRead(BaseModel):
     status: str
     created_at: datetime
     decided_at: datetime | None
+    decided_by_user: UserBrief | None = None
     user: UserBrief

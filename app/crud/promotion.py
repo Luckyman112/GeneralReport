@@ -8,7 +8,9 @@ from sqlalchemy.orm import selectinload
 from app.crud import notification as notification_crud
 from app.crud import points_adjustment as points_adjustment_crud
 from app.crud import rank as rank_crud
+from app.crud import regiment as regiment_crud
 from app.crud import regiment_commander as regiment_commander_crud
+from app.crud import report as report_crud
 from app.crud import report_category as report_category_crud
 from app.crud import report_participant as report_participant_crud
 from app.crud import reprimand as reprimand_crud
@@ -27,6 +29,7 @@ _REQUEST_LOAD_OPTIONS = [
     selectinload(PromotionRequest.user).selectinload(User.rank),
     selectinload(PromotionRequest.from_rank),
     selectinload(PromotionRequest.to_rank),
+    selectinload(PromotionRequest.decided_by_user),
 ]
 
 
@@ -148,6 +151,18 @@ async def decide(db: AsyncSession, request: PromotionRequest, *, approve: bool, 
         user = await db.get(User, request.user_id)
         user.rank_id = request.to_rank_id
         user.rank_assigned_at = datetime.now(timezone.utc)
+        # Обычное одобрение заявки — не "досрочное" ручное повышение, снимок
+        # (кто/почему) от предыдущего ручного изменения звания больше не актуален
+        user.early_promoted_by_username = None
+        user.early_promotion_reason = None
+
+    if request.mirror_report_id is not None:
+        decider = await db.get(User, decided_by)
+        mirror_report = await db.get(Report, request.mirror_report_id)
+        if mirror_report is not None:
+            mirror_report.status = ReportStatus.APPROVED if approve else ReportStatus.REJECTED
+            mirror_report.updated_by = decided_by
+            mirror_report.updated_by_rank_id = decider.rank_id if decider else None
 
     await db.commit()
     return await get_request_by_id(db, request.id)
@@ -218,6 +233,25 @@ async def check_and_create_promotion_request(
     )
     db.add(request)
     await db.commit()
+
+    # Дублируем заявку рапортом в системной категории "Повышение" — так её видно
+    # сразу в обычной ленте рапортов, а не только на отдельной странице "Повышения"
+    promotion_category = await report_category_crud.get_by_name(
+        db, regiment_id=regiment.id, name=regiment_crud.PROMOTION_CATEGORY_NAME
+    )
+    if promotion_category is not None:
+        current_rank = await rank_crud.get_by_id(db, user.rank_id)
+        mirror_report = await report_crud.create_report(
+            db,
+            user_id=user.id,
+            regiment_id=regiment.id,
+            category_id=promotion_category.id,
+            content=f"Заявка на повышение: {current_rank.code if current_rank else '—'} → {next_rank.code} — {next_rank.name}",
+            status=ReportStatus.SUBMITTED,
+            author_rank_id=user.rank_id,
+        )
+        request.mirror_report_id = mirror_report.id
+        await db.commit()
 
     # Заявку на повышение самого командира формирования одобрить некому в самом
     # формировании (выше него там никого нет) — уведомляем высшее командование и

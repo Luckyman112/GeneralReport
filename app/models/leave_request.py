@@ -24,3 +24,4 @@ class LeaveRequest(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(foreign_keys=[user_id])
+    decided_by_user: Mapped["User | None"] = relationship(foreign_keys=[decided_by])

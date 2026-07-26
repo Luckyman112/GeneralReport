@@ -20,6 +20,10 @@ class AppSettings(Base):
     # Конкретные люди с правами администратора (в дополнение к admin_role_id) —
     # позволяет назначить админом того, у кого нет/не хочется давать Discord-роль
     admin_user_discord_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Роль "Основатель" — права полностью равны администратору, но человек заходит
+    # под своим собственным Discord-аккаунтом (не общим паролем), поэтому в аудит-логе
+    # видно именно его имя, а не обезличенное "Локальный администратор"
+    founder_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     commander_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     deputy_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Высшее командование — как командир/зам, но сразу для всех формирований;
