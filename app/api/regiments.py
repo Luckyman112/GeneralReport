@@ -1,15 +1,18 @@
 """Эндпоинты для просмотра и настройки формирований: роли, категории рапортов,
 назначение командиров, состав участников."""
 import logging
+import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
+from app.crud import character as character_crud
 from app.crud import points_adjustment as points_adjustment_crud
 from app.crud import promotion as promotion_crud
 from app.crud import rank as rank_crud
@@ -20,8 +23,14 @@ from app.crud import report_category as report_category_crud
 from app.crud import report_participant as report_participant_crud
 from app.crud import user as user_crud
 from app.database import get_db
-from app.exceptions import ForbiddenError, NotFoundError
+from app.exceptions import AppError, ForbiddenError, NotFoundError
+from app.models.character import Character
+from app.models.report import ReportStatus
 from app.models.user import User
+
+_PHOTO_UPLOAD_ROOT = Path(__file__).resolve().parent.parent.parent / "uploads" / "members"
+_ALLOWED_PHOTO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+_MAX_PHOTO_SIZE = 5 * 1024 * 1024  # 5 МБ
 from app.schemas.audit_log import AuditLogRead
 from app.schemas.promotion import PointsAdjustmentRead
 from app.schemas.rank import RankRead
@@ -55,6 +64,14 @@ async def _get_regiment_or_404(db: AsyncSession, regiment_id: int):
     if regiment is None:
         raise NotFoundError("Формирование не найдено")
     return regiment
+
+
+def _check_rank_matches_regiment(rank, regiment) -> None:
+    # jedi order <-> jedi ranks only, no mixing
+    if regiment.is_jedi_order and not rank.tier.is_jedi:
+        raise AppError("Этому формированию можно назначить только джедайское звание")
+    if not regiment.is_jedi_order and rank.tier.is_jedi:
+        raise AppError("Обычному формированию нельзя назначить джедайское звание")
 
 
 @router.get("", response_model=list[RegimentRead])
@@ -93,6 +110,7 @@ async def create_regiment(
         discord_role_id=payload.discord_role_id,
         color=payload.color,
         discord_channel_url=payload.discord_channel_url,
+        is_jedi_order=payload.is_jedi_order,
     )
     logger.info("Администратор %s создал формирование %s", access.user.username, regiment.name)
     return RegimentRead.model_validate(regiment)
@@ -154,6 +172,8 @@ async def create_category(
         # is_detention всегда False здесь — категория задержания системная,
         # заводится автоматически при создании формирования (см. regiment_crud.create)
         is_detention=False,
+        min_rank_id=payload.min_rank_id,
+        commander_only=payload.commander_only,
     )
     logger.info("%s добавил категорию '%s' формированию %s", access.user.username, category.name, regiment_id)
     return ReportCategoryRead.model_validate(category)
@@ -198,8 +218,8 @@ async def delete_category(
     category = await report_category_crud.get_by_id(db, category_id)
     if category is None or category.regiment_id != regiment_id:
         raise NotFoundError("Категория не найдена")
-    if category.is_detention:
-        raise ForbiddenError("Категория задержания системная, её нельзя удалить")
+    if category.is_detention or category.is_promotion or category.is_demotion or category.is_training:
+        raise ForbiddenError("Это системная категория, её нельзя удалить")
 
     await report_category_crud.delete(db, category)
 
@@ -235,6 +255,54 @@ async def get_commander_candidates(
             is_deputy_role=app_config.deputy_role_id in m["roles"],
         )
         for m in candidates
+    ]
+
+
+@router.get("/{regiment_id}/mentor-candidates", response_model=list[GuildMemberRead])
+async def get_mentor_candidates(
+    regiment_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[GuildMemberRead]:
+    # members of mentor_source_regiment_ids + all jedi characters
+    if not access.is_admin:
+        raise ForbiddenError("Только администратор может назначать наставников")
+
+    app_config = await app_settings_crud.get(db)
+    source_regiments = [
+        r for r in await regiment_crud.get_all(db) if r.id in app_config.mentor_source_regiment_ids
+    ]
+    source_role_ids = {r.discord_role_id for r in source_regiments}
+
+    members = await discord_client.fetch_guild_members()
+    candidates_by_discord_id = {
+        m["discord_id"]: m for m in members if source_role_ids & set(m["roles"])
+    }
+
+    jedi_characters = await character_crud.list_jedi(db)
+    members_by_discord_id = {m["discord_id"]: m for m in members}
+    for character in jedi_characters:
+        discord_id = character.user.discord_id
+        if discord_id in candidates_by_discord_id:
+            continue
+        fallback_member = members_by_discord_id.get(discord_id) or {
+            "discord_id": discord_id,
+            "username": character.user.username,
+            "avatar_url": character.user.avatar_url,
+            "roles": [],
+        }
+        candidates_by_discord_id[discord_id] = fallback_member
+
+    return [
+        GuildMemberRead(
+            discord_id=m["discord_id"],
+            username=m["username"],
+            discord_username=m["username"],
+            avatar_url=m["avatar_url"],
+            is_commander_role=app_config.commander_role_id in m["roles"],
+            is_deputy_role=app_config.deputy_role_id in m["roles"],
+        )
+        for m in candidates_by_discord_id.values()
     ]
 
 
@@ -299,10 +367,28 @@ async def remove_commander(
 # --- Состав формирования (ростер) ---------------------------------------------------
 
 
-def _build_guild_member(member: dict, user: User | None) -> GuildMemberRead:
+def _build_guild_member(member: dict, user: User | None, character: Character | None = None) -> GuildMemberRead:
+    # character overrides profile fields if user has one in this regiment
     days_in_rank = None
-    if user is not None and user.rank_assigned_at is not None:
-        days_in_rank = (datetime.now(timezone.utc) - user.rank_assigned_at).days
+    rank_assigned_at = character.rank_assigned_at if character else (user.rank_assigned_at if user else None)
+    if rank_assigned_at is not None:
+        days_in_rank = (datetime.now(timezone.utc) - rank_assigned_at).days
+
+    if character is not None:
+        return GuildMemberRead(
+            discord_id=member["discord_id"],
+            username=member["username"],
+            discord_username=member["username"],
+            avatar_url=member["avatar_url"],
+            service_id=character.service_id,
+            callsign=character.callsign,
+            steam_id=character.steam_id or (user.steam_id if user else None),
+            photo_url=user.photo_url if user else None,
+            rank=RankRead.model_validate(character.rank) if character.rank else None,
+            days_in_rank=days_in_rank,
+            is_inactive=character.is_inactive,
+            rank_assigned_at=rank_assigned_at,
+        )
 
     return GuildMemberRead(
         discord_id=member["discord_id"],
@@ -312,11 +398,15 @@ def _build_guild_member(member: dict, user: User | None) -> GuildMemberRead:
         service_id=user.service_id if user else None,
         callsign=user.callsign if user else None,
         steam_id=user.steam_id if user else None,
+        photo_url=user.photo_url if user else None,
         rank=RankRead.model_validate(user.rank) if user and user.rank else None,
         days_in_rank=days_in_rank,
         is_inactive=user.is_inactive if user else False,
         early_promoted_by_username=user.early_promoted_by_username if user else None,
         early_promotion_reason=user.early_promotion_reason if user else None,
+        last_login_at=user.last_login_at if user else None,
+        joined_at=user.created_at if user else None,
+        rank_assigned_at=rank_assigned_at,
     )
 
 
@@ -333,14 +423,38 @@ async def get_members(
     regiment = await _get_regiment_or_404(db, regiment_id)
 
     members = await discord_client.fetch_guild_members()
+    members_by_discord_id = {m["discord_id"]: m for m in members}
     roster = [m for m in members if regiment.discord_role_id in m["roles"]]
+    roster_discord_ids = {m["discord_id"] for m in roster}
+
+    # characters can be in roster without the actual discord role
+    characters = await character_crud.get_by_regiment_id(db, regiment_id=regiment_id)
+    characters_by_discord_id = {c.user.discord_id: c for c in characters}
+
+    for character in characters:
+        discord_id = character.user.discord_id
+        if discord_id in roster_discord_ids:
+            continue
+        fallback_member = members_by_discord_id.get(discord_id) or {
+            "discord_id": discord_id,
+            "username": character.user.username,
+            "avatar_url": character.user.avatar_url,
+            "roles": [],
+        }
+        roster.append(fallback_member)
+        roster_discord_ids.add(discord_id)
 
     users_by_discord_id = {
         u.discord_id: u
         for u in await user_crud.get_by_discord_ids(db, [m["discord_id"] for m in roster])
     }
 
-    return [_build_guild_member(m, users_by_discord_id.get(m["discord_id"])) for m in roster]
+    return [
+        _build_guild_member(
+            m, users_by_discord_id.get(m["discord_id"]), characters_by_discord_id.get(m["discord_id"])
+        )
+        for m in roster
+    ]
 
 
 @router.patch("/{regiment_id}/members/{discord_id}/profile", response_model=GuildMemberRead)
@@ -375,23 +489,63 @@ async def update_member_profile(
         rank = await rank_crud.get_by_id(db, changes["rank_id"])
         if rank is None:
             raise NotFoundError("Звание не найдено")
+        _check_rank_matches_regiment(rank, regiment)
 
     existing_user = await user_crud.get_by_discord_id(db, discord_id)
-    if "rank_id" in changes and changes["rank_id"] != (existing_user.rank_id if existing_user else None):
+    old_rank_id = existing_user.rank_id if existing_user else None
+    new_rank_id = changes.get("rank_id")
+    rank_changed = "rank_id" in changes and new_rank_id != old_rank_id
+    if rank_changed:
         # Смена звания вручную (не через обычную заявку) — фиксируем, кто и почему,
         # чтобы это было видно в личном деле бойца (см. GuildMemberRead)
         changes["early_promoted_by_username"] = access.user.username
         changes["early_promotion_reason"] = early_promotion_reason
 
+    is_demotion = False
+    if rank_changed and old_rank_id is not None and new_rank_id is not None:
+        ordered_ranks = await rank_crud.get_all_ranks_ordered(db)
+        order_index = {r.id: i for i, r in enumerate(ordered_ranks)}
+        if old_rank_id in order_index and new_rank_id in order_index:
+            is_demotion = order_index[new_rank_id] < order_index[old_rank_id]
+
     user = await user_crud.update_profile(
         db, discord_id=discord_id, fallback_username=member["username"], changes=changes
     )
     logger.info("%s обновил профиль участника %s: %s", access.user.username, discord_id, changes)
+
+    if is_demotion:
+        # mirror demotion as a report, same as promotion requests
+        demotion_category = await report_category_crud.get_by_name(
+            db, regiment_id=regiment_id, name=regiment_crud.DEMOTION_CATEGORY_NAME
+        )
+        if demotion_category is not None:
+            old_rank = await rank_crud.get_by_id(db, old_rank_id)
+            new_rank = await rank_crud.get_by_id(db, new_rank_id)
+            content = f"Понижение: {old_rank.code if old_rank else '—'} → {new_rank.code if new_rank else '—'}"
+            if early_promotion_reason:
+                content += f" — {early_promotion_reason}"
+            mirror_report = await report_crud.create_report(
+                db,
+                user_id=user.id,
+                regiment_id=regiment_id,
+                category_id=demotion_category.id,
+                content=content,
+                status=ReportStatus.SUBMITTED,
+                author_rank_id=new_rank_id,
+            )
+            await report_crud.update_status(
+                db,
+                mirror_report,
+                status=ReportStatus.APPROVED,
+                updated_by=access.user.id,
+                updated_by_rank_id=access.user.rank_id,
+            )
     # Пишем в историю всегда (не только для админа/высшего командования) — иначе
     # правки обычного командира/заместителя нигде не отследить в личном деле
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
         action="member_profile_edit",
         details=f"Профиль участника {discord_id} в формировании {regiment_id}: {changes}",
         target_user_id=user.id,
@@ -416,6 +570,69 @@ async def get_member_history(
         raise NotFoundError("Участник не найден")
     entries = await audit_log_crud.list_for_target(db, target_user_id=target.id)
     return [AuditLogRead.model_validate(e) for e in entries]
+
+
+@router.post("/{regiment_id}/members/{discord_id}/photo", response_model=GuildMemberRead)
+async def upload_member_photo(
+    regiment_id: int,
+    discord_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> GuildMemberRead:
+    # overrides discord avatar
+    if not access.is_commander_of(regiment_id):
+        raise ForbiddenError("Загружать фото может только командир формирования")
+    regiment = await _get_regiment_or_404(db, regiment_id)
+
+    members = await discord_client.fetch_guild_members()
+    member = next((m for m in members if m["discord_id"] == discord_id), None)
+    if member is None or regiment.discord_role_id not in member["roles"]:
+        raise NotFoundError("Участник не найден в этом формировании")
+
+    ext = _ALLOWED_PHOTO_TYPES.get(file.content_type)
+    if ext is None:
+        raise AppError("Разрешены только изображения: JPEG, PNG, WEBP")
+    content = await file.read()
+    if len(content) > _MAX_PHOTO_SIZE:
+        raise AppError("Файл слишком большой (максимум 5 МБ)")
+
+    user = await user_crud.update_profile(
+        db, discord_id=discord_id, fallback_username=member["username"], changes={}
+    )
+    member_dir = _PHOTO_UPLOAD_ROOT / str(user.id)
+    member_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4()}{ext}"
+    (member_dir / filename).write_bytes(content)
+
+    user = await user_crud.update_profile(
+        db, discord_id=discord_id, fallback_username=member["username"], changes={"photo_url": f"/uploads/members/{user.id}/{filename}"}
+    )
+    logger.info("%s загрузил фото для участника %s", access.user.username, discord_id)
+    return _build_guild_member(member, user)
+
+
+@router.delete("/{regiment_id}/members/{discord_id}/photo", response_model=GuildMemberRead)
+async def delete_member_photo(
+    regiment_id: int,
+    discord_id: str,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> GuildMemberRead:
+    if not access.is_commander_of(regiment_id):
+        raise ForbiddenError("Удалять фото может только командир формирования")
+    regiment = await _get_regiment_or_404(db, regiment_id)
+
+    members = await discord_client.fetch_guild_members()
+    member = next((m for m in members if m["discord_id"] == discord_id), None)
+    if member is None or regiment.discord_role_id not in member["roles"]:
+        raise NotFoundError("Участник не найден в этом формировании")
+
+    user = await user_crud.update_profile(
+        db, discord_id=discord_id, fallback_username=member["username"], changes={"photo_url": None}
+    )
+    logger.info("%s удалил фото участника %s", access.user.username, discord_id)
+    return _build_guild_member(member, user)
 
 
 @router.patch("/{regiment_id}/members/{discord_id}/tenure", response_model=GuildMemberRead)
@@ -449,6 +666,7 @@ async def update_member_tenure(
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
         action="tenure_override",
         details=f"Выставил выслугу {payload.days_in_rank} дн. участнику {discord_id} в формировании {regiment_id}",
     )
@@ -485,6 +703,7 @@ async def create_points_adjustment(
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
         action="points_adjustment",
         details=f"Начислил {payload.points} баллов участнику {discord_id} в формировании {regiment_id}: {payload.reason}",
     )
@@ -509,7 +728,9 @@ async def get_member_reports(
     if user is None:
         return []
 
-    own_reports = await report_crud.list_reports(db, regiment_ids=[regiment_id], user_id=user.id)
+    own_reports = await report_crud.list_reports(
+        db, regiment_ids=[regiment_id], user_id=user.id, include_deleted=True
+    )
     participant_reports = await report_participant_crud.list_reports_since(
         db, user_id=user.id, regiment_id=regiment_id
     )

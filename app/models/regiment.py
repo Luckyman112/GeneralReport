@@ -1,4 +1,4 @@
-from sqlalchemy import String
+from sqlalchemy import Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -21,3 +21,5 @@ class Regiment(Base):
     # Ссылка на Discord-канал этого формирования — показывается в инфо-панели
     # формирования, чтобы боец мог быстро перейти в свой канал
     discord_channel_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # jedi order <-> jedi ranks only, no mixing
+    is_jedi_order: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

@@ -4,11 +4,16 @@ import { useAuth } from "../auth/AuthContext";
 import { RosterFieldPicker } from "./RosterFieldPicker";
 
 export function ReportForm({ regiments, onSubmit, onCancel }) {
-  const { token } = useAuth();
-  const [regimentId, setRegimentId] = useState(regiments[0]?.id ?? "");
+  const { token, activeCharacter } = useAuth();
+  const preferredRegimentId = activeCharacter?.regiment.id;
+  const defaultRegimentId = regiments.some((r) => r.id === preferredRegimentId)
+    ? preferredRegimentId
+    : regiments[0]?.id ?? "";
+  const [regimentId, setRegimentId] = useState(defaultRegimentId);
   const [categories, setCategories] = useState([]);
   const [categoryId, setCategoryId] = useState("");
   const [members, setMembers] = useState([]);
+  const [crossRegimentMembersByField, setCrossRegimentMembersByField] = useState({});
   const [content, setContent] = useState("");
   const [fieldValues, setFieldValues] = useState({});
   const [images, setImages] = useState([]);
@@ -54,6 +59,33 @@ export function ReportForm({ regiments, onSubmit, onCancel }) {
 
   useEffect(() => {
     setFieldValues({});
+
+    // roster fields can also search other regiments' rosters (allowed_regiment_ids)
+    let ignore = false;
+    const rosterFields = categoryFields.filter((f) => f.type === "roster" && f.allowed_regiment_ids?.length > 0);
+    if (rosterFields.length === 0) {
+      setCrossRegimentMembersByField({});
+      return undefined;
+    }
+    Promise.all(
+      rosterFields.map(async (field) => {
+        const lists = await Promise.all(
+          field.allowed_regiment_ids.map((rid) =>
+            api
+              .getMembers(token, rid)
+              .then((data) => data.map((m) => ({ ...m, _regimentName: regiments.find((r) => r.id === rid)?.name })))
+              .catch(() => [])
+          )
+        );
+        return [field.name, lists.flat()];
+      })
+    ).then((entries) => {
+      if (!ignore) setCrossRegimentMembersByField(Object.fromEntries(entries));
+    });
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryId]);
 
   function isFieldFilled(field) {
@@ -61,10 +93,20 @@ export function ReportForm({ regiments, onSubmit, onCancel }) {
     return field.type === "roster" ? Boolean(value?.length) : Boolean(value?.trim());
   }
 
+  // own roster + cross-regiment members, own wins on duplicates
+  function rosterMembersForField(field) {
+    const cross = crossRegimentMembersByField[field.name] || [];
+    if (cross.length === 0) return members;
+    const ownIds = new Set(members.map((m) => m.discord_id));
+    return [...members, ...cross.filter((m) => !ownIds.has(m.discord_id))];
+  }
+
   function formatFieldValue(field) {
     const value = fieldValues[field.name];
     if (field.type === "roster") {
-      const names = members.filter((m) => value?.includes(m.discord_id)).map((m) => m.username);
+      const names = rosterMembersForField(field)
+        .filter((m) => value?.includes(m.discord_id))
+        .map((m) => (m._regimentName ? `${m.username} (${m._regimentName})` : m.username));
       return names.join(", ");
     }
     return value.trim();
@@ -148,7 +190,7 @@ export function ReportForm({ regiments, onSubmit, onCancel }) {
             <label key={field.name}>
               {field.name}
               <RosterFieldPicker
-                members={members}
+                members={rosterMembersForField(field)}
                 selectedIds={fieldValues[field.name] || []}
                 onChange={(ids) => setFieldValues((prev) => ({ ...prev, [field.name]: ids }))}
               />

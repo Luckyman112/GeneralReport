@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatFullName } from "../utils/formatName";
 
-/** Поиск и выбор одного участника сервера из полного списка (для указания
- * нарушителя) — текстовый фильтр + выплывающий список совпадений. */
+// searches by discord username or web nick (service id/rank/callsign)
 export function MemberSearchPicker({ members, selectedId, onSelect }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -20,21 +20,28 @@ export function MemberSearchPicker({ members, selectedId, onSelect }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q ? members.filter((m) => m.username.toLowerCase().includes(q)) : members;
+    const list = q
+      ? members.filter((m) => {
+          if (m.username.toLowerCase().includes(q)) return true;
+          if (m.callsign && m.callsign.toLowerCase().includes(q)) return true;
+          if (m.service_id && m.service_id.includes(q)) return true;
+          return false;
+        })
+      : members;
     return list.slice(0, 50);
   }, [members, query]);
 
   return (
     <div className="roster-picker" ref={wrapRef}>
       <button type="button" className="roster-picker-toggle" onClick={() => setOpen((v) => !v)}>
-        {selected ? selected.username : "— найти участника —"}
+        {selected ? formatFullName(selected) : "— найти участника —"}
       </button>
       {open && (
         <div className="roster-picker-flyout">
           <input
             type="text"
             autoFocus
-            placeholder="Начните вводить ник..."
+            placeholder="Начните вводить ник или позывной..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -53,7 +60,7 @@ export function MemberSearchPicker({ members, selectedId, onSelect }) {
                 }}
               >
                 {m.avatar_url && <img src={m.avatar_url} alt="" className="member-avatar" />}
-                {m.username}
+                {formatFullName(m)}
               </button>
             ))
           )}

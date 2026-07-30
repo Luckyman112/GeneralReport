@@ -3,9 +3,9 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { SaveBar } from "../components/SaveBar";
 import { useToast } from "../components/ToastContext";
-import { downloadCsv } from "../utils/csv";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
+import { SPECIALIZATION_CATEGORIES } from "../utils/specialization";
 
 /** Админ-панель ("God mode") — правки, недоступные обычному командиру/заместителю:
  * выговоры любому бойцу, ручная правка выслуги (дней в звании), смена ника/звания/ИДН,
@@ -31,6 +31,7 @@ export function AdminPanelPage() {
 
   const ranksById = Object.fromEntries(tiers.flatMap((t) => t.ranks).map((r) => [r.id, r]));
   const categoriesById = Object.fromEntries(categories.map((c) => [c.id, c]));
+  const currentRegiment = regiments.find((r) => r.id === Number(regimentId));
 
   const [profileBaseline, setProfileBaseline] = useState(profileSnapshot(null));
   const [serviceId, setServiceId] = useState("");
@@ -53,14 +54,46 @@ export function AdminPanelPage() {
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
 
+  const [characters, setCharacters] = useState([]);
+  const [newCharRegimentId, setNewCharRegimentId] = useState("");
+  const [newCharServiceId, setNewCharServiceId] = useState("");
+  const [newCharCallsign, setNewCharCallsign] = useState("");
+  const [newCharRankId, setNewCharRankId] = useState("");
+  const [newCharSteamId, setNewCharSteamId] = useState("");
+  const [newCharIsJedi, setNewCharIsJedi] = useState(false);
+  const [editingCharId, setEditingCharId] = useState(null);
+  const [editCharServiceId, setEditCharServiceId] = useState("");
+  const [editCharCallsign, setEditCharCallsign] = useState("");
+  const [editCharRankId, setEditCharRankId] = useState("");
+  const [editCharSteamId, setEditCharSteamId] = useState("");
+  const [editCharIsJedi, setEditCharIsJedi] = useState(false);
+
+  const [specializations, setSpecializations] = useState([]);
+  const [newSpecCode, setNewSpecCode] = useState("");
+  const [newSpecName, setNewSpecName] = useState("");
+  const [newSpecCategory, setNewSpecCategory] = useState("specialization");
+  const [newSpecMinRankId, setNewSpecMinRankId] = useState("");
+  const [editingSpecId, setEditingSpecId] = useState(null);
+  const [editSpecCode, setEditSpecCode] = useState("");
+  const [editSpecName, setEditSpecName] = useState("");
+  const [editSpecMinRankId, setEditSpecMinRankId] = useState("");
+
   const [auditLog, setAuditLog] = useState([]);
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [auditActionFilter, setAuditActionFilter] = useState("");
   const [auditDateFrom, setAuditDateFrom] = useState("");
   const [auditDateTo, setAuditDateTo] = useState("");
+  const [auditAdminOnly, setAuditAdminOnly] = useState(false);
+
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [healthStaleDays, setHealthStaleDays] = useState(3);
 
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
+
+  function loadSpecializations() {
+    api.listSpecializations(token).then(setSpecializations).catch(() => setSpecializations([]));
+  }
 
   useEffect(() => {
     api.getRanks(token).then(setTiers).catch(() => setTiers([]));
@@ -71,6 +104,17 @@ export function AdminPanelPage() {
         setMaintenanceMessage(s.message || "");
       })
       .catch(() => {});
+    loadSpecializations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  function loadHealth(staleDays = healthStaleDays) {
+    api.getSystemHealth(token, staleDays).then(setSystemHealth).catch(() => setSystemHealth(null));
+  }
+
+  useEffect(() => {
+    loadHealth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   async function handleMaintenanceSave() {
@@ -79,6 +123,65 @@ export function AdminPanelPage() {
       showToast("Режим обслуживания обновлён", "success");
     } catch (e) {
       setError(e.message);
+    }
+  }
+
+  async function handleAddSpecialization() {
+    if (!newSpecCode.trim() || !newSpecName.trim()) return;
+    try {
+      await api.createSpecialization(token, {
+        code: newSpecCode.trim().toUpperCase(),
+        name: newSpecName.trim(),
+        category: newSpecCategory,
+        minRankId: newSpecMinRankId === "" ? null : Number(newSpecMinRankId),
+      });
+      setNewSpecCode("");
+      setNewSpecName("");
+      setNewSpecMinRankId("");
+      loadSpecializations();
+      showToast("Специализация добавлена");
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    }
+  }
+
+  function startEditSpecialization(s) {
+    setEditingSpecId(s.id);
+    setEditSpecCode(s.code);
+    setEditSpecName(s.name);
+    setEditSpecMinRankId(s.min_rank?.id ?? "");
+  }
+
+  function cancelEditSpecialization() {
+    setEditingSpecId(null);
+  }
+
+  async function handleSaveSpecialization(id) {
+    if (!editSpecCode.trim() || !editSpecName.trim()) return;
+    try {
+      await api.updateSpecialization(token, id, {
+        code: editSpecCode.trim().toUpperCase(),
+        name: editSpecName.trim(),
+        minRankId: editSpecMinRankId === "" ? null : Number(editSpecMinRankId),
+      });
+      setEditingSpecId(null);
+      loadSpecializations();
+      showToast("Специализация обновлена");
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handleDeleteSpecialization(id) {
+    try {
+      await api.deleteSpecialization(token, id);
+      loadSpecializations();
+      showToast("Специализация удалена");
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
     }
   }
 
@@ -91,6 +194,86 @@ export function AdminPanelPage() {
   }, [token, regimentId]);
 
   const member = members.find((m) => m.discord_id === discordId) || null;
+
+  function loadCharacters() {
+    if (!discordId) {
+      setCharacters([]);
+      return;
+    }
+    api.listCharacters(token, discordId).then(setCharacters).catch(() => setCharacters([]));
+  }
+
+  useEffect(() => {
+    loadCharacters();
+    setNewCharRegimentId("");
+    setNewCharServiceId("");
+    setNewCharCallsign("");
+    setNewCharRankId("");
+    setNewCharSteamId("");
+    setNewCharIsJedi(false);
+    setEditingCharId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, discordId]);
+
+  async function handleAddCharacter() {
+    if (!newCharRegimentId) return;
+    try {
+      await api.createCharacter(token, discordId, {
+        regimentId: Number(newCharRegimentId),
+        serviceId: newCharServiceId.trim(),
+        callsign: newCharCallsign.trim(),
+        rankId: newCharRankId === "" ? null : Number(newCharRankId),
+        steamId: newCharSteamId.trim(),
+        isJedi: newCharIsJedi,
+      });
+      setNewCharRegimentId("");
+      setNewCharServiceId("");
+      setNewCharCallsign("");
+      setNewCharRankId("");
+      setNewCharSteamId("");
+      setNewCharIsJedi(false);
+      loadCharacters();
+      showToast("Персонаж добавлен");
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  }
+
+  function startEditCharacter(c) {
+    setEditingCharId(c.id);
+    setEditCharServiceId(c.service_id || "");
+    setEditCharCallsign(c.callsign || "");
+    setEditCharRankId(c.rank?.id ?? "");
+    setEditCharSteamId(c.steam_id || "");
+    setEditCharIsJedi(!!c.is_jedi);
+  }
+
+  async function handleSaveCharacter(characterId) {
+    try {
+      await api.updateCharacter(token, discordId, characterId, {
+        serviceId: editCharServiceId.trim() || null,
+        callsign: editCharCallsign.trim() || null,
+        rankId: editCharRankId === "" ? null : Number(editCharRankId),
+        steamId: editCharSteamId.trim() || null,
+        isJedi: editCharIsJedi,
+      });
+      setEditingCharId(null);
+      loadCharacters();
+      showToast("Персонаж обновлён");
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handleDeleteCharacter(characterId) {
+    try {
+      await api.deleteCharacter(token, discordId, characterId);
+      loadCharacters();
+      showToast("Персонаж удалён");
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  }
 
   useEffect(() => {
     if (!member) return;
@@ -182,18 +365,15 @@ export function AdminPanelPage() {
 
   function loadAuditLog() {
     api
-      .listAuditLog(token, { action: auditActionFilter, dateFrom: auditDateFrom, dateTo: auditDateTo })
+      .listAuditLog(token, {
+        action: auditActionFilter,
+        dateFrom: auditDateFrom,
+        dateTo: auditDateTo,
+        adminOnly: auditAdminOnly,
+      })
       .then(setAuditLog)
       .catch((e) => setError(e.message));
     setShowAuditLog(true);
-  }
-
-  function exportAuditLogCsv() {
-    downloadCsv(
-      "audit-log.csv",
-      ["Дата", "Кто", "Действие", "Детали"],
-      auditLog.map((entry) => [formatMskDate(entry.created_at), formatFullName(entry.actor), entry.action, entry.details])
-    );
   }
 
   return (
@@ -250,15 +430,17 @@ export function AdminPanelPage() {
               Звание
               <select value={rankId} onChange={(e) => setRankId(e.target.value)}>
                 <option value="">— не назначено —</option>
-                {tiers.map((tier) => (
-                  <optgroup key={tier.id} label={tier.name}>
-                    {tier.ranks.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.code} — {r.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
+                {tiers
+                  .filter((tier) => (currentRegiment?.is_jedi_order ? tier.is_jedi : !tier.is_jedi))
+                  .map((tier) => (
+                    <optgroup key={tier.id} label={tier.name}>
+                      {tier.ranks.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.code} — {r.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
               </select>
             </label>
             {rankId !== profileBaseline.rankId && (
@@ -285,6 +467,147 @@ export function AdminPanelPage() {
               onSave={handleSaveProfile}
               onReset={handleResetProfile}
             />
+          </div>
+
+          <div className="regiment-panel fade-in-up">
+            <h4>Персонажи в других формированиях</h4>
+            <p className="hint-text">
+              Второй игровой персонаж (джедаи и другие, приписанные сразу к нескольким формированиям) — заводится
+              и полностью настраивается вручную, не требует реальной Discord-роли этого формирования.
+            </p>
+            {characters.length > 0 && (
+              <ul className="category-list">
+                {characters.map((c) =>
+                  editingCharId === c.id ? (
+                    <li key={c.id} className="rank-requirement-card">
+                      <strong>{c.regiment.name}</strong>
+                      <div className="add-category-form">
+                        <input
+                          type="text"
+                          placeholder="ИДН"
+                          value={editCharServiceId}
+                          onChange={(e) => setEditCharServiceId(e.target.value)}
+                          style={{ width: "6rem" }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Позывной"
+                          value={editCharCallsign}
+                          onChange={(e) => setEditCharCallsign(e.target.value)}
+                        />
+                        <select value={editCharRankId} onChange={(e) => setEditCharRankId(e.target.value)}>
+                          <option value="">— звание —</option>
+                          {tiers
+                            .filter((tier) => (editCharIsJedi ? tier.is_jedi : !tier.is_jedi))
+                            .flatMap((tier) =>
+                              tier.ranks.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {r.code} — {r.name}
+                                </option>
+                              ))
+                            )}
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="Steam ID (необязательно)"
+                          value={editCharSteamId}
+                          onChange={(e) => setEditCharSteamId(e.target.value)}
+                        />
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={editCharIsJedi}
+                            onChange={(e) => {
+                              setEditCharIsJedi(e.target.checked);
+                              setEditCharRankId("");
+                            }}
+                          />
+                          Джедай
+                        </label>
+                        <button type="button" onClick={() => handleSaveCharacter(c.id)}>
+                          Сохранить
+                        </button>
+                        <button type="button" onClick={() => setEditingCharId(null)}>
+                          Отмена
+                        </button>
+                      </div>
+                    </li>
+                  ) : (
+                    <li key={c.id}>
+                      <span>
+                        <strong>{c.regiment.name}</strong> — {c.service_id || "—"} {c.rank ? `${c.rank.code}` : ""}{" "}
+                        {c.callsign || ""} {c.steam_id ? `· ${c.steam_id}` : ""}
+                        {c.is_jedi && <span className="member-inactive-badge">джедай</span>}
+                        {c.is_inactive && <span className="member-inactive-badge">неактивен</span>}
+                      </span>
+                      <span className="report-form-actions">
+                        <button className="ghost" onClick={() => startEditCharacter(c)}>
+                          Изменить
+                        </button>
+                        <button className="ghost" onClick={() => handleDeleteCharacter(c.id)}>
+                          Удалить
+                        </button>
+                      </span>
+                    </li>
+                  )
+                )}
+              </ul>
+            )}
+            <div className="add-category-form">
+              <select value={newCharRegimentId} onChange={(e) => setNewCharRegimentId(e.target.value)}>
+                <option value="">— формирование —</option>
+                {regiments.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="ИДН"
+                value={newCharServiceId}
+                onChange={(e) => setNewCharServiceId(e.target.value)}
+                style={{ width: "6rem" }}
+              />
+              <input
+                type="text"
+                placeholder="Позывной"
+                value={newCharCallsign}
+                onChange={(e) => setNewCharCallsign(e.target.value)}
+              />
+              <select value={newCharRankId} onChange={(e) => setNewCharRankId(e.target.value)}>
+                <option value="">— звание —</option>
+                {tiers
+                  .filter((tier) => (newCharIsJedi ? tier.is_jedi : !tier.is_jedi))
+                  .flatMap((tier) =>
+                    tier.ranks.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.code} — {r.name}
+                      </option>
+                    ))
+                  )}
+              </select>
+              <input
+                type="text"
+                placeholder="Steam ID (необязательно)"
+                value={newCharSteamId}
+                onChange={(e) => setNewCharSteamId(e.target.value)}
+              />
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={newCharIsJedi}
+                  onChange={(e) => {
+                    setNewCharIsJedi(e.target.checked);
+                    setNewCharRankId("");
+                  }}
+                />
+                Джедай
+              </label>
+              <button type="button" disabled={!newCharRegimentId} onClick={handleAddCharacter}>
+                Добавить персонажа
+              </button>
+            </div>
           </div>
 
           <div className="regiment-panel fade-in-up">
@@ -376,18 +699,68 @@ export function AdminPanelPage() {
       )}
 
       <div className="regiment-panel fade-in-up">
-        <h4>Режим обслуживания</h4>
+        <h4>Здоровье системы</h4>
+        <div className="points-inline">
+          <label className="points-inline-label">
+            Заявки старше, дней
+            <input
+              type="number"
+              min={1}
+              value={healthStaleDays}
+              onChange={(e) => {
+                const value = Number(e.target.value) || 1;
+                setHealthStaleDays(value);
+                loadHealth(value);
+              }}
+              style={{ width: "4rem" }}
+            />
+          </label>
+        </div>
+        {systemHealth ? (
+          <ul className="category-list">
+            <li>
+              Действующих бойцов
+              <span className="category-points-badge">{systemHealth.active_users_count}</span>
+            </li>
+            <li>
+              Зависших заявок на регистрацию
+              <span className="category-points-badge">{systemHealth.stuck_registrations}</span>
+            </li>
+            <li>
+              Зависших заявок на перевод
+              <span className="category-points-badge">{systemHealth.stuck_transfers}</span>
+            </li>
+            <li>
+              Зависших заявок на повышение
+              <span className="category-points-badge">{systemHealth.stuck_promotions}</span>
+            </li>
+          </ul>
+        ) : (
+          <p className="hint-text">Загрузка...</p>
+        )}
+      </div>
+
+      <div className={`regiment-panel fade-in-up maintenance-panel ${maintenanceEnabled ? "maintenance-panel-active" : ""}`}>
+        <div className="maintenance-panel-header">
+          <h4>Режим обслуживания</h4>
+          <span className={`status-pill ${maintenanceEnabled ? "status-pill-active" : "status-pill-idle"}`}>
+            {maintenanceEnabled ? "Включён" : "Выключен"}
+          </span>
+        </div>
         <p className="hint-text">
           Включите на время миграций/восстановления из бэкапа — обычные пользователи увидят экран "Технические
           работы", вы сохраните доступ и увидите напоминание-баннер сверху.
         </p>
-        <label className="maintenance-toggle">
+        <label className="toggle-switch">
           <input
             type="checkbox"
             checked={maintenanceEnabled}
             onChange={(e) => setMaintenanceEnabled(e.target.checked)}
           />
-          Включить режим обслуживания
+          <span className="toggle-switch-track">
+            <span className="toggle-switch-thumb" />
+          </span>
+          <span className="toggle-switch-label">Включить режим обслуживания</span>
         </label>
         <label>
           Сообщение для пользователей (необязательно)
@@ -401,6 +774,100 @@ export function AdminPanelPage() {
         <button className="primary" onClick={handleMaintenanceSave}>
           Сохранить
         </button>
+      </div>
+
+      <div className="regiment-panel fade-in-up">
+        <h4>Каталог специализаций</h4>
+        <p className="hint-text">
+          Выдавать/снимать специализации бойцам может инструктор (роль настраивается в «Настройках») или
+          администратор — прямо в личном деле бойца. Здесь редактируется только сам список доступных специализаций.
+        </p>
+        {SPECIALIZATION_CATEGORIES.map(({ value, label }) => {
+          const items = specializations.filter((s) => s.category === value);
+          if (items.length === 0) return null;
+          return (
+            <div key={value}>
+              <p className="hint-text">{label}</p>
+              <ul className="chip-list">
+                {items.map((s) =>
+                  editingSpecId === s.id ? (
+                    <li key={s.id} className="chip chip-editing">
+                      <input
+                        type="text"
+                        value={editSpecCode}
+                        onChange={(e) => setEditSpecCode(e.target.value)}
+                        style={{ width: "6rem" }}
+                      />
+                      <input type="text" value={editSpecName} onChange={(e) => setEditSpecName(e.target.value)} />
+                      <select value={editSpecMinRankId} onChange={(e) => setEditSpecMinRankId(e.target.value)}>
+                        <option value="">— мин. звание не задано —</option>
+                        {tiers.flatMap((tier) =>
+                          tier.ranks.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.code} — {r.name}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <button type="button" onClick={() => handleSaveSpecialization(s.id)}>
+                        Сохранить
+                      </button>
+                      <button type="button" onClick={cancelEditSpecialization}>
+                        Отмена
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={s.id} className="chip">
+                      {s.code} — {s.name}
+                      {s.min_rank && <span className="hint-text"> (от {s.min_rank.code})</span>}
+                      <button type="button" title="Редактировать" onClick={() => startEditSpecialization(s)}>
+                        ✎
+                      </button>
+                      <button type="button" onClick={() => handleDeleteSpecialization(s.id)}>
+                        ×
+                      </button>
+                    </li>
+                  )
+                )}
+              </ul>
+            </div>
+          );
+        })}
+        <div className="add-category-form">
+          <input
+            type="text"
+            placeholder="Код (например, MED)"
+            value={newSpecCode}
+            onChange={(e) => setNewSpecCode(e.target.value)}
+            style={{ width: "8rem" }}
+          />
+          <input
+            type="text"
+            placeholder="Название (например, Медик)"
+            value={newSpecName}
+            onChange={(e) => setNewSpecName(e.target.value)}
+          />
+          <select value={newSpecCategory} onChange={(e) => setNewSpecCategory(e.target.value)}>
+            {SPECIALIZATION_CATEGORIES.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <select value={newSpecMinRankId} onChange={(e) => setNewSpecMinRankId(e.target.value)}>
+            <option value="">— мин. звание не задано —</option>
+            {tiers.flatMap((tier) =>
+              tier.ranks.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.code} — {r.name}
+                </option>
+              ))
+            )}
+          </select>
+          <button type="button" disabled={!newSpecCode.trim() || !newSpecName.trim()} onClick={handleAddSpecialization}>
+            Добавить
+          </button>
+        </div>
       </div>
 
       <div className="regiment-panel fade-in-up">
@@ -425,8 +892,15 @@ export function AdminPanelPage() {
               По дату
               <input type="date" value={auditDateTo} onChange={(e) => setAuditDateTo(e.target.value)} />
             </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={auditAdminOnly}
+                onChange={(e) => setAuditAdminOnly(e.target.checked)}
+              />
+              Только действия администраторов
+            </label>
             <button onClick={loadAuditLog}>Применить</button>
-            {auditLog.length > 0 && <button onClick={exportAuditLogCsv}>Скачать CSV</button>}
           </div>
         )}
 
@@ -440,7 +914,9 @@ export function AdminPanelPage() {
               <li key={entry.id}>
                 <span className="member-report-date">{formatMskDate(entry.created_at)} МСК</span>
                 <p className="member-report-content">
-                  <strong>{formatFullName(entry.actor)}</strong> — {entry.action}: {entry.details}
+                  <strong>{formatFullName(entry.actor)}</strong>
+                  {entry.actor_is_admin && <span className="detention-badge">админ</span>} — {entry.action}:{" "}
+                  {entry.details}
                 </p>
               </li>
             ))}

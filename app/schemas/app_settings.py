@@ -10,6 +10,8 @@ class AppSettingsRead(BaseModel):
     high_command_role_id: str | None
     admin_user_discord_ids: list[str]
     founder_role_id: str | None
+    instructor_role_id: str | None
+    password_login_authorized_discord_id: str | None
 
 
 class AppSettingsUpdate(BaseModel):
@@ -19,3 +21,5 @@ class AppSettingsUpdate(BaseModel):
     high_command_role_id: str | None = None
     admin_user_discord_ids: list[str] | None = None
     founder_role_id: str | None = None
+    instructor_role_id: str | None = None
+    password_login_authorized_discord_id: str | None = None

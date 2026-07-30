@@ -16,6 +16,7 @@ _LOAD_OPTIONS = [
     selectinload(Report.author_rank),
     selectinload(Report.updated_by_rank),
     selectinload(Report.category),
+    selectinload(Report.training_specialization),
 ]
 
 
@@ -27,6 +28,7 @@ async def create_report(
     category_id: int | None,
     content: str,
     status: ReportStatus,
+    points: int | None = None,
     author_rank_id: int | None = None,
     participant_discord_ids: list[str] | None = None,
     target_discord_id: str | None = None,
@@ -38,6 +40,7 @@ async def create_report(
     punishment_type: str | None = None,
     punishment_other_text: str | None = None,
     punishment_amount: str | None = None,
+    training_specialization_id: int | None = None,
 ) -> Report:
     report = Report(
         user_id=user_id,
@@ -45,6 +48,7 @@ async def create_report(
         category_id=category_id,
         content=content,
         status=status,
+        points=points,
         author_rank_id=author_rank_id,
         participant_discord_ids=participant_discord_ids or [],
         target_discord_id=target_discord_id,
@@ -56,6 +60,7 @@ async def create_report(
         punishment_type=punishment_type,
         punishment_other_text=punishment_other_text,
         punishment_amount=punishment_amount,
+        training_specialization_id=training_specialization_id,
     )
     db.add(report)
     await db.commit()
@@ -93,9 +98,11 @@ async def list_reports(
     user_id: int | None = None,
     category_id: int | None = None,
     status: ReportStatus | None = None,
+    search: str | None = None,
     visible_target_regiment_ids: set[int] | None = None,
     limit: int | None = None,
     offset: int = 0,
+    include_deleted: bool = False,
 ) -> list[Report]:
     """Список рапортов с опциональными фильтрами.
 
@@ -106,7 +113,11 @@ async def list_reports(
     задержании (target_regiment_id), даже если их автор не из этих формирований и
     не сам пользователь — так рапорт о задержании бойца своего формирования виден
     всем бойцам этого формирования, а не только автору/командиру формирования-автора.
-    Черновики сюда не попадают (ещё не оформленное обвинение не должно "утекать")."""
+    Черновики сюда не попадают (ещё не оформленное обвинение не должно "утекать").
+
+    include_deleted — показать и мягко удалённые (аннулированные) рапорты тоже
+    (см. app/api/regiments.py::get_member_reports — в личном деле аннулирование
+    должно быть видно, а не бесследно исчезать)."""
     query = select(Report).options(*_LOAD_OPTIONS).order_by(Report.created_at.desc())
 
     base_conditions = []
@@ -128,9 +139,12 @@ async def list_reports(
         query = query.where(Report.category_id == category_id)
     if status is not None:
         query = query.where(Report.status == status)
-    else:
+    elif not include_deleted:
         # По умолчанию не показываем удалённые рапорты, если статус не запрошен явно
         query = query.where(Report.status != ReportStatus.DELETED)
+
+    if search:
+        query = query.where(Report.content.ilike(f"%{search}%"))
 
     if limit is not None:
         query = query.limit(limit).offset(offset)
@@ -146,6 +160,7 @@ async def count_reports(
     user_id: int | None = None,
     category_id: int | None = None,
     status: ReportStatus | None = None,
+    search: str | None = None,
     visible_target_regiment_ids: set[int] | None = None,
 ) -> int:
     """Тот же набор фильтров, что и list_reports — для отображения "Показать ещё"
@@ -174,6 +189,9 @@ async def count_reports(
     else:
         query = query.where(Report.status != ReportStatus.DELETED)
 
+    if search:
+        query = query.where(Report.content.ilike(f"%{search}%"))
+
     result = await db.execute(query)
     return int(result.scalar_one())
 
@@ -197,6 +215,12 @@ async def update_status(
     return await get_by_id(db, report.id)
 
 
+async def update_content(db: AsyncSession, report: Report, *, content: str) -> Report:
+    report.content = content
+    await db.commit()
+    return await get_by_id(db, report.id)
+
+
 async def soft_delete(db: AsyncSession, report: Report, *, updated_by: int) -> Report:
     return await update_status(db, report, status=ReportStatus.DELETED, updated_by=updated_by)
 
@@ -205,6 +229,11 @@ async def set_points(db: AsyncSession, report: Report, *, points: int) -> Report
     report.points = points
     await db.commit()
     return await get_by_id(db, report.id)
+
+
+async def get_by_violation_id(db: AsyncSession, violation_id: int) -> Report | None:
+    result = await db.execute(select(Report).where(Report.violation_id == violation_id))
+    return result.scalars().first()
 
 
 async def set_violation_id(db: AsyncSession, report: Report, *, violation_id: int) -> Report:

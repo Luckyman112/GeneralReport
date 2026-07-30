@@ -101,10 +101,21 @@ class LocalCategoryRequirementCreate(BaseModel):
 class MandatoryCategoryRequirementCreate(BaseModel):
     rank_id: int
     category_name: str
-    # Заполняются только если категории с таким именем ещё нигде нет — тогда она
-    # будет создана во всех формированиях с этим шаблоном полей
+    # non-empty list syncs fields across all regiments; empty = leave as-is
     category_fields: list[dict] = []
     count_required: int = 1
+    category_min_rank_id: int | None = None
+    category_commander_only: bool = False
+
+
+class MandatoryCategoryRequirementUpdate(BaseModel):
+    # full form, not partial - category_min_rank_id can be explicitly cleared
+    rank_id: int
+    category_name: str
+    category_fields: list[dict] = []
+    count_required: int = 1
+    category_min_rank_id: int | None = None
+    category_commander_only: bool = False
 
 
 class RequirementOverrideUpdate(BaseModel):

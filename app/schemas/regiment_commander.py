@@ -1,8 +1,10 @@
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.schemas.rank import RankRead
+from app.schemas.validators import validate_service_id, validate_steam_id
 
 
 class RegimentCommanderRead(BaseModel):
@@ -10,13 +12,13 @@ class RegimentCommanderRead(BaseModel):
 
     discord_id: str
     username: str
-    role_type: Literal["commander", "deputy"]
+    role_type: Literal["commander", "deputy", "mentor"]
 
 
 class RegimentCommanderCreate(BaseModel):
     discord_id: str
     username: str
-    role_type: Literal["commander", "deputy"] = "commander"
+    role_type: Literal["commander", "deputy", "mentor"] = "commander"
 
 
 class GuildMemberRead(BaseModel):
@@ -36,12 +38,18 @@ class GuildMemberRead(BaseModel):
     callsign: str | None = None
     # Steam ID — указан при регистрации, чтобы найти игрока в GMod/Steam
     steam_id: str | None = None
+    # overrides discord avatar_url if set
+    photo_url: str | None = None
     rank: RankRead | None = None
     # Сколько дней участник в текущем звании — для сверки с требованием по выслуге
     days_in_rank: int | None = None
     is_inactive: bool = False
     early_promoted_by_username: str | None = None
     early_promotion_reason: str | None = None
+    last_login_at: datetime | None = None
+    # first web login, approximates join date (no exact discord-role-grant tracking)
+    joined_at: datetime | None = None
+    rank_assigned_at: datetime | None = None
 
 
 class MemberProfileUpdate(BaseModel):
@@ -61,6 +69,16 @@ class MemberProfileUpdate(BaseModel):
     # Причина досрочного повышения — учитывается, только если rank_id реально
     # меняется (см. app/api/regiments.py::update_member_profile)
     early_promotion_reason: str | None = None
+
+    @field_validator("service_id")
+    @classmethod
+    def _check_service_id(cls, v: str | None) -> str | None:
+        return validate_service_id(v)
+
+    @field_validator("steam_id")
+    @classmethod
+    def _check_steam_id(cls, v: str | None) -> str | None:
+        return validate_steam_id(v)
 
 
 class TenureOverrideUpdate(BaseModel):

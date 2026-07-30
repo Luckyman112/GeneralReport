@@ -65,6 +65,8 @@ class Report(Base):
     # Заполняется после того, как рапорт-задержание одобрили и создали нарушение —
     # чтобы не создать нарушение повторно при повторном одобрении
     violation_id: Mapped[int | None] = mapped_column(ForeignKey("violations.id"), nullable=True)
+    # training reports only, granted to target_discord_id on approval
+    training_specialization_id: Mapped[int | None] = mapped_column(ForeignKey("specializations.id"), nullable=True)
 
     images: Mapped[list["ReportImage"]] = relationship(
         back_populates="report", cascade="all, delete-orphan", order_by="ReportImage.created_at"
@@ -77,6 +79,7 @@ class Report(Base):
     author_rank: Mapped["Rank | None"] = relationship(foreign_keys=[author_rank_id])
     updated_by_rank: Mapped["Rank | None"] = relationship(foreign_keys=[updated_by_rank_id])
     category: Mapped["ReportCategory | None"] = relationship()
+    training_specialization: Mapped["Specialization | None"] = relationship()
 
     @property
     def category_name(self) -> str | None:

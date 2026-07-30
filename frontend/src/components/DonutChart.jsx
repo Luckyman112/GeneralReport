@@ -57,8 +57,12 @@ export function DonutChart({ data, onSegmentClick, emptyLabel = "Нет данн
   const segments = slices.map((slice, i) => {
     const fraction = slice.count / total;
     const startAngle = angle;
-    const endAngle = angle + fraction * 2 * Math.PI;
+    let endAngle = angle + fraction * 2 * Math.PI;
     angle = endAngle;
+    // full-circle arc with matching endpoints renders as empty, shorten it slightly
+    if (endAngle - startAngle >= 2 * Math.PI - 1e-6) {
+      endAngle -= 1e-3;
+    }
     // Если у данных есть свой цвет (например, цвет формирования) — используем его,
     // иначе берём следующий цвет из фиксированной категориальной палитры
     return { ...slice, startAngle, endAngle, color: slice.color || palette[i % palette.length] };

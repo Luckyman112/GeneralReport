@@ -140,6 +140,12 @@ async def revoke(db: AsyncSession, reprimand: Reprimand, *, revoked_by: int) -> 
     return await get_by_id(db, reprimand.id)
 
 
+async def delete(db: AsyncSession, reprimand: Reprimand) -> None:
+    # hard delete, vs revoke which just closes an active reprimand
+    await db.delete(reprimand)
+    await db.commit()
+
+
 async def set_appeal(db: AsyncSession, reprimand: Reprimand, *, appeal_text: str) -> Reprimand:
     reprimand.appeal_text = appeal_text
     await db.commit()

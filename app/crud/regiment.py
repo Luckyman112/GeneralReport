@@ -6,6 +6,8 @@ from app.models.report_category import ReportCategory
 
 DETENTION_CATEGORY_NAME = "Задержание"
 PROMOTION_CATEGORY_NAME = "Повышение"
+DEMOTION_CATEGORY_NAME = "Понижение"
+TRAINING_CATEGORY_NAME = "Обучение на специализации"
 
 
 async def get_all(db: AsyncSession) -> list[Regiment]:
@@ -24,9 +26,14 @@ async def create(
     discord_role_id: str,
     color: str | None = None,
     discord_channel_url: str | None = None,
+    is_jedi_order: bool = False,
 ) -> Regiment:
     regiment = Regiment(
-        name=name, discord_role_id=discord_role_id, color=color, discord_channel_url=discord_channel_url
+        name=name,
+        discord_role_id=discord_role_id,
+        color=color,
+        discord_channel_url=discord_channel_url,
+        is_jedi_order=is_jedi_order,
     )
     db.add(regiment)
     await db.commit()
@@ -37,6 +44,8 @@ async def create(
     # (см. is_detention/is_promotion)
     db.add(ReportCategory(regiment_id=regiment.id, name=DETENTION_CATEGORY_NAME, fields=[], is_detention=True))
     db.add(ReportCategory(regiment_id=regiment.id, name=PROMOTION_CATEGORY_NAME, fields=[], is_promotion=True))
+    db.add(ReportCategory(regiment_id=regiment.id, name=DEMOTION_CATEGORY_NAME, fields=[], is_demotion=True))
+    db.add(ReportCategory(regiment_id=regiment.id, name=TRAINING_CATEGORY_NAME, fields=[], is_training=True))
     await db.commit()
 
     return regiment

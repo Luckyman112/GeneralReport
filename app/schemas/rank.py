@@ -21,4 +21,19 @@ class RankTierRead(BaseModel):
     name: str
     order: int
     tenure_days_required: int | None
+    # None = no limit
+    class_limit: int | None = None
+    gear_limit: int | None = None
+    specialization_limit: int | None = None
+    additional_specialization_limit: int | None = None
+    elite_specialization_limit: int | None = None
+    is_jedi: bool = False
     ranks: list[RankRead]
+
+
+class RankTierLimitsUpdate(BaseModel):
+    class_limit: int | None = None
+    gear_limit: int | None = None
+    specialization_limit: int | None = None
+    additional_specialization_limit: int | None = None
+    elite_specialization_limit: int | None = None

@@ -24,6 +24,7 @@ from app.models.promotion import (
 )
 from app.models.regiment import Regiment
 from app.models.report import Report, ReportStatus
+from app.models.report_category import ReportCategory
 from app.models.user import User
 
 _REQUEST_LOAD_OPTIONS = [
@@ -328,13 +329,6 @@ async def set_override(
     return override
 
 
-async def clear_override(db: AsyncSession, *, user_id: int, requirement_id: int) -> None:
-    override = await get_override(db, user_id=user_id, requirement_id=requirement_id)
-    if override is not None:
-        await db.delete(override)
-        await db.commit()
-
-
 class CategoryRequirementStatusData:
     """Промежуточный результат подсчёта одного категорийного требования для
     конкретного бойца — без привязки к pydantic-схеме (используется и в CRUD-логике
@@ -407,14 +401,25 @@ async def create_local_category_requirement(
 
 
 async def create_mandatory_category_requirement(
-    db: AsyncSession, *, rank_id: int, category_name: str, category_fields: list[str], count_required: int
+    db: AsyncSession,
+    *,
+    rank_id: int,
+    category_name: str,
+    category_fields: list[str],
+    count_required: int,
+    category_min_rank_id: int | None = None,
+    category_commander_only: bool = False,
 ) -> list[PromotionCategoryRequirement]:
     """Обязательное требование — категория с этим именем гарантированно заводится
     (или переиспользуется, если уже есть) в КАЖДОМ формировании, и для каждого из них
     создаётся своя строка требования с общим mandatory_group_id, чтобы потом можно
     было снять требование одним действием сразу везде."""
     categories_by_regiment = await report_category_crud.get_or_create_in_all_regiments(
-        db, name=category_name, fields=category_fields
+        db,
+        name=category_name,
+        fields=category_fields,
+        min_rank_id=category_min_rank_id,
+        commander_only=category_commander_only,
     )
 
     result = await db.execute(select(func.max(PromotionCategoryRequirement.mandatory_group_id)))
@@ -438,12 +443,64 @@ async def create_mandatory_category_requirement(
     return created
 
 
+async def get_mandatory_group(db: AsyncSession, group_id: int) -> list[PromotionCategoryRequirement]:
+    result = await db.execute(
+        select(PromotionCategoryRequirement)
+        .where(PromotionCategoryRequirement.mandatory_group_id == group_id)
+        .options(selectinload(PromotionCategoryRequirement.category))
+    )
+    return list(result.scalars().all())
+
+
+async def update_mandatory_category_requirement(
+    db: AsyncSession,
+    *,
+    group_id: int,
+    rank_id: int,
+    category_name: str,
+    category_fields: list[str],
+    count_required: int,
+    category_min_rank_id: int | None = None,
+    category_commander_only: bool = False,
+) -> list[PromotionCategoryRequirement]:
+    # updates all rows sharing this mandatory_group_id
+    rows = await get_mandatory_group(db, group_id)
+    if not rows:
+        return []
+
+    for row in rows:
+        row.rank_id = rank_id
+        row.count_required = count_required
+
+    category_ids = {row.category_id for row in rows}
+    for category_id in category_ids:
+        category = await db.get(ReportCategory, category_id)
+        if category is None:
+            continue
+        category.name = category_name
+        if category_fields:
+            category.fields = category_fields
+        # unlike create: None here means "clear it", not "leave unchanged"
+        category.min_rank_id = category_min_rank_id
+        category.commander_only = category_commander_only
+
+    await db.commit()
+    for row in rows:
+        await db.refresh(row, attribute_names=["category"])
+    return rows
+
+
 async def delete_category_requirement(db: AsyncSession, requirement: PromotionCategoryRequirement) -> None:
     """Локальное требование удаляется как есть; обязательное (is_mandatory) —
     удаляется сразу во всех формированиях по общему mandatory_group_id. Оверрайды,
     сделанные для этого требования (для любого бойца), удаляются вместе с ним —
     иначе внешний ключ promotion_requirement_overrides.requirement_id блокирует
-    удаление строки, на которую они ссылаются."""
+    удаление строки, на которую они ссылаются.
+
+    Категория рапортов, заведённая под это требование, тоже удаляется — но
+    только если на неё больше никто не ссылается (ни другое требование, ни уже
+    поданный рапорт), чтобы не копить в БД никем не используемые категории и не
+    словить нарушение внешнего ключа на реальных данных."""
     if requirement.is_mandatory and requirement.mandatory_group_id is not None:
         result = await db.execute(
             select(PromotionCategoryRequirement).where(
@@ -455,6 +512,7 @@ async def delete_category_requirement(db: AsyncSession, requirement: PromotionCa
         rows = [requirement]
 
     requirement_ids = [row.id for row in rows]
+    category_ids = {row.category_id for row in rows}
     await db.execute(
         sa_delete(PromotionRequirementOverride).where(
             PromotionRequirementOverride.requirement_id.in_(requirement_ids)
@@ -462,4 +520,20 @@ async def delete_category_requirement(db: AsyncSession, requirement: PromotionCa
     )
     for row in rows:
         await db.delete(row)
+    await db.commit()
+
+    for category_id in category_ids:
+        other_requirements = await db.execute(
+            select(func.count(PromotionCategoryRequirement.id)).where(
+                PromotionCategoryRequirement.category_id == category_id
+            )
+        )
+        if other_requirements.scalar_one() > 0:
+            continue
+        existing_reports = await db.execute(select(func.count(Report.id)).where(Report.category_id == category_id))
+        if existing_reports.scalar_one() > 0:
+            continue
+        category = await db.get(ReportCategory, category_id)
+        if category is not None:
+            await db.delete(category)
     await db.commit()

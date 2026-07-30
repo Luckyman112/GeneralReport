@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
+from app.core.events import event_bus
 from app.crud import audit_log as audit_log_crud
 from app.crud import regiment as regiment_crud
 from app.crud import regiment_commander as regiment_commander_crud
@@ -96,6 +97,7 @@ async def self_revoke_reprimand(
 
     updated = await reprimand_crud.revoke(db, reprimand, revoked_by=access.user.id)
     logger.info("%s самостоятельно снял выговор %s", access.user.username, reprimand_id)
+    event_bus.publish("reprimands")
     return await _to_read(db, updated)
 
 
@@ -182,9 +184,11 @@ async def issue_reprimand(
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
         action="reprimand_issue",
         details=f"Выдал {payload.severity} выговор {target['username']} ({payload.reason})",
     )
+    event_bus.publish("reprimands")
     return await _to_read(db, reprimand)
 
 
@@ -206,5 +210,34 @@ async def revoke_reprimand(
     await reprimand_crud.revoke(db, reprimand, revoked_by=access.user.id)
     logger.info("%s снял выговор %s", access.user.username, reprimand_id)
     await audit_log_crud.log(
-        db, actor_user_id=access.user.id, action="reprimand_revoke", details=f"Снял выговор #{reprimand_id}"
+        db, actor_user_id=access.user.id, actor_is_admin=access.is_admin, action="reprimand_revoke", details=f"Снял выговор #{reprimand_id}"
     )
+    event_bus.publish("reprimands")
+
+
+@regiment_router.delete("/{reprimand_id}/permanent", status_code=204)
+async def delete_reprimand(
+    regiment_id: int,
+    reprimand_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> None:
+    # hard delete, high command/admin only
+    if not (access.is_admin or access.is_high_command):
+        raise ForbiddenError("Удалять выговоры из истории может только высшее командование или администратор")
+
+    reprimand = await reprimand_crud.get_by_id(db, reprimand_id)
+    if reprimand is None or reprimand.regiment_id != regiment_id:
+        raise NotFoundError("Выговор не найден")
+
+    await reprimand_crud.delete(db, reprimand)
+    logger.info("%s удалил выговор %s из истории", access.user.username, reprimand_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="reprimand_delete",
+        details=f"Удалил выговор #{reprimand_id} из истории",
+        target_user_id=reprimand.target_user_id,
+    )
+    event_bus.publish("reprimands")

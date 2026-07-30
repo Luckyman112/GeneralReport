@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { DonutChart } from "../components/DonutChart";
+import { InlineSpinner } from "../components/InlineSpinner";
 import { PromotionReviewModal } from "../components/PromotionReviewModal";
 import { StatusBadge } from "../components/StatusBadge";
+import { TransferRequestForm } from "../components/TransferRequestForm";
 import { TrendChart } from "../components/TrendChart";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
@@ -41,18 +43,19 @@ function MyReprimands() {
   const [reprimands, setReprimands] = useState([]);
   const [error, setError] = useState(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setReprimands(await api.listAllReprimands(token));
     } catch (e) {
       setError(e.message);
     }
-  }
+  }, [token]);
+
+  useLiveEvents("reprimands", load);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [load]);
 
   const active = reprimands.filter((r) => r.target.discord_id === user?.discord_id && !r.revoked_at);
   if (active.length === 0) return null;
@@ -269,7 +272,7 @@ function RegimentStats({ regimentId, regimentName }) {
     setDrillDown({ title: `Рапорты категории: ${seg.label}`, reports });
   }
 
-  if (!stats) return <p>Загрузка...</p>;
+  if (!stats) return <InlineSpinner />;
 
   return (
     <div className="regiment-panel fade-in-up">
@@ -350,7 +353,7 @@ function FormationComparison() {
           ))}
         </select>
       </div>
-      {stats ? <DonutChart data={stats.by_regiment} onSegmentClick={handleRegimentClick} /> : <p>Загрузка...</p>}
+      {stats ? <DonutChart data={stats.by_regiment} onSegmentClick={handleRegimentClick} /> : <InlineSpinner />}
 
       {stats && stats.trend && stats.trend.length > 0 && (
         <div className="trend-chart-wrap">
@@ -386,6 +389,37 @@ function FormationComparison() {
   );
 }
 
+function TransferRequestBlock() {
+  const { token, access, refreshMe } = useAuth();
+  const [showForm, setShowForm] = useState(false);
+
+  const canRequestTransfer = (access?.soldier_regiment_ids || []).length === 1 && !access?.active_transfer;
+  if (!canRequestTransfer && !access?.active_transfer) return null;
+
+  async function handleCreateTransfer({ toRegimentId, reason }) {
+    await api.createTransferRequest(token, { toRegimentId, reason });
+    setShowForm(false);
+    await refreshMe();
+  }
+
+  return (
+    <div className="regiment-panel fade-in-up">
+      <h3>Перевод в другое формирование</h3>
+      {access?.active_transfer ? (
+        <p className="hint-text">У вас уже есть активная заявка на перевод — дождитесь решения обеих сторон.</p>
+      ) : showForm ? (
+        <TransferRequestForm
+          currentRegimentId={(access?.soldier_regiment_ids || [])[0]}
+          onSubmit={handleCreateTransfer}
+          onCancel={() => setShowForm(false)}
+        />
+      ) : (
+        <button onClick={() => setShowForm(true)}>Подать заявку на перевод</button>
+      )}
+    </div>
+  );
+}
+
 export function HomePage() {
   const { access, regiments } = useAuth();
 
@@ -403,6 +437,7 @@ export function HomePage() {
       <CareerHistory />
       <MyReprimands />
       <MyLeaveRequests />
+      <TransferRequestBlock />
 
       {ownRegiments.length === 1 && (
         <RegimentStats regimentId={ownRegiments[0].id} regimentName={ownRegiments[0].name} />

@@ -11,7 +11,7 @@ async def get_all_tiers(db: AsyncSession) -> list[RankTier]:
 
 
 async def get_by_id(db: AsyncSession, rank_id: int) -> Rank | None:
-    return await db.get(Rank, rank_id)
+    return await db.get(Rank, rank_id, options=[selectinload(Rank.tier)], populate_existing=True)
 
 
 async def get_by_code(db: AsyncSession, code: str) -> Rank | None:
@@ -25,6 +25,14 @@ async def get_tier_by_id(db: AsyncSession, tier_id: int) -> RankTier | None:
 
 async def update_tier_tenure(db: AsyncSession, tier: RankTier, *, tenure_days_required: int | None) -> RankTier:
     tier.tenure_days_required = tenure_days_required
+    await db.commit()
+    return await get_tier_by_id(db, tier.id)
+
+
+async def update_tier_limits(db: AsyncSession, tier: RankTier, **limits) -> RankTier:
+    # partial update, only fields actually passed (exclude_unset)
+    for key, value in limits.items():
+        setattr(tier, key, value)
     await db.commit()
     return await get_tier_by_id(db, tier.id)
 
@@ -54,8 +62,13 @@ async def get_all_ranks_ordered(db: AsyncSession) -> list[Rank]:
 
 
 async def get_next_rank(db: AsyncSession, current_rank_id: int) -> Rank | None:
+    # jedi ranks are excluded from auto-promotion entirely
     ranks = await get_all_ranks_ordered(db)
     for index, rank in enumerate(ranks):
-        if rank.id == current_rank_id and index + 1 < len(ranks):
-            return ranks[index + 1]
+        if rank.id == current_rank_id:
+            if rank.tier.is_jedi:
+                return None
+            if index + 1 < len(ranks) and not ranks[index + 1].tier.is_jedi:
+                return ranks[index + 1]
+            return None
     return None

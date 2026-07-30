@@ -15,9 +15,12 @@ from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
 from app.crud import rank as rank_crud
 from app.crud import regiment as regiment_crud
+from app.crud import report as report_crud
+from app.crud import user as user_crud
 from app.crud import violation as violation_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
+from app.schemas.rank import RankRead
 from app.schemas.regiment_commander import GuildMemberRead
 from app.schemas.violation import ViolationCreate, ViolationRead
 
@@ -44,15 +47,26 @@ async def get_target_candidates(
         if regiment is None:
             raise NotFoundError("Формирование не найдено")
         members = [m for m in members if regiment.discord_role_id in m["roles"]]
-    return [
-        GuildMemberRead(
-            discord_id=m["discord_id"],
-            username=m["username"],
-            discord_username=m["username"],
-            avatar_url=m["avatar_url"],
+
+    # so picker can search/show by web-nick too, not just discord username
+    users_by_discord_id = {
+        u.discord_id: u for u in await user_crud.get_by_discord_ids(db, [m["discord_id"] for m in members])
+    }
+    result = []
+    for m in members:
+        user = users_by_discord_id.get(m["discord_id"])
+        result.append(
+            GuildMemberRead(
+                discord_id=m["discord_id"],
+                username=m["username"],
+                discord_username=m["username"],
+                avatar_url=m["avatar_url"],
+                service_id=user.service_id if user else None,
+                callsign=user.callsign if user else None,
+                rank=RankRead.model_validate(user.rank) if user and user.rank else None,
+            )
         )
-        for m in members
-    ]
+    return result
 
 
 @router.get("", response_model=list[ViolationRead])
@@ -179,11 +193,17 @@ async def delete_violation(
     if violation is None:
         raise NotFoundError("Запись не найдена")
 
+    # delete the source report first, FK would block violation delete otherwise
+    source_report = await report_crud.get_by_violation_id(db, violation_id)
+    if source_report is not None:
+        await report_crud.soft_delete(db, source_report, updated_by=access.user.id)
+
     await violation_crud.delete(db, violation)
     logger.info("%s удалил запись о нарушении %s", access.user.username, violation_id)
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
         action="violation_delete",
         details=f"Удалил запись о нарушении #{violation_id}",
     )

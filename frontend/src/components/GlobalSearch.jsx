@@ -93,7 +93,9 @@ export function GlobalSearch() {
                 className="global-search-result"
                 onClick={() => handleSelect(regiment, member)}
               >
-                {member.avatar_url && <img src={member.avatar_url} alt="" className="member-avatar" />}
+                {(member.photo_url || member.avatar_url) && (
+                  <img src={member.photo_url || member.avatar_url} alt="" className="member-avatar" />
+                )}
                 <span>{formatFullName(member)}</span>
                 <span className="hint-text global-search-result-regiment">{regiment.name}</span>
               </button>

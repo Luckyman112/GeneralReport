@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +16,16 @@ class RankTier(Base):
     name: Mapped[str] = mapped_column(String(255))
     order: Mapped[int] = mapped_column(Integer)
     tenure_days_required: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # None = no limit, per Specialization.category
+    class_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gear_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    specialization_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    additional_specialization_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    elite_specialization_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # separate hierarchy for jedi characters, excluded from normal promotion flow
+    is_jedi: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     ranks: Mapped[list["Rank"]] = relationship(back_populates="tier", order_by="Rank.order")
 

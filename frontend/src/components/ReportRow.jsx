@@ -17,16 +17,15 @@ export function ReportRow({
   isOwn,
   canManage,
   canDelete,
+  canReject = canManage,
   canSetPoints,
   onSubmitDraft,
   onApprove,
   onReject,
+  onEditContent,
   onDelete,
   onSetPoints,
   onDeleteImage,
-  selectable,
-  selected,
-  onToggleSelected,
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -34,6 +33,8 @@ export function ReportRow({
   const [showPointsPanel, setShowPointsPanel] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingContent, setEditingContent] = useState(false);
+  const [contentDraft, setContentDraft] = useState(report.content);
   const pointsWrapRef = useRef(null);
 
   useEffect(() => {
@@ -58,9 +59,6 @@ export function ReportRow({
   return (
     <div className={`report-row report-row-status-${report.status} fade-in-up`}>
       <div className="report-row-header">
-        {selectable && (
-          <input type="checkbox" checked={Boolean(selected)} onChange={onToggleSelected} className="report-row-checkbox" />
-        )}
         <span className="report-regiment" style={regimentColor ? { color: regimentColor } : undefined}>
           {regimentName}
         </span>
@@ -137,14 +135,41 @@ export function ReportRow({
         </div>
       )}
 
-      <p className="report-content">
-        {displayedContent}
-        {isLongContent && (
-          <button type="button" className="ghost report-expand-toggle" onClick={() => setExpanded((v) => !v)}>
-            {expanded ? "Свернуть" : "Показать полностью"}
-          </button>
-        )}
-      </p>
+      {editingContent ? (
+        <div className="report-content-edit">
+          <textarea rows={4} value={contentDraft} onChange={(e) => setContentDraft(e.target.value)} />
+          <div className="report-row-actions">
+            <button
+              className="primary"
+              disabled={!contentDraft.trim()}
+              onClick={() => {
+                onEditContent(contentDraft.trim());
+                setEditingContent(false);
+              }}
+            >
+              Сохранить
+            </button>
+            <button
+              className="ghost"
+              onClick={() => {
+                setContentDraft(report.content);
+                setEditingContent(false);
+              }}
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="report-content">
+          {displayedContent}
+          {isLongContent && (
+            <button type="button" className="ghost report-expand-toggle" onClick={() => setExpanded((v) => !v)}>
+              {expanded ? "Свернуть" : "Показать полностью"}
+            </button>
+          )}
+        </p>
+      )}
 
       {report.rejection_reason && (
         <p className="report-rejection-reason">Причина отклонения: {report.rejection_reason}</p>
@@ -168,17 +193,25 @@ export function ReportRow({
       )}
 
       <div className="report-row-actions">
-        {isOwn && report.status === "draft" && (
-          <button className="primary" onClick={onSubmitDraft}>
-            Отправить
-          </button>
+        {isOwn && report.status === "draft" && !editingContent && (
+          <>
+            <button className="primary" onClick={onSubmitDraft}>
+              Отправить
+            </button>
+            <button className="icon-button" onClick={() => setEditingContent(true)}>
+              Изменить
+            </button>
+          </>
         )}
 
         {canManage && report.status === "submitted" && (
+          <button className="primary icon-button" onClick={onApprove}>
+            <CheckIcon /> Одобрить
+          </button>
+        )}
+
+        {canReject && (report.status === "submitted" || report.status === "approved") && (
           <>
-            <button className="primary icon-button" onClick={onApprove}>
-              <CheckIcon /> Одобрить
-            </button>
             {!showRejectInput ? (
               <button className="icon-button" onClick={() => setShowRejectInput(true)}>
                 <CrossIcon /> Отклонить

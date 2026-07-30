@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { InlineSpinner } from "./InlineSpinner";
 import { SaveBar } from "./SaveBar";
 import { useToast } from "./ToastContext";
 import { StatusBadge } from "./StatusBadge";
+import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
-import { formatFullName } from "../utils/formatName";
+import { formatFullName, formatFullNameAtRank } from "../utils/formatName";
+import { steamProfileUrl } from "../utils/steam";
 
 function profileSnapshot(member) {
   return {
@@ -17,9 +22,11 @@ function profileSnapshot(member) {
 }
 
 export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSaved }) {
-  const { token } = useAuth();
+  const { token, access, regiments } = useAuth();
+  const regiment = regiments.find((r) => r.id === regimentId);
   const showToast = useToast();
   const [baseline, setBaseline] = useState(() => profileSnapshot(member));
+  const [photoUrl, setPhotoUrl] = useState(member.photo_url ?? null);
   const [serviceId, setServiceId] = useState(baseline.serviceId);
   const [callsign, setCallsign] = useState(baseline.callsign);
   const [rankId, setRankId] = useState(baseline.rankId);
@@ -37,9 +44,18 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [error, setError] = useState(null);
   const [expandedRankKey, setExpandedRankKey] = useState(null);
   const [showReprimandHistory, setShowReprimandHistory] = useState(false);
+  const [confirmDeleteReprimandId, setConfirmDeleteReprimandId] = useState(null);
   const [showProfileHistory, setShowProfileHistory] = useState(false);
   const [profileHistory, setProfileHistory] = useState(null);
   const [earlyPromotionReason, setEarlyPromotionReason] = useState("");
+  const [specializations, setSpecializations] = useState([]);
+  const [specializationCatalog, setSpecializationCatalog] = useState([]);
+  const [newSpecializationId, setNewSpecializationId] = useState("");
+  const [specializationBans, setSpecializationBans] = useState([]);
+  const [newBanSpecializationId, setNewBanSpecializationId] = useState("");
+  const [newBanUntilDate, setNewBanUntilDate] = useState("");
+  const [newBanPermanent, setNewBanPermanent] = useState(false);
+  const [newBanReason, setNewBanReason] = useState("");
 
   // Баллы за рапорт (Report.points) относятся к автору рапорта — для рапортов, где
   // боец лишь указан участником, здесь этой суммы нет (баллы участника хранятся
@@ -69,11 +85,34 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
 
   const LEAVE_STATUS_LABELS = { pending: "ожидает решения", approved: "одобрена", rejected: "отклонена" };
 
-  function loadReprimands() {
+  const loadReprimands = useCallback(() => {
     api
       .listReprimands(token, regimentId)
       .then(setReprimands)
       .catch(() => setReprimands([]));
+  }, [token, regimentId]);
+
+  useLiveEvents("reprimands", loadReprimands);
+
+  function loadPromotionStatus() {
+    api
+      .getMemberPromotionStatus(token, regimentId, member.discord_id)
+      .then(setPromotionStatus)
+      .catch(() => setPromotionStatus(null));
+  }
+
+  function loadSpecializations() {
+    api
+      .listMemberSpecializations(token, member.discord_id)
+      .then(setSpecializations)
+      .catch(() => setSpecializations([]));
+  }
+
+  function loadSpecializationBans() {
+    api
+      .listSpecializationBans(token, member.discord_id)
+      .then(setSpecializationBans)
+      .catch(() => setSpecializationBans([]));
   }
 
   useEffect(() => {
@@ -87,10 +126,10 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
       .listLeaveRequests(token)
       .then(setLeaveRequests)
       .catch(() => setLeaveRequests([]));
-    api
-      .getMemberPromotionStatus(token, regimentId, member.discord_id)
-      .then(setPromotionStatus)
-      .catch(() => setPromotionStatus(null));
+    loadPromotionStatus();
+    loadSpecializations();
+    loadSpecializationBans();
+    api.listSpecializations(token).then(setSpecializationCatalog).catch(() => setSpecializationCatalog([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, regimentId, member.discord_id]);
 
@@ -112,6 +151,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
       setNewReprimandReason("");
       setNewReprimandPoints("");
       loadReprimands();
+      loadPromotionStatus();
     } catch (e) {
       setError(e.message);
     }
@@ -121,23 +161,151 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     try {
       await api.revokeReprimand(token, regimentId, reprimandId);
       loadReprimands();
+      loadPromotionStatus();
     } catch (e) {
       setError(e.message);
     }
   }
 
-  const isDirty =
-    serviceId !== baseline.serviceId ||
-    callsign !== baseline.callsign ||
-    rankId !== baseline.rankId ||
-    isInactive !== baseline.isInactive;
+  const canDeleteReprimandHistory = access?.is_admin || access?.is_high_command;
+
+  const grantedSpecializationIds = new Set(specializations.map((s) => s.specialization.id));
+  const availableSpecializations = specializationCatalog.filter((s) => !grantedSpecializationIds.has(s.id));
+
+  async function handleGrantSpecialization() {
+    if (!newSpecializationId) return;
+    setError(null);
+    try {
+      await api.grantSpecialization(token, member.discord_id, Number(newSpecializationId));
+      setNewSpecializationId("");
+      loadSpecializations();
+      showToast("Специализация выдана");
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handleRevokeSpecialization(grantId) {
+    setError(null);
+    try {
+      await api.revokeSpecialization(token, member.discord_id, grantId);
+      loadSpecializations();
+      showToast("Специализация снята");
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handleCreateBan() {
+    if (!newBanPermanent && !newBanUntilDate) return;
+    setError(null);
+    try {
+      await api.createSpecializationBan(token, member.discord_id, {
+        specializationId: newBanSpecializationId ? Number(newBanSpecializationId) : null,
+        untilDate: newBanPermanent ? null : newBanUntilDate,
+        reason: newBanReason.trim(),
+      });
+      setNewBanSpecializationId("");
+      setNewBanUntilDate("");
+      setNewBanPermanent(false);
+      setNewBanReason("");
+      loadSpecializationBans();
+      showToast("Запрет на обучение выставлен");
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handleDeleteBan(banId) {
+    setError(null);
+    try {
+      await api.deleteSpecializationBan(token, member.discord_id, banId);
+      loadSpecializationBans();
+      showToast("Запрет снят");
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handleDeleteReprimand(reprimandId) {
+    try {
+      await api.deleteReprimand(token, regimentId, reprimandId);
+      loadReprimands();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  const isDirty = serviceId !== baseline.serviceId || callsign !== baseline.callsign || rankId !== baseline.rankId;
 
   function handleResetProfile() {
     setServiceId(baseline.serviceId);
     setCallsign(baseline.callsign);
     setRankId(baseline.rankId);
-    setIsInactive(baseline.isInactive);
     setEarlyPromotionReason("");
+  }
+
+  const [confirmDischarge, setConfirmDischarge] = useState(false);
+
+  async function handleDischarge() {
+    setConfirmDischarge(false);
+    setError(null);
+    try {
+      await api.setMemberProfile(token, regimentId, member.discord_id, { is_inactive: true });
+      showToast("Боец разжалован");
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handleReinstate() {
+    setError(null);
+    try {
+      await api.setMemberProfile(token, regimentId, member.discord_id, { is_inactive: false });
+      setIsInactive(false);
+      showToast("Боец восстановлен в строй");
+      loadPromotionStatus();
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handlePhotoUpload(e) {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    try {
+      const updated = await api.uploadMemberPhoto(token, regimentId, member.discord_id, file);
+      setPhotoUrl(updated.photo_url);
+      showToast("Фото загружено");
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+      showToast(err.message, "error");
+    }
+  }
+
+  async function handlePhotoDelete() {
+    setError(null);
+    try {
+      const updated = await api.deleteMemberPhoto(token, regimentId, member.discord_id);
+      setPhotoUrl(updated.photo_url);
+      showToast("Фото удалено");
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+      showToast(err.message, "error");
+    }
   }
 
   async function handleSaveProfile() {
@@ -149,12 +317,12 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
         service_id: serviceId.trim() || null,
         callsign: callsign.trim() || null,
         rank_id: rankId === "" ? null : Number(rankId),
-        is_inactive: isInactive,
         ...(rankChanged ? { early_promotion_reason: earlyPromotionReason.trim() || null } : {}),
       });
       setBaseline({ serviceId, callsign, rankId, isInactive });
       setEarlyPromotionReason("");
       showToast("Профиль сохранён");
+      loadPromotionStatus();
       onSaved();
     } catch (e) {
       setError(e.message);
@@ -164,12 +332,59 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     }
   }
 
-  return (
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{member.username}</h3>
-        <p className="hint-text">Discord: {member.discord_username}</p>
-        {member.steam_id && <p className="hint-text">Steam ID: {member.steam_id}</p>}
+        <button
+          type="button"
+          className="ghost no-print member-detail-print-button"
+          onClick={() => window.print()}
+          title="Печать / сохранить как PDF"
+        >
+          Печать / PDF
+        </button>
+        <div className="member-detail-header">
+          {(photoUrl || member.avatar_url) && (
+            <img src={photoUrl || member.avatar_url} alt="" className="member-detail-photo" />
+          )}
+          <div>
+            <h3>{member.username}</h3>
+            <p className="hint-text">Discord: {member.discord_username}</p>
+            {member.steam_id && (
+              <p className="hint-text">
+                Steam ID:{" "}
+                {steamProfileUrl(member.steam_id) ? (
+                  <a href={steamProfileUrl(member.steam_id)} target="_blank" rel="noreferrer">
+                    {member.steam_id}
+                  </a>
+                ) : (
+                  member.steam_id
+                )}
+              </p>
+            )}
+            <p className="hint-text">
+              Последний вход: {member.last_login_at ? `${formatMskDate(member.last_login_at)} МСК` : "не входил"}
+            </p>
+          </div>
+        </div>
+        {canEdit && (
+          <div className="no-print member-detail-photo-controls">
+            <label className="ghost" style={{ cursor: "pointer" }}>
+              {photoUrl ? "Заменить фото" : "Загрузить фото"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                style={{ display: "none" }}
+                onChange={handlePhotoUpload}
+              />
+            </label>
+            {photoUrl && (
+              <button type="button" className="ghost" onClick={handlePhotoDelete}>
+                Убрать фото
+              </button>
+            )}
+          </div>
+        )}
 
         {canEdit ? (
           <div className="member-profile-form">
@@ -177,9 +392,10 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
               ИДН (4 цифры)
               <input
                 type="text"
+                inputMode="numeric"
                 maxLength={4}
                 value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
+                onChange={(e) => setServiceId(e.target.value.replace(/\D/g, "").slice(0, 4))}
                 placeholder="0000"
               />
             </label>
@@ -187,15 +403,17 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
               Звание
               <select value={rankId} onChange={(e) => setRankId(e.target.value)}>
                 <option value="">— не назначено —</option>
-                {tiers.map((tier) => (
-                  <optgroup key={tier.id} label={tier.name}>
-                    {tier.ranks.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.code} — {r.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
+                {tiers
+                  .filter((tier) => (regiment?.is_jedi_order ? tier.is_jedi : !tier.is_jedi))
+                  .map((tier) => (
+                    <optgroup key={tier.id} label={tier.name}>
+                      {tier.ranks.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.code} — {r.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
               </select>
             </label>
             <label>
@@ -218,21 +436,38 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                 {member.early_promotion_reason && ` — ${member.early_promotion_reason}`}
               </p>
             )}
-            <label className="checkbox-label">
-              <input type="checkbox" checked={isInactive} onChange={(e) => setIsInactive(e.target.checked)} />
-              Неактивен (не может писать рапорта)
-            </label>
-            {isInactive && !baseline.isInactive && (
-              <p className="error-text">
-                При сохранении профиль обнулится (ИДН/звание/позывной) — при реактивации боец пройдёт регистрацию заново.
-              </p>
+            {isInactive ? (
+              <div className="discharge-panel">
+                <p className="hint-text">Боец разжалован — не может писать рапорты и не отображается в составе.</p>
+                <button type="button" className="ghost" onClick={handleReinstate}>
+                  Восстановить в строй
+                </button>
+              </div>
+            ) : (
+              <div className="discharge-panel">
+                <button type="button" className="ghost error-text" onClick={() => setConfirmDischarge(true)}>
+                  Разжаловать
+                </button>
+                <p className="hint-text">
+                  Профиль обнулится (ИДН/звание/позывной), боец пропадёт из состава и при восстановлении пройдёт
+                  регистрацию заново.
+                </p>
+              </div>
             )}
+            <ConfirmDialog
+              open={confirmDischarge}
+              message={`Разжаловать ${formatFullName(member)}? Профиль обнулится, боец пропадёт из состава и пройдёт регистрацию заново при восстановлении.`}
+              confirmLabel="Разжаловать"
+              onConfirm={handleDischarge}
+              onCancel={() => setConfirmDischarge(false)}
+            />
             <SaveBar
               visible={isDirty}
               saving={saving}
               label="Есть несохранённые изменения в профиле"
               onSave={handleSaveProfile}
               onReset={handleResetProfile}
+              sticky
             />
           </div>
         ) : (
@@ -244,6 +479,105 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           )
         )}
         {error && <p className="error-text">{error}</p>}
+
+        <h4>Специализации</h4>
+        {specializations.length === 0 ? (
+          <p className="hint-text">Специализаций пока не выдано.</p>
+        ) : (
+          <ul className="chip-list">
+            {specializations.map((s) => (
+              <li key={s.id} className="chip" title={`Выдал: ${formatFullName(s.granted_by)} · ${formatMskDate(s.granted_at)} МСК`}>
+                {s.specialization.code} — {s.specialization.name}
+                {access?.can_grant_specializations && (
+                  <button type="button" onClick={() => handleRevokeSpecialization(s.id)}>
+                    ×
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {access?.can_grant_specializations && (
+          <div className="add-category-form">
+            <select value={newSpecializationId} onChange={(e) => setNewSpecializationId(e.target.value)}>
+              <option value="">— выбрать специализацию —</option>
+              {availableSpecializations.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.code} — {s.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" disabled={!newSpecializationId} onClick={handleGrantSpecialization}>
+              Выдать
+            </button>
+          </div>
+        )}
+
+        {specializationBans.length > 0 && (
+          <>
+            <h4>Запреты на обучение</h4>
+            <ul className="member-report-list">
+              {specializationBans.map((b) => {
+                const isActive = !b.until_date || new Date(b.until_date) >= new Date(new Date().toDateString());
+                return (
+                  <li key={b.id}>
+                    <span className={isActive ? "error-text" : "hint-text"}>
+                      {b.specialization ? `${b.specialization.code} — ${b.specialization.name}` : "Всё обучение"}
+                      {" "}
+                      {b.until_date ? `до ${b.until_date}` : "навсегда"}
+                      {!isActive && " (истёк)"}
+                    </span>
+                    {b.reason && <p className="member-report-content">{b.reason}</p>}
+                    {access?.can_grant_specializations && (
+                      <button className="ghost" onClick={() => handleDeleteBan(b.id)}>
+                        Снять
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+        {access?.can_grant_specializations && (
+          <div className="add-category-form">
+            <select value={newBanSpecializationId} onChange={(e) => setNewBanSpecializationId(e.target.value)}>
+              <option value="">— весь состав (любое обучение) —</option>
+              {specializationCatalog.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.code} — {s.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={newBanUntilDate}
+              onChange={(e) => setNewBanUntilDate(e.target.value)}
+              disabled={newBanPermanent}
+              placeholder={newBanPermanent ? "навсегда" : undefined}
+            />
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={newBanPermanent}
+                onChange={(e) => {
+                  setNewBanPermanent(e.target.checked);
+                  if (e.target.checked) setNewBanUntilDate("");
+                }}
+              />
+              Навсегда
+            </label>
+            <input
+              type="text"
+              placeholder="Причина (необязательно)"
+              value={newBanReason}
+              onChange={(e) => setNewBanReason(e.target.value)}
+            />
+            <button type="button" disabled={!newBanPermanent && !newBanUntilDate} onClick={handleCreateBan}>
+              Запретить обучение
+            </button>
+          </div>
+        )}
 
         {canEdit && (
           <>
@@ -373,10 +707,24 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                     Для снятия нужно баллов: {r.points_required} (набрано: {r.points_earned})
                   </p>
                 )}
+                {canDeleteReprimandHistory && (
+                  <button className="ghost error-text" onClick={() => setConfirmDeleteReprimandId(r.id)}>
+                    Удалить из истории
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         )}
+        <ConfirmDialog
+          open={confirmDeleteReprimandId !== null}
+          message="Удалить эту запись о выговоре из истории навсегда? Действие необратимо."
+          onConfirm={() => {
+            handleDeleteReprimand(confirmDeleteReprimandId);
+            setConfirmDeleteReprimandId(null);
+          }}
+          onCancel={() => setConfirmDeleteReprimandId(null)}
+        />
         {canEdit && (
           <form onSubmit={handleIssueReprimand} className="add-category-form">
             <input
@@ -423,7 +771,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
 
         <h4>Рапорты {!loading && reports.length > 0 && <span className="category-points-badge">— всего баллов: {totalPoints}</span>}</h4>
         {loading ? (
-          <p>Загрузка...</p>
+          <InlineSpinner />
         ) : reports.length === 0 ? (
           <p className="hint-text">Рапортов нет.</p>
         ) : (
@@ -449,6 +797,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                       {group.reports.map((r) => (
                         <li key={r.id}>
                           <StatusBadge status={r.status} />
+                          {r.category_name && <span className="report-category">{r.category_name}</span>}
                           <span className="hint-text">
                             {" "}
                             {r.author?.discord_id === member.discord_id ? "проводил" : "участвовал"}
@@ -457,7 +806,25 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                             <span className="category-points-badge"> Баллы: {r.points}</span>
                           )}
                           <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
+                          <p className="report-byline">Докладывает: {formatFullNameAtRank(r.author, r.author_rank)}</p>
+                          {r.status === "approved" && r.updated_by_user && (
+                            <p className="report-byline">
+                              Одобрил: {formatFullNameAtRank(r.updated_by_user, r.updated_by_rank)}
+                            </p>
+                          )}
+                          {r.status === "rejected" && r.rejection_reason && (
+                            <p className="report-rejection-reason">Причина отклонения: {r.rejection_reason}</p>
+                          )}
                           <p className="member-report-content">{r.content}</p>
+                          {r.images.length > 0 && (
+                            <div className="report-images">
+                              {r.images.map((img) => (
+                                <a key={img.id} href={img.url} target="_blank" rel="noreferrer" className="report-image-thumb">
+                                  <img src={img.url} alt="" />
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -474,6 +841,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

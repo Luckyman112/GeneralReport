@@ -27,6 +27,8 @@ class Settings(BaseSettings):
 
     # Секрет для входа по паролю (в обход Discord) — даёт полный админский доступ
     admin_password: str
+    # env value wins over db setting so it can't be reconfigured via panel; empty = no restriction
+    password_login_owner_discord_id: str = ""
 
     # JWT
     jwt_secret: str

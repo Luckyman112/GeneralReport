@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.report import ReportStatus
 from app.schemas.rank import RankRead
 from app.schemas.report_image import ReportImageRead
+from app.schemas.specialization import SpecializationRead
 from app.schemas.user import UserBrief
 
 PunishmentType = Literal["verbal", "skt", "detention", "other"]
@@ -35,12 +36,19 @@ class ReportCreate(BaseModel):
     # ReportCategory.participant_points при одобрении
     participant_discord_ids: list[str] = []
 
+    # training reports only
+    training_specialization_id: int | None = None
+
 
 class ReportStatusUpdate(BaseModel):
     """Изменение статуса рапорта командиром (одобрить/отклонить/удалить)."""
 
     status: ReportStatus
     rejection_reason: str | None = None
+
+
+class ReportContentUpdate(BaseModel):
+    content: str = Field(min_length=1)
 
 
 class ReportPointsUpdate(BaseModel):
@@ -85,3 +93,4 @@ class ReportRead(BaseModel):
     punishment_other_text: str | None = None
     punishment_amount: str | None = None
     violation_id: int | None = None
+    training_specialization: SpecializationRead | None = None

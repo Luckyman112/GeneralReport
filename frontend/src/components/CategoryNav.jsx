@@ -4,6 +4,9 @@
  * в этой же навигации ради единого места "куда смотреть". */
 export function CategoryNav({
   categories,
+  promotionCategories = [],
+  demotionCategories = [],
+  trainingCategories = [],
   regimentsById,
   activeCategoryId,
   view = "reports",
@@ -12,6 +15,12 @@ export function CategoryNav({
   showLeave,
 }) {
   const showRegimentName = new Set(categories.map((c) => c.regiment_id)).size > 1;
+  const showVirtualSection =
+    showReprimands ||
+    showLeave ||
+    promotionCategories.length > 0 ||
+    demotionCategories.length > 0 ||
+    trainingCategories.length > 0;
 
   return (
     <nav className="category-nav">
@@ -40,10 +49,49 @@ export function CategoryNav({
         ))}
       </ul>
 
-      {(showReprimands || showLeave) && (
+      {showVirtualSection && (
         <>
           <hr className="hud-divider" />
           <ul>
+            {promotionCategories.map((c) => (
+              <li key={c.id}>
+                <button
+                  className={view === "reports" && activeCategoryId === c.id ? "active" : ""}
+                  onClick={() => onSelectView("reports", c.id)}
+                >
+                  Повышения
+                  {showRegimentName && (
+                    <span className="category-nav-regiment"> — {regimentsById[c.regiment_id]?.name}</span>
+                  )}
+                </button>
+              </li>
+            ))}
+            {demotionCategories.map((c) => (
+              <li key={c.id}>
+                <button
+                  className={view === "reports" && activeCategoryId === c.id ? "active" : ""}
+                  onClick={() => onSelectView("reports", c.id)}
+                >
+                  Понижения
+                  {showRegimentName && (
+                    <span className="category-nav-regiment"> — {regimentsById[c.regiment_id]?.name}</span>
+                  )}
+                </button>
+              </li>
+            ))}
+            {trainingCategories.map((c) => (
+              <li key={c.id}>
+                <button
+                  className={view === "reports" && activeCategoryId === c.id ? "active" : ""}
+                  onClick={() => onSelectView("reports", c.id)}
+                >
+                  Обучение на специализацию
+                  {showRegimentName && (
+                    <span className="category-nav-regiment"> — {regimentsById[c.regiment_id]?.name}</span>
+                  )}
+                </button>
+              </li>
+            ))}
             {showReprimands && (
               <li>
                 <button className={view === "reprimands" ? "active" : ""} onClick={() => onSelectView("reprimands")}>

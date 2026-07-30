@@ -3,9 +3,12 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../hooks/useTheme";
 import { BroadcastModal } from "./BroadcastModal";
+import { CharacterSwitcher } from "./CharacterSwitcher";
 import { GlobalSearch } from "./GlobalSearch";
 import { MegaphoneIcon, MoonIcon, SunIcon } from "./icons";
 import { NotificationBell } from "./NotificationBell";
+import { PasswordEscalation } from "./PasswordEscalation";
+import { RosterBrowserModal } from "./RosterBrowserModal";
 
 function buildPositionLabel(access, regiments) {
   if (!access) return "";
@@ -34,11 +37,15 @@ function ownRegimentColor(access, regiments) {
 }
 
 export function Navbar() {
-  const { user, access, regiments, logout } = useAuth();
+  const { user, access, regiments, logout, activeCharacter } = useAuth();
   const [showBroadcast, setShowBroadcast] = useState(false);
+  const [showRoster, setShowRoster] = useState(false);
   const [theme, toggleTheme] = useTheme();
-  const positionLabel = buildPositionLabel(access, regiments);
-  const nameColor = ownRegimentColor(access, regiments);
+  const positionLabel = activeCharacter
+    ? `${activeCharacter.regiment.name} (второй персонаж)`
+    : buildPositionLabel(access, regiments);
+  const nameColor = activeCharacter ? activeCharacter.regiment.color : ownRegimentColor(access, regiments);
+  const displayName = activeCharacter?.callsign || user?.username;
 
   return (
     <nav className="navbar">
@@ -47,14 +54,21 @@ export function Navbar() {
         <Link to="/main">Главное</Link>
         <Link to="/reports">Рапорты</Link>
         {access?.can_view_violations && <Link to="/violations">Нарушители</Link>}
+        <Link to="/instructor-room">Инструкторская</Link>
         <Link to="/promotions">Повышения</Link>
+        <button className="ghost navbar-link-button" onClick={() => setShowRoster(true)}>
+          Состав
+        </button>
         {(access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0) && (
           <Link to="/registrations">Регистрации</Link>
+        )}
+        {(access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0) && (
+          <Link to="/transfers">Переводы</Link>
         )}
         {access?.is_admin && <Link to="/regiments">Формирования</Link>}
         {access?.is_admin && <Link to="/admin-panel">Админ-панель</Link>}
         {access?.is_admin && <Link to="/backups">Резервные копии</Link>}
-        {access?.is_password_login && <Link to="/settings">Настройки</Link>}
+        {access?.is_admin && <Link to="/settings">Настройки</Link>}
       </div>
       <div className="navbar-user">
         <button
@@ -71,10 +85,12 @@ export function Navbar() {
           </button>
         )}
         <NotificationBell />
+        <CharacterSwitcher />
+        {!access?.is_password_login && access?.can_escalate_password_login && <PasswordEscalation />}
         {user?.avatar_url && <img src={user.avatar_url} alt="" className="navbar-avatar" />}
         <span className="navbar-user-info">
           <span className="navbar-username" style={nameColor ? { color: nameColor } : undefined}>
-            {user?.username}
+            {displayName}
           </span>
           {positionLabel && <span className="navbar-position">{positionLabel}</span>}
         </span>
@@ -84,6 +100,7 @@ export function Navbar() {
       </div>
 
       {showBroadcast && <BroadcastModal onClose={() => setShowBroadcast(false)} />}
+      {showRoster && <RosterBrowserModal onClose={() => setShowRoster(false)} />}
     </nav>
   );
 }

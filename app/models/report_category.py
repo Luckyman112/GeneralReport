@@ -1,7 +1,12 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy import JSON, Boolean, ForeignKey, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.rank import Rank
 
 
 class ReportCategory(Base):
@@ -33,7 +38,15 @@ class ReportCategory(Base):
     # app/crud/promotion.py), заводится автоматически при создании формирования,
     # как и is_detention; вручную рапорт в ней не создать (см. app/api/reports.py)
     is_promotion: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # auto-created, mirrors manual rank demotion, not manually creatable
+    is_demotion: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # instructor-only, grants specialization on approval
+    is_training: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Балл, который получает КАЖДЫЙ участник рапорта (из ростер-полей, не автор) при
     # одобрении — настраивает полноправный командир/высшее командование/админ,
     # так же как обычные points. None — участникам баллы не начисляются.
     participant_points: Mapped[int | None] = mapped_column(nullable=True, default=None)
+    # filing restriction: min rank and/or commander+/deputy+ only, can combine
+    min_rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)
+    commander_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    min_rank: Mapped["Rank | None"] = relationship()

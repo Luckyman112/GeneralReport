@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
 import { CheckIcon, CrossIcon } from "../components/icons";
 import { LeaveCalendar } from "../components/LeaveCalendar";
 import { PageLoading } from "../components/PageLoading";
+import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
 
@@ -98,18 +99,19 @@ export function LeaveRequestsPage() {
     [regiments, access, ownRegimentIds]
   );
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setRequests(await api.listLeaveRequests(token));
     } catch (e) {
       setError(e.message);
     }
-  }
+  }, [token]);
+
+  useLiveEvents("leave_requests", load);
 
   useEffect(() => {
     load().finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [load]);
 
   function canDecide(request) {
     return access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).includes(request.regiment_id);

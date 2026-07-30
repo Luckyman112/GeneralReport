@@ -29,6 +29,7 @@ from app.schemas.promotion import (
     CategoryRequirementStatus,
     LocalCategoryRequirementCreate,
     MandatoryCategoryRequirementCreate,
+    MandatoryCategoryRequirementUpdate,
     PromotionRequestRead,
     PromotionRequirementRead,
     PromotionRequirementsUpdate,
@@ -124,6 +125,7 @@ async def update_admin_points_required(
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
         action="admin_points_update",
         details=f"Админская база баллов для формирований {regiment_ids}: {[i.model_dump() for i in payload.items]}",
     )
@@ -499,12 +501,62 @@ async def create_mandatory_category_requirement(
         category_name=payload.category_name,
         category_fields=payload.category_fields,
         count_required=payload.count_required,
+        category_min_rank_id=payload.category_min_rank_id,
+        category_commander_only=payload.category_commander_only,
     )
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
         action="mandatory_requirement_create",
         details=f"Завёл обязательное требование «{payload.category_name}» ({payload.count_required}) для звания {payload.rank_id} во всех формированиях",
+    )
+    return [
+        CategoryRequirementRead(
+            id=r.id,
+            regiment_id=r.regiment_id,
+            rank_id=r.rank_id,
+            category_id=r.category_id,
+            count_required=r.count_required,
+            is_mandatory=r.is_mandatory,
+            mandatory_group_id=r.mandatory_group_id,
+        )
+        for r in rows
+    ]
+
+
+@router.patch(
+    "/promotion-category-requirements/mandatory/{group_id}",
+    response_model=list[CategoryRequirementRead],
+)
+async def update_mandatory_category_requirement(
+    group_id: int,
+    payload: MandatoryCategoryRequirementUpdate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[CategoryRequirementRead]:
+    # edits requirement across all regiments sharing mandatory_group_id
+    if not (access.is_admin or access.is_high_command):
+        raise ForbiddenError("Изменять обязательные требования может только высшее командование или администратор")
+
+    rows = await promotion_crud.update_mandatory_category_requirement(
+        db,
+        group_id=group_id,
+        rank_id=payload.rank_id,
+        category_name=payload.category_name,
+        category_fields=payload.category_fields,
+        count_required=payload.count_required,
+        category_min_rank_id=payload.category_min_rank_id,
+        category_commander_only=payload.category_commander_only,
+    )
+    if not rows:
+        raise NotFoundError("Обязательное требование не найдено")
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="mandatory_requirement_update",
+        details=f"Изменил обязательное требование «{payload.category_name}» ({payload.count_required}) для звания {payload.rank_id}",
     )
     return [
         CategoryRequirementRead(
@@ -539,6 +591,7 @@ async def delete_category_requirement(
         await audit_log_crud.log(
             db,
             actor_user_id=access.user.id,
+            actor_is_admin=access.is_admin,
             action="mandatory_requirement_delete",
             details=f"Снял обязательное требование #{requirement_id} (группа {requirement.mandatory_group_id})",
         )
@@ -573,6 +626,7 @@ async def override_category_requirement(
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
         action="requirement_override",
         details=f"Переопределил требование #{requirement.id} для {payload.target_discord_id}: satisfied={payload.satisfied}",
     )

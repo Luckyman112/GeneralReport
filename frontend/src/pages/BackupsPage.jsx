@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { PageLoading } from "../components/PageLoading";
+import { useToast } from "../components/ToastContext";
 import { formatMskDate } from "../utils/formatDate";
 
 function formatSize(bytes) {
@@ -12,10 +14,14 @@ function formatSize(bytes) {
 }
 
 export function BackupsPage() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
+  const showToast = useToast();
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [exportingSettings, setExportingSettings] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [error, setError] = useState(null);
 
   async function load() {
@@ -55,6 +61,32 @@ export function BackupsPage() {
     }
   }
 
+  async function handleExportSettings() {
+    setExportingSettings(true);
+    setError(null);
+    try {
+      await api.downloadSettingsExport(token);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setExportingSettings(false);
+    }
+  }
+
+  async function handleRevokeAll() {
+    setConfirmRevoke(false);
+    setRevoking(true);
+    setError(null);
+    try {
+      await api.revokeAllSessions(token);
+      showToast("Все сессии отозваны — выполняется выход...");
+      logout();
+    } catch (e) {
+      setError(e.message);
+      setRevoking(false);
+    }
+  }
+
   if (loading) return <PageLoading />;
 
   return (
@@ -66,7 +98,34 @@ export function BackupsPage() {
         <button className="primary" onClick={handleCreate} disabled={creating}>
           {creating ? "Создаётся..." : "Сделать бэкап"}
         </button>
+        <button onClick={handleExportSettings} disabled={exportingSettings}>
+          {exportingSettings ? "Выгружается..." : "Выгрузить настройки (JSON)"}
+        </button>
       </div>
+      <p className="hint-text">
+        «Выгрузить настройки» сохраняет только составы/звания/категории рапортов/каталог
+        специализаций (без участников и рапортов) — для переноса конфигурации на другой
+        сервер или быстрого сравнения/отката настроек.
+      </p>
+
+      <h3>Сессии</h3>
+      <p className="hint-text">
+        На случай утечки или компрометации пароля — принудительно завершает все активные
+        сессии (включая вашу собственную, придётся войти заново).
+      </p>
+      <div className="report-form-actions">
+        <button className="danger-outline" onClick={() => setConfirmRevoke(true)} disabled={revoking}>
+          {revoking ? "Выполняется..." : "Выйти у всех"}
+        </button>
+      </div>
+
+      <ConfirmDialog
+        open={confirmRevoke}
+        message="Завершить все активные сессии? Все, включая вас, будут разлогинены и должны войти заново."
+        confirmLabel="Выйти у всех"
+        onConfirm={handleRevokeAll}
+        onCancel={() => setConfirmRevoke(false)}
+      />
 
       {error && <p className="error-text">{error}</p>}
 

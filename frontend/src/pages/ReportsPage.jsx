@@ -4,18 +4,13 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { CategoryManagerModal } from "../components/CategoryManagerModal";
 import { CategoryNav } from "../components/CategoryNav";
-import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DetentionReportForm } from "../components/DetentionReportForm";
 import { EmptyState } from "../components/EmptyState";
 import { PageLoading } from "../components/PageLoading";
 import { RegimentPanel } from "../components/RegimentPanel";
 import { ReportForm } from "../components/ReportForm";
 import { ReportRow } from "../components/ReportRow";
-import { useToast } from "../components/ToastContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
-import { downloadCsv } from "../utils/csv";
-import { formatMskDate } from "../utils/formatDate";
-import { formatFullNameAtRank } from "../utils/formatName";
 import { LeaveRequestsPage } from "./LeaveRequestsPage";
 import { ReprimandsPage } from "./ReprimandsPage";
 
@@ -35,11 +30,12 @@ const STATUS_OPTIONS = [
 
 export function ReportsPage() {
   const { token, user, access, regiments: allRegiments } = useAuth();
-  const showToast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [regiments, setRegiments] = useState([]);
   const [reports, setReports] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [regimentFilter, setRegimentFilter] = useState(searchParams.get("regiment") || "");
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") || null);
   const [focusMemberRegimentId] = useState(searchParams.get("member") ? searchParams.get("regiment") : null);
@@ -53,14 +49,25 @@ export function ReportsPage() {
   const [loading, setLoading] = useState(true);
 
   const regimentsById = useMemo(() => Object.fromEntries(regiments.map((r) => [r.id, r])), [regiments]);
-  // Категория "задержание" видна всем как обычная категория (подать рапорт этой
-  // категории может только тот, у кого есть доступ, см. can_file_detention_report)
-  const categoriesList = useMemo(() => Object.values(categoriesById), [categoriesById]);
 
   const accessibleRegimentIds = useMemo(() => {
     if (access?.is_admin || access?.is_high_command) return regiments.map((r) => r.id);
     return [...new Set([...(access?.commander_regiment_ids || []), ...(access?.soldier_regiment_ids || [])])];
   }, [access, regiments]);
+
+  // only regiments the user can actually access, else nav shows categories they can't see
+  const categoriesList = useMemo(
+    () => Object.values(categoriesById).filter((c) => accessibleRegimentIds.includes(c.regiment_id)),
+    [categoriesById, accessibleRegimentIds]
+  );
+  // promotion/demotion are system mirror categories, shown next to Reprimands/Leave instead
+  const regularCategoriesList = useMemo(
+    () => categoriesList.filter((c) => !c.is_promotion && !c.is_demotion && !c.is_training),
+    [categoriesList]
+  );
+  const promotionCategories = useMemo(() => categoriesList.filter((c) => c.is_promotion), [categoriesList]);
+  const demotionCategories = useMemo(() => categoriesList.filter((c) => c.is_demotion), [categoriesList]);
+  const trainingCategories = useMemo(() => categoriesList.filter((c) => c.is_training), [categoriesList]);
 
   const creatableRegiments = useMemo(
     () => (access?.is_admin || access?.is_high_command ? regiments : regiments.filter((r) => accessibleRegimentIds.includes(r.id))),
@@ -82,12 +89,19 @@ export function ReportsPage() {
   const [totalReportsCount, setTotalReportsCount] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // debounce search input
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearchQuery(searchInput.trim()), 350);
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
+
   const loadReports = useCallback(async () => {
     try {
       const { data, total } = await api.listReports(token, {
         status: statusFilter || undefined,
         regimentId: regimentFilter || undefined,
         categoryId: categoryFilter || undefined,
+        search: searchQuery || undefined,
         limit: REPORTS_PAGE_SIZE,
         offset: 0,
       });
@@ -96,7 +110,7 @@ export function ReportsPage() {
     } catch (e) {
       setError(e.message);
     }
-  }, [token, statusFilter, regimentFilter, categoryFilter]);
+  }, [token, statusFilter, regimentFilter, categoryFilter, searchQuery]);
 
   async function loadMoreReports() {
     setLoadingMore(true);
@@ -105,6 +119,7 @@ export function ReportsPage() {
         status: statusFilter || undefined,
         regimentId: regimentFilter || undefined,
         categoryId: categoryFilter || undefined,
+        search: searchQuery || undefined,
         limit: REPORTS_PAGE_SIZE,
         offset: reports.length,
       });
@@ -162,16 +177,30 @@ export function ReportsPage() {
   }, []);
 
   function canManage(report) {
-    // Дубликат заявки на повышение — решение принимается на странице "Повышения",
-    // здесь его одобрить/отклонить/удалить нельзя (см. app/api/reports.py)
-    if (categoriesById[report.category_id]?.is_promotion) return false;
-    return access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).includes(report.regiment_id);
+    // promotion/demotion mirror records aren't managed here
+    if (categoriesById[report.category_id]?.is_promotion || categoriesById[report.category_id]?.is_demotion) return false;
+    return (
+      access?.is_admin ||
+      access?.is_high_command ||
+      (access?.commander_regiment_ids || []).includes(report.regiment_id) ||
+      (access?.report_appeal_regiment_ids || []).includes(report.regiment_id)
+    );
   }
 
   function canDelete(report) {
+    if (report.user_id === user?.id && report.status === "draft") return true;
     if (!canManage(report)) return false;
     // Аннулировать рапорт о задержании может только администратор
     if (categoriesById[report.category_id]?.is_detention) return Boolean(access?.is_admin);
+    return true;
+  }
+
+  function canReject(report) {
+    if (!canManage(report)) return false;
+    // only someone who can grant specializations can reject a training report
+    if (categoriesById[report.category_id]?.is_training) {
+      return Boolean(access?.is_admin || access?.is_high_command || access?.can_grant_specializations);
+    }
     return true;
   }
 
@@ -198,6 +227,11 @@ export function ReportsPage() {
     await loadReports();
   }
 
+  async function handleEditContent(reportId, content) {
+    await api.updateReportContent(token, reportId, content);
+    await loadReports();
+  }
+
   async function handleApprove(reportId) {
     await api.updateReportStatus(token, reportId, { status: "approved" });
     await loadReports();
@@ -206,77 +240,6 @@ export function ReportsPage() {
   async function handleReject(reportId, reason) {
     await api.updateReportStatus(token, reportId, { status: "rejected", rejectionReason: reason });
     await loadReports();
-  }
-
-  function exportReportsCsv() {
-    downloadCsv(
-      "reports.csv",
-      ["Формирование", "Категория", "Статус", "Баллы", "Автор", "Содержание", "Дата"],
-      reports.map((r) => [
-        regimentsById[r.regiment_id]?.name || `#${r.regiment_id}`,
-        r.category_name || "",
-        r.status,
-        r.points ?? "",
-        formatFullNameAtRank(r.author, r.author_rank),
-        r.content,
-        formatMskDate(r.created_at),
-      ])
-    );
-  }
-
-  const [bulkMode, setBulkMode] = useState(false);
-  const [selectedReportIds, setSelectedReportIds] = useState(new Set());
-  const [bulkRunning, setBulkRunning] = useState(false);
-  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
-
-  function toggleBulkMode() {
-    setBulkMode((v) => !v);
-    setSelectedReportIds(new Set());
-  }
-
-  function toggleReportSelected(reportId) {
-    setSelectedReportIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(reportId)) next.delete(reportId);
-      else next.add(reportId);
-      return next;
-    });
-  }
-
-  // Одобрение/отклонение/удаление каждого рапорта тянет за собой свою логику
-  // (баллы, уведомления, проверка повышения) — поэтому дёргаем те же одиночные
-  // ручки по очереди, а не отдельный bulk-эндпоинт. Ошибка на одном рапорте не
-  // должна останавливать обработку остальных выбранных.
-  async function runBulk(action) {
-    setBulkRunning(true);
-    let failed = 0;
-    try {
-      for (const reportId of selectedReportIds) {
-        try {
-          await action(reportId);
-        } catch {
-          failed += 1;
-        }
-      }
-    } finally {
-      setBulkRunning(false);
-      setSelectedReportIds(new Set());
-      await loadReports();
-      if (failed > 0) {
-        showToast(`Не удалось обработать: ${failed}`, "error");
-      } else {
-        showToast("Готово");
-      }
-    }
-  }
-
-  function handleBulkDecide(status) {
-    return runBulk((reportId) => api.updateReportStatus(token, reportId, { status }));
-  }
-
-  function handleBulkDelete() {
-    setConfirmBulkDelete(false);
-    return runBulk((reportId) => api.deleteReport(token, reportId));
   }
 
   async function handleDelete(reportId) {
@@ -304,7 +267,10 @@ export function ReportsPage() {
   return (
     <div className="reports-page-layout">
       <CategoryNav
-        categories={categoriesList}
+        categories={regularCategoriesList}
+        promotionCategories={promotionCategories}
+        demotionCategories={demotionCategories}
+        trainingCategories={trainingCategories}
         regimentsById={regimentsById}
         activeCategoryId={categoryFilter}
         view={view}
@@ -320,6 +286,13 @@ export function ReportsPage() {
       ) : (
         <div className="reports-page">
           <div className="reports-toolbar">
+            <input
+              type="text"
+              className="reports-search-input"
+              placeholder="Поиск по тексту рапорта..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               {STATUS_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -329,16 +302,19 @@ export function ReportsPage() {
             </select>
 
             {accessibleRegimentIds.length > 1 && (
-              <select value={regimentFilter} onChange={(e) => setRegimentFilter(e.target.value)}>
-                <option value="">Все формирования</option>
-                {regiments
-                  .filter((r) => accessibleRegimentIds.includes(r.id))
-                  .map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-              </select>
+              <label className="violation-filter-label">
+                Фильтр рапортов
+                <select value={regimentFilter} onChange={(e) => setRegimentFilter(e.target.value)}>
+                  <option value="">Все формирования</option>
+                  {regiments
+                    .filter((r) => accessibleRegimentIds.includes(r.id))
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
             )}
 
             {creatableRegiments.length > 0 && !showForm && (
@@ -356,50 +332,7 @@ export function ReportsPage() {
             {manageableRegiments.length > 0 && (
               <button onClick={() => setShowCategoryManager(true)}>Категории и поля</button>
             )}
-
-            {(access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0) && (
-              <button className={bulkMode ? "primary" : ""} onClick={toggleBulkMode}>
-                {bulkMode ? "Отменить выбор" : "Выбрать несколько"}
-              </button>
-            )}
-
-            {reports.length > 0 && (
-              <button onClick={exportReportsCsv}>Скачать CSV</button>
-            )}
           </div>
-
-          {bulkMode && (
-            <div className="bulk-actions-bar">
-              <span>{selectedReportIds.size > 0 ? `Выбрано: ${selectedReportIds.size}` : "Отметьте рапорты"}</span>
-              <button
-                className="primary icon-button"
-                disabled={selectedReportIds.size === 0 || bulkRunning}
-                onClick={() => handleBulkDecide("approved")}
-              >
-                Одобрить выбранные
-              </button>
-              <button
-                className="icon-button"
-                disabled={selectedReportIds.size === 0 || bulkRunning}
-                onClick={() => handleBulkDecide("rejected")}
-              >
-                Отклонить выбранные
-              </button>
-              <button
-                className="icon-button"
-                disabled={selectedReportIds.size === 0 || bulkRunning}
-                onClick={() => setConfirmBulkDelete(true)}
-              >
-                Удалить выбранные
-              </button>
-              <ConfirmDialog
-                open={confirmBulkDelete}
-                message={`Удалить выбранные рапорты (${selectedReportIds.size})? Действие необратимо.`}
-                onConfirm={handleBulkDelete}
-                onCancel={() => setConfirmBulkDelete(false)}
-              />
-            </div>
-          )}
 
           {error && <p className="error-text">{error}</p>}
 
@@ -431,20 +364,15 @@ export function ReportsPage() {
                   isOwn={report.user_id === user?.id}
                   canManage={canManage(report)}
                   canDelete={canDelete(report)}
+                  canReject={canReject(report)}
                   canSetPoints={canSetPoints(report.regiment_id)}
                   onSubmitDraft={() => handleSubmitDraft(report.id)}
                   onApprove={() => handleApprove(report.id)}
                   onReject={(reason) => handleReject(report.id, reason)}
+                  onEditContent={(content) => handleEditContent(report.id, content)}
                   onDelete={() => handleDelete(report.id)}
                   onSetPoints={(points) => handleSetPoints(report.id, points)}
                   onDeleteImage={(imageId) => handleDeleteImage(report.id, imageId)}
-                  selectable={
-                    bulkMode &&
-                    report.status !== "deleted" &&
-                    ((canManage(report) && report.status === "submitted") || canDelete(report))
-                  }
-                  selected={selectedReportIds.has(report.id)}
-                  onToggleSelected={() => toggleReportSelected(report.id)}
                 />
               ))}
             </div>

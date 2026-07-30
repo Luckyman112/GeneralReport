@@ -8,7 +8,7 @@ class NotificationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    kind: Literal["broadcast", "violation"]
+    kind: Literal["broadcast", "violation", "personal"]
     title: str
     body: str
     regiment_id: int | None

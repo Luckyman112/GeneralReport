@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import { api, clearViewAs, getViewAs, setViewAs } from "../api/client";
 
 const STORAGE_KEY = "collapsar_token";
+// localStorage, not sessionStorage - should survive relogin unlike view-as
+const ACTIVE_CHARACTER_STORAGE_KEY = "collapsar_active_character_regiment_id";
 
 const AuthContext = createContext(null);
 
@@ -35,11 +37,15 @@ export function AuthProvider({ children }) {
   // "Просмотр от лица" — восстанавливается из sessionStorage (см. client.js), чтобы
   // пережить обновление страницы; сбрасывается при выходе из аккаунта
   const [viewAs, setViewAsState] = useState(() => getViewAs());
+  const [activeCharacterRegimentId, setActiveCharacterRegimentIdState] = useState(() => {
+    const stored = localStorage.getItem(ACTIVE_CHARACTER_STORAGE_KEY);
+    return stored ? Number(stored) : null;
+  });
 
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     clearViewAs();
-    setViewAsState({ role: null, regimentId: null });
+    setViewAsState(getViewAs());
     setToken(null);
     setUser(null);
     setAccess(null);
@@ -69,16 +75,17 @@ export function AuthProvider({ children }) {
   const loginWithPassword = useCallback(
     async (password) => {
       setError(null);
-      const result = await api.loginWithPassword(password);
+      // pass current token so backend can check discord_id if already logged in
+      const result = await api.loginWithPassword(password, token);
       await applyLoginResult(result);
     },
-    [applyLoginResult]
+    [applyLoginResult, token]
   );
 
   const applyViewAs = useCallback(
-    async (role, regimentId) => {
-      setViewAs(role, regimentId);
-      setViewAsState({ role, regimentId: regimentId ?? null });
+    async (state) => {
+      setViewAs(state);
+      setViewAsState(getViewAs());
       await loadMe(token);
     },
     [loadMe, token]
@@ -86,9 +93,23 @@ export function AuthProvider({ children }) {
 
   const resetViewAs = useCallback(async () => {
     clearViewAs();
-    setViewAsState({ role: null, regimentId: null });
+    setViewAsState(getViewAs());
     await loadMe(token);
   }, [loadMe, token]);
+
+  // null = main profile, else character's regiment id; display pref only, no access impact
+  const setActiveCharacterRegimentId = useCallback((regimentId) => {
+    if (regimentId == null) {
+      localStorage.removeItem(ACTIVE_CHARACTER_STORAGE_KEY);
+    } else {
+      localStorage.setItem(ACTIVE_CHARACTER_STORAGE_KEY, String(regimentId));
+    }
+    setActiveCharacterRegimentIdState(regimentId ?? null);
+  }, []);
+
+  const activeCharacter = activeCharacterRegimentId
+    ? (access?.characters || []).find((c) => c.regiment.id === activeCharacterRegimentId) || null
+    : null;
 
   // При первой загрузке страницы: если Discord вернул ?code= — обменять его на токен.
   // Иначе, если токен уже сохранён — проверить его через /api/me.
@@ -143,6 +164,8 @@ export function AuthProvider({ children }) {
     applyViewAs,
     resetViewAs,
     refreshMe: () => loadMe(token),
+    activeCharacter,
+    setActiveCharacterRegimentId,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

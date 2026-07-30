@@ -1,3 +1,4 @@
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -7,9 +8,10 @@ from app.models.report_participant import ReportParticipant
 from app.models.user import User
 
 
-async def get_for_report(db: AsyncSession, report_id) -> list[ReportParticipant]:
-    result = await db.execute(select(ReportParticipant).where(ReportParticipant.report_id == report_id))
-    return list(result.scalars().all())
+async def delete_for_report(db: AsyncSession, *, report_id) -> None:
+    # used when an approved report is appealed/rejected, avoids double-counted points
+    await db.execute(sa_delete(ReportParticipant).where(ReportParticipant.report_id == report_id))
+    await db.commit()
 
 
 async def award(db: AsyncSession, *, report_id, user_id: int, points: int) -> None:

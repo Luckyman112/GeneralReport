@@ -9,39 +9,31 @@ class ApiError extends Error {
   }
 }
 
-// "Просмотр от лица" (view as) — реальный админ/высшее командование может
-// временно урезать себе доступ до конкретной роли/формирования, чтобы честно
-// увидеть, что видит и может человек с такими правами. Хранится тут как модульное
-// состояние (не React state), потому что request() — обычная функция, а не хук;
-// переживает перезагрузку страницы через sessionStorage (не localStorage — не
-// должно тянуться в другую вкладку/сессию).
+// module state, not react state - request() is a plain function, not a hook.
+// sessionStorage so it doesn't leak into other tabs
 const VIEW_AS_STORAGE_KEY = "collapsar-view-as";
-let viewAsRole = null;
-let viewAsRegimentId = null;
+const VIEW_AS_DEFAULT = { mode: null, role: null, regimentId: null, extras: [], discordId: null, discordUsername: null };
+let viewAsState = { ...VIEW_AS_DEFAULT };
 try {
   const saved = JSON.parse(sessionStorage.getItem(VIEW_AS_STORAGE_KEY) || "null");
-  if (saved) {
-    viewAsRole = saved.role;
-    viewAsRegimentId = saved.regimentId;
-  }
+  if (saved) viewAsState = { ...VIEW_AS_DEFAULT, ...saved };
 } catch {
   // повреждённое значение в sessionStorage — просто игнорируем
 }
 
-export function setViewAs(role, regimentId) {
-  viewAsRole = role;
-  viewAsRegimentId = regimentId ?? null;
-  sessionStorage.setItem(VIEW_AS_STORAGE_KEY, JSON.stringify({ role, regimentId: viewAsRegimentId }));
+// mode: "role" -> {role, regimentId, extras}, "person" -> {discordId, discordUsername}
+export function setViewAs(state) {
+  viewAsState = { ...VIEW_AS_DEFAULT, ...state };
+  sessionStorage.setItem(VIEW_AS_STORAGE_KEY, JSON.stringify(viewAsState));
 }
 
 export function clearViewAs() {
-  viewAsRole = null;
-  viewAsRegimentId = null;
+  viewAsState = { ...VIEW_AS_DEFAULT };
   sessionStorage.removeItem(VIEW_AS_STORAGE_KEY);
 }
 
 export function getViewAs() {
-  return { role: viewAsRole, regimentId: viewAsRegimentId };
+  return viewAsState;
 }
 
 /** Обёртка над fetch: подставляет базовый URL, JWT и разбирает ошибки бэкенда.
@@ -51,9 +43,14 @@ async function request(path, { method = "GET", token, body, withTotal = false } 
   const isFormData = body instanceof FormData;
   const headers = isFormData ? {} : { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (viewAsRole) {
-    headers["X-View-As-Role"] = viewAsRole;
-    if (viewAsRegimentId) headers["X-View-As-Regiment-Id"] = String(viewAsRegimentId);
+  if (viewAsState.mode === "person" && viewAsState.discordId) {
+    headers["X-View-As-Discord-Id"] = viewAsState.discordId;
+  } else if (viewAsState.mode === "role" && viewAsState.role) {
+    headers["X-View-As-Role"] = viewAsState.role;
+    if (viewAsState.regimentId) headers["X-View-As-Regiment-Id"] = String(viewAsState.regimentId);
+    if (viewAsState.extras && viewAsState.extras.length > 0) {
+      headers["X-View-As-Extra"] = viewAsState.extras.join(",");
+    }
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -84,14 +81,16 @@ async function request(path, { method = "GET", token, body, withTotal = false } 
 export const api = {
   loginWithDiscord: (code, redirectUri) =>
     request("/auth/discord", { method: "POST", body: { code, redirect_uri: redirectUri } }),
-  loginWithPassword: (password) => request("/auth/password", { method: "POST", body: { password } }),
+  loginWithPassword: (password, token) => request("/auth/password", { method: "POST", token, body: { password } }),
   getMe: (token) => request("/api/me", { token }),
+  getViewAsCandidates: (token) => request("/api/me/view-as-candidates", { token }),
 
-  listReports: (token, { status, regimentId, categoryId, limit, offset } = {}) => {
+  listReports: (token, { status, regimentId, categoryId, search, limit, offset } = {}) => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (regimentId) params.set("regiment_id", regimentId);
     if (categoryId) params.set("category_id", categoryId);
+    if (search) params.set("search", search);
     if (limit) params.set("limit", limit);
     if (offset) params.set("offset", offset);
     const query = params.toString() ? `?${params.toString()}` : "";
@@ -113,6 +112,7 @@ export const api = {
       punishmentOtherText,
       punishmentAmount,
       participantDiscordIds,
+      trainingSpecializationId,
     }
   ) =>
     request("/api/reports", {
@@ -132,6 +132,7 @@ export const api = {
         punishment_other_text: punishmentOtherText || null,
         punishment_amount: punishmentAmount || null,
         participant_discord_ids: participantDiscordIds || [],
+        training_specialization_id: trainingSpecializationId || null,
       },
     }),
   updateReportStatus: (token, reportId, { status, rejectionReason }) =>
@@ -140,6 +141,8 @@ export const api = {
       token,
       body: { status, rejection_reason: rejectionReason ?? null },
     }),
+  updateReportContent: (token, reportId, content) =>
+    request(`/api/reports/${reportId}/content`, { method: "PATCH", token, body: { content } }),
   deleteReport: (token, reportId) => request(`/api/reports/${reportId}`, { method: "DELETE", token }),
   setReportPoints: (token, reportId, points) =>
     request(`/api/reports/${reportId}/points`, { method: "PATCH", token, body: { points } }),
@@ -153,13 +156,19 @@ export const api = {
 
   listRegiments: (token) => request("/api/regiments", { token }),
   getDiscordRoles: (token) => request("/api/regiments/discord-roles", { token }),
-  createRegiment: (token, { name, discordRoleId, color, discordChannelUrl }) =>
+  createRegiment: (token, { name, discordRoleId, color, discordChannelUrl, isJediOrder }) =>
     request("/api/regiments", {
       method: "POST",
       token,
-      body: { name, discord_role_id: discordRoleId, color: color || null, discord_channel_url: discordChannelUrl || null },
+      body: {
+        name,
+        discord_role_id: discordRoleId,
+        color: color || null,
+        discord_channel_url: discordChannelUrl || null,
+        is_jedi_order: !!isJediOrder,
+      },
     }),
-  updateRegiment: (token, regimentId, { name, discordRoleId, color, discordChannelUrl }) =>
+  updateRegiment: (token, regimentId, { name, discordRoleId, color, discordChannelUrl, isJediOrder }) =>
     request(`/api/regiments/${regimentId}`, {
       method: "PATCH",
       token,
@@ -168,6 +177,7 @@ export const api = {
         discord_role_id: discordRoleId ?? null,
         color: color || null,
         discord_channel_url: discordChannelUrl ?? null,
+        is_jedi_order: isJediOrder,
       },
     }),
 
@@ -191,6 +201,8 @@ export const api = {
 
   getCommanderCandidates: (token, regimentId) =>
     request(`/api/regiments/${regimentId}/commander-candidates`, { token }),
+  getMentorCandidates: (token, regimentId) =>
+    request(`/api/regiments/${regimentId}/mentor-candidates`, { token }),
   listCommanders: (token, regimentId) => request(`/api/regiments/${regimentId}/commanders`, { token }),
 
   submitRegistration: (token, { serviceId, callsign, steamId }) =>
@@ -224,13 +236,24 @@ export const api = {
     }),
   getMemberHistory: (token, regimentId, discordId) =>
     request(`/api/regiments/${regimentId}/members/${discordId}/history`, { token }),
+  uploadMemberPhoto: (token, regimentId, discordId, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request(`/api/regiments/${regimentId}/members/${discordId}/photo`, {
+      method: "POST",
+      token,
+      body: formData,
+    });
+  },
+  deleteMemberPhoto: (token, regimentId, discordId) =>
+    request(`/api/regiments/${regimentId}/members/${discordId}/photo`, { method: "DELETE", token }),
 
   getRanks: (token) => request("/api/ranks", { token }),
 
   getAppSettings: (token) => request("/api/app-settings", { token }),
   updateAppSettings: (
     token,
-    { adminRoleId, commanderRoleId, deputyRoleId, highCommandRoleId, adminUserDiscordIds, founderRoleId }
+    { adminRoleId, commanderRoleId, deputyRoleId, highCommandRoleId, adminUserDiscordIds, founderRoleId, instructorRoleId }
   ) =>
     request("/api/app-settings", {
       method: "PATCH",
@@ -242,9 +265,53 @@ export const api = {
         high_command_role_id: highCommandRoleId ?? null,
         admin_user_discord_ids: adminUserDiscordIds ?? null,
         founder_role_id: founderRoleId ?? null,
+        instructor_role_id: instructorRoleId ?? null,
       },
     }),
   getAppSettingsMembers: (token) => request("/api/app-settings/discord-members", { token }),
+
+  listSpecializations: (token) => request("/api/specializations", { token }),
+  getInstructorActivity: (token) => request("/api/specializations/instructor-activity", { token }),
+  getSystemHealth: (token, staleDays = 3) =>
+    request(`/api/admin/health?stale_days=${staleDays}`, { token }),
+  createSpecialization: (token, { code, name, category, minRankId }) =>
+    request("/api/specializations", {
+      method: "POST",
+      token,
+      body: { code, name, category, min_rank_id: minRankId ?? null },
+    }),
+  updateSpecialization: (token, specializationId, { code, name, category, minRankId }) =>
+    request(`/api/specializations/${specializationId}`, {
+      method: "PATCH",
+      token,
+      body: { code, name, category, min_rank_id: minRankId },
+    }),
+  deleteSpecialization: (token, specializationId) =>
+    request(`/api/specializations/${specializationId}`, { method: "DELETE", token }),
+  listMemberSpecializations: (token, discordId) =>
+    request(`/api/members/${discordId}/specializations`, { token }),
+  grantSpecialization: (token, discordId, specializationId) =>
+    request(`/api/members/${discordId}/specializations`, {
+      method: "POST",
+      token,
+      body: { specialization_id: specializationId },
+    }),
+  revokeSpecialization: (token, discordId, grantId) =>
+    request(`/api/members/${discordId}/specializations/${grantId}`, { method: "DELETE", token }),
+
+  listActiveSpecializationBans: (token) => request("/api/specialization-bans/active", { token }),
+  listSpecializationBans: (token, discordId) => request(`/api/members/${discordId}/specialization-bans`, { token }),
+  createSpecializationBan: (token, discordId, { specializationId, untilDate, reason }) =>
+    request(`/api/members/${discordId}/specialization-bans`, {
+      method: "POST",
+      token,
+      body: { specialization_id: specializationId ?? null, until_date: untilDate || null, reason: reason || null },
+    }),
+  deleteSpecializationBan: (token, discordId, banId) =>
+    request(`/api/members/${discordId}/specialization-bans/${banId}`, { method: "DELETE", token }),
+
+  updateTierSpecializationLimits: (token, tierId, limits) =>
+    request(`/api/ranks/tiers/${tierId}/specialization-limits`, { method: "PATCH", token, body: limits }),
 
   listViolations: (token, { search, dateFrom, dateTo } = {}) => {
     const params = new URLSearchParams();
@@ -286,6 +353,8 @@ export const api = {
     }),
   revokeReprimand: (token, regimentId, reprimandId) =>
     request(`/api/regiments/${regimentId}/reprimands/${reprimandId}`, { method: "DELETE", token }),
+  deleteReprimand: (token, regimentId, reprimandId) =>
+    request(`/api/regiments/${regimentId}/reprimands/${reprimandId}/permanent`, { method: "DELETE", token }),
   // Все выговоры, видимые текущему пользователю (своё/формирование/всё по правам) —
   // для отдельной страницы "Выговоры", в отличие от listReprimands (по одному формированию)
   listAllReprimands: (token) => request("/api/reprimands", { token }),
@@ -299,6 +368,7 @@ export const api = {
     if (filters.action) params.set("action", filters.action);
     if (filters.dateFrom) params.set("date_from", filters.dateFrom);
     if (filters.dateTo) params.set("date_to", filters.dateTo);
+    if (filters.adminOnly) params.set("admin_only", "true");
     params.set("limit", filters.limit || 1000);
     return request(`/api/admin/audit-log?${params.toString()}`, { token });
   },
@@ -350,7 +420,10 @@ export const api = {
       token,
       body: { rank_id: rankId, category_id: categoryId, count_required: countRequired },
     }),
-  createMandatoryCategoryRequirement: (token, { rankId, categoryName, categoryFields, countRequired }) =>
+  createMandatoryCategoryRequirement: (
+    token,
+    { rankId, categoryName, categoryFields, countRequired, categoryMinRankId, categoryCommanderOnly }
+  ) =>
     request("/api/promotion-category-requirements/mandatory", {
       method: "POST",
       token,
@@ -359,6 +432,25 @@ export const api = {
         category_name: categoryName,
         category_fields: categoryFields || [],
         count_required: countRequired,
+        category_min_rank_id: categoryMinRankId || null,
+        category_commander_only: !!categoryCommanderOnly,
+      },
+    }),
+  updateMandatoryCategoryRequirement: (
+    token,
+    groupId,
+    { rankId, categoryName, categoryFields, countRequired, categoryMinRankId, categoryCommanderOnly }
+  ) =>
+    request(`/api/promotion-category-requirements/mandatory/${groupId}`, {
+      method: "PATCH",
+      token,
+      body: {
+        rank_id: rankId,
+        category_name: categoryName,
+        category_fields: categoryFields || [],
+        count_required: countRequired,
+        category_min_rank_id: categoryMinRankId || null,
+        category_commander_only: !!categoryCommanderOnly,
       },
     }),
   deleteCategoryRequirement: (token, requirementId) =>
@@ -395,6 +487,50 @@ export const api = {
   rejectLeaveRequest: (token, requestId) =>
     request(`/api/leave-requests/${requestId}/reject`, { method: "POST", token }),
 
+  createTransferRequest: (token, { toRegimentId, reason }) =>
+    request("/api/transfer-requests", { method: "POST", token, body: { to_regiment_id: toRegimentId, reason } }),
+  listTransferRequests: (token) => request("/api/transfer-requests", { token }),
+  approveTransferSource: (token, requestId) =>
+    request(`/api/transfer-requests/${requestId}/approve-source`, { method: "POST", token }),
+  approveTransferTarget: (token, requestId, targetRankId) =>
+    request(`/api/transfer-requests/${requestId}/approve-target`, {
+      method: "POST",
+      token,
+      body: { target_rank_id: targetRankId },
+    }),
+  rejectTransferRequest: (token, requestId, reason) =>
+    request(`/api/transfer-requests/${requestId}/reject`, { method: "POST", token, body: { reason: reason || null } }),
+
+  listCharacters: (token, discordId) => request(`/api/users/${discordId}/characters`, { token }),
+  createCharacter: (token, discordId, { regimentId, serviceId, callsign, rankId, steamId, isJedi }) =>
+    request(`/api/users/${discordId}/characters`, {
+      method: "POST",
+      token,
+      body: {
+        regiment_id: regimentId,
+        service_id: serviceId || null,
+        callsign: callsign || null,
+        rank_id: rankId || null,
+        steam_id: steamId || null,
+        is_jedi: !!isJedi,
+      },
+    }),
+  updateCharacter: (token, discordId, characterId, { serviceId, callsign, rankId, steamId, isInactive, isJedi }) =>
+    request(`/api/users/${discordId}/characters/${characterId}`, {
+      method: "PATCH",
+      token,
+      body: {
+        service_id: serviceId,
+        callsign: callsign,
+        rank_id: rankId,
+        steam_id: steamId,
+        is_inactive: isInactive,
+        is_jedi: isJedi,
+      },
+    }),
+  deleteCharacter: (token, discordId, characterId) =>
+    request(`/api/users/${discordId}/characters/${characterId}`, { method: "DELETE", token }),
+
   getRegimentStats: (token, regimentId, period) =>
     request(`/api/stats/regiment/${regimentId}?period=${period}`, { token }),
   getFormationStats: (token, period) => request(`/api/stats/formations?period=${period}`, { token }),
@@ -417,6 +553,23 @@ export const api = {
     link.click();
     URL.revokeObjectURL(url);
   },
+  async downloadSettingsExport(token) {
+    const response = await fetch(`${API_BASE_URL}/api/admin/backups/settings-export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError(response.status, "Не удалось выгрузить настройки");
+    const disposition = response.headers.get("content-disposition") || "";
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    const filename = match ? match[1] : "settings.json";
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
+  revokeAllSessions: (token) => request("/api/admin/sessions/revoke-all", { method: "POST", token }),
 };
 
 export { ApiError };

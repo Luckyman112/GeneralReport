@@ -17,6 +17,7 @@ from app.models.report_category import ReportCategory
 from app.models.report_image import ReportImage
 from app.models.report_participant import ReportParticipant
 from app.models.reprimand import Reprimand
+from app.models.specialization import Specialization, SpecializationBan, UserSpecialization
 from app.models.user import User
 from app.models.violation import Violation
 
@@ -43,4 +44,7 @@ __all__ = [
     "AuditLog",
     "ReportParticipant",
     "PointsAdjustment",
+    "Specialization",
+    "UserSpecialization",
+    "SpecializationBan",
 ]

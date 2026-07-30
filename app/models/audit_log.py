@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -26,6 +26,9 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     actor: Mapped["User"] = relationship(foreign_keys=[actor_user_id])
+
+    # snapshot at action time, lets founder filter admin actions vs routine command decisions
+    actor_is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     # Заполняется, когда действие касается конкретного бойца (правка профиля,
     # выговор и т.п.) — позволяет показывать точечную историю в личном деле,

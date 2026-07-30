@@ -14,6 +14,10 @@ class ModuleAccessRead(BaseModel):
     broadcast_role_ids: list[str]
     detention_report_role_ids: list[str]
     detention_report_user_discord_ids: list[str]
+    training_viewer_role_ids: list[str]
+    mentor_source_regiment_ids: list[int]
+    report_appeal_regiment_ids: list[int]
+    report_appeal_role_ids: list[str]
 
 
 class ModuleAccessUpdate(BaseModel):
@@ -26,3 +30,7 @@ class ModuleAccessUpdate(BaseModel):
     broadcast_role_ids: list[str] | None = None
     detention_report_role_ids: list[str] | None = None
     detention_report_user_discord_ids: list[str] | None = None
+    training_viewer_role_ids: list[str] | None = None
+    report_appeal_regiment_ids: list[int] | None = None
+    report_appeal_role_ids: list[str] | None = None
+    mentor_source_regiment_ids: list[int] | None = None

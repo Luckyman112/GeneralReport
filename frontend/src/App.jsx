@@ -2,12 +2,15 @@ import { lazy, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
+import { BootScreen } from "./components/BootScreen";
 import { InactiveBlock } from "./components/InactiveBlock";
 import { MaintenanceBanner, MaintenanceBlock, useMaintenanceStatus } from "./components/MaintenanceGate";
 import { Navbar } from "./components/Navbar";
 import { PageLoading } from "./components/PageLoading";
 import { PromotionBanner } from "./components/PromotionBanner";
 import { RegistrationGate } from "./components/RegistrationGate";
+import { RoleConflictGate } from "./components/RoleConflictGate";
+import { TransferFrozenGate } from "./components/TransferFrozenGate";
 import { ToastProvider } from "./components/ToastContext";
 import { ViewAsBar } from "./components/ViewAsBar";
 import { HomePage } from "./pages/HomePage";
@@ -22,11 +25,17 @@ const PromotionsPage = lazy(() => import("./pages/PromotionsPage").then((m) => (
 const RegistrationsPage = lazy(() =>
   import("./pages/RegistrationsPage").then((m) => ({ default: m.RegistrationsPage }))
 );
+const TransferRequestsPage = lazy(() =>
+  import("./pages/TransferRequestsPage").then((m) => ({ default: m.TransferRequestsPage }))
+);
 const RegimentsAdminPage = lazy(() =>
   import("./pages/RegimentsAdminPage").then((m) => ({ default: m.RegimentsAdminPage }))
 );
 const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const ViolationsPage = lazy(() => import("./pages/ViolationsPage").then((m) => ({ default: m.ViolationsPage })));
+const InstructorRoomPage = lazy(() =>
+  import("./pages/InstructorRoomPage").then((m) => ({ default: m.InstructorRoomPage }))
+);
 
 function Layout({ children }) {
   const { isAuthenticated, user, access } = useAuth();
@@ -35,6 +44,9 @@ function Layout({ children }) {
     isAuthenticated && user?.registration_status !== "approved" && !access?.is_admin && !access?.is_high_command;
   const isBlockedByMaintenance =
     isAuthenticated && maintenanceStatus?.enabled && !access?.is_admin && !access?.is_high_command;
+  const hasRoleConflict =
+    isAuthenticated && (access?.soldier_regiment_ids || []).length > 1 && !access?.is_admin && !access?.is_high_command;
+  const isFrozenForTransfer = isAuthenticated && access?.active_transfer?.status === "approved";
   return (
     <>
       {isAuthenticated && access?.is_admin && <MaintenanceBanner status={maintenanceStatus} />}
@@ -44,6 +56,10 @@ function Layout({ children }) {
       <main className="page-container">
         {isBlockedByMaintenance ? (
           <MaintenanceBlock status={maintenanceStatus} />
+        ) : hasRoleConflict ? (
+          <RoleConflictGate />
+        ) : isFrozenForTransfer ? (
+          <TransferFrozenGate />
         ) : isAuthenticated && user?.is_inactive ? (
           <InactiveBlock />
         ) : needsRegistration ? (
@@ -52,6 +68,14 @@ function Layout({ children }) {
           children
         )}
       </main>
+      <a
+        className="made-by-credit"
+        href="https://discord.com/users/417686926695333890"
+        target="_blank"
+        rel="noreferrer"
+      >
+        Сделано · Lucky
+      </a>
     </>
   );
 }
@@ -60,11 +84,7 @@ function AppRoutes() {
   const { loading, error } = useAuth();
 
   if (loading) {
-    return (
-      <div className="page-loading">
-        {error ? <p className="error-text">{error}</p> : "Выполняется вход..."}
-      </div>
-    );
+    return <BootScreen error={error} />;
   }
 
   return (
@@ -115,7 +135,7 @@ function AppRoutes() {
         <Route
           path="/settings"
           element={
-            <ProtectedRoute passwordOnly>
+            <ProtectedRoute adminOnly>
               <SettingsPage />
             </ProtectedRoute>
           }
@@ -129,10 +149,26 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/instructor-room"
+          element={
+            <ProtectedRoute>
+              <InstructorRoomPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/registrations"
           element={
             <ProtectedRoute reviewerOnly>
               <RegistrationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/transfers"
+          element={
+            <ProtectedRoute reviewerOnly>
+              <TransferRequestsPage />
             </ProtectedRoute>
           }
         />

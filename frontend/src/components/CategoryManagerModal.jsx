@@ -1,29 +1,67 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { InlineSpinner } from "./InlineSpinner";
+import { InfoHint } from "./Tooltip";
 
 const FIELD_TYPE_LABELS = {
   text: "Текст",
   roster: "Список состава",
 };
 
-function CategoryRow({ category, onChanged, onDeleted }) {
+function RosterAllowedRegiments({ allRegiments, currentRegimentId, selectedIds, onChange }) {
+  const otherRegiments = allRegiments.filter((r) => r.id !== Number(currentRegimentId));
+  if (otherRegiments.length === 0) return null;
+
+  function toggle(id) {
+    onChange(selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]);
+  }
+
+  return (
+    <div className="field-tags">
+      <span>
+        Ещё формирования
+        <InfoHint text="Список состава этого поля будет искать бойцов ещё и в отмеченных формированиях, не только в своём." />
+      </span>
+      {otherRegiments.map((r) => (
+        <label key={r.id} className="field-tag" style={{ cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={selectedIds.includes(r.id)}
+            onChange={() => toggle(r.id)}
+            style={{ marginRight: "0.3rem" }}
+          />
+          {r.name}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function CategoryRow({ category, tiers, allRegiments, onChanged, onDeleted }) {
   const { token } = useAuth();
   const [newField, setNewField] = useState("");
   const [newFieldType, setNewFieldType] = useState("text");
+  const [newFieldAllowedRegimentIds, setNewFieldAllowedRegimentIds] = useState([]);
   const [pointsDraft, setPointsDraft] = useState(category.points ?? "");
   const [participantPointsDraft, setParticipantPointsDraft] = useState(category.participant_points ?? "");
+  const [minRankDraft, setMinRankDraft] = useState(category.min_rank?.id ?? "");
+  const [commanderOnlyDraft, setCommanderOnlyDraft] = useState(category.commander_only ?? false);
   const [error, setError] = useState(null);
 
   async function handleAddField(e) {
     e.preventDefault();
     if (!newField.trim()) return;
     try {
+      const field = { name: newField.trim(), type: newFieldType };
+      if (newFieldType === "roster") field.allowed_regiment_ids = newFieldAllowedRegimentIds;
       await api.updateCategory(token, category.regiment_id, category.id, {
-        fields: [...category.fields, { name: newField.trim(), type: newFieldType }],
+        fields: [...category.fields, field],
       });
       setNewField("");
       setNewFieldType("text");
+      setNewFieldAllowedRegimentIds([]);
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -53,6 +91,18 @@ function CategoryRow({ category, onChanged, onDeleted }) {
     }
   }
 
+  async function handleSaveRestrictions() {
+    try {
+      await api.updateCategory(token, category.regiment_id, category.id, {
+        min_rank_id: minRankDraft === "" ? null : Number(minRankDraft),
+        commander_only: commanderOnlyDraft,
+      });
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   return (
     <li className="category-row">
       <div className="category-row-header">
@@ -60,8 +110,10 @@ function CategoryRow({ category, onChanged, onDeleted }) {
           {category.name}
           {category.is_detention && <span className="detention-badge">задержание (системная)</span>}
           {category.is_promotion && <span className="detention-badge">повышение (системная)</span>}
+          {category.is_demotion && <span className="detention-badge">понижение (системная)</span>}
+          {category.is_training && <span className="detention-badge">обучение (системная)</span>}
         </strong>
-        {!category.is_detention && !category.is_promotion && (
+        {!category.is_detention && !category.is_promotion && !category.is_demotion && !category.is_training && (
           <button className="ghost" onClick={() => onDeleted(category.id)}>
             Удалить категорию
           </button>
@@ -73,6 +125,15 @@ function CategoryRow({ category, onChanged, onDeleted }) {
             <span key={f.name} className="field-tag">
               {f.name}
               <span className="field-tag-type">{FIELD_TYPE_LABELS[f.type] || f.type}</span>
+              {f.type === "roster" && f.allowed_regiment_ids?.length > 0 && (
+                <span className="hint-text">
+                  {" "}
+                  (+{f.allowed_regiment_ids
+                    .map((id) => allRegiments.find((r) => r.id === id)?.name)
+                    .filter(Boolean)
+                    .join(", ")})
+                </span>
+              )}
               <button type="button" onClick={() => handleRemoveField(f.name)}>
                 ×
               </button>
@@ -93,6 +154,14 @@ function CategoryRow({ category, onChanged, onDeleted }) {
         </select>
         <button type="submit">Добавить поле</button>
       </form>
+      {newFieldType === "roster" && (
+        <RosterAllowedRegiments
+          allRegiments={allRegiments}
+          currentRegimentId={category.regiment_id}
+          selectedIds={newFieldAllowedRegimentIds}
+          onChange={setNewFieldAllowedRegimentIds}
+        />
+      )}
 
       <div className="points-inline">
         <label className="points-inline-label">
@@ -122,6 +191,37 @@ function CategoryRow({ category, onChanged, onDeleted }) {
         выставлены вручную. Баллы участникам получает каждый, кто указан в поле "Список состава".
       </p>
 
+      <div className="points-inline">
+        <label className="points-inline-label">
+          Мин. звание для подачи
+          <select value={minRankDraft} onChange={(e) => setMinRankDraft(e.target.value)}>
+            <option value="">не ограничено</option>
+            {tiers.flatMap((tier) =>
+              tier.ranks.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.code} — {r.name}
+                </option>
+              ))
+            )}
+          </select>
+        </label>
+        <label className="points-inline-label">
+          <input
+            type="checkbox"
+            checked={commanderOnlyDraft}
+            onChange={(e) => setCommanderOnlyDraft(e.target.checked)}
+          />
+          Только заместитель+/командир
+        </label>
+        <button type="button" onClick={handleSaveRestrictions}>
+          Сохранить ограничения
+        </button>
+      </div>
+      <p className="hint-text">
+        Ограничивает, кто может подать рапорт этой категории (например, "обучение на Ряд может проводить только
+        CPL+" или "аттестации — только зам-КМД"). Не влияет на просмотр уже поданных рапортов.
+      </p>
+
       {error && <p className="error-text">{error}</p>}
     </li>
   );
@@ -131,15 +231,17 @@ function CategoryRow({ category, onChanged, onDeleted }) {
  * открывается кнопкой "Категории и поля" над списком рапортов. Поле категории может
  * быть обычным текстом или выплывающим списком состава (мульти-выбор бойцов). */
 export function CategoryManagerModal({ regiments, onClose }) {
-  const { token } = useAuth();
+  const { token, regiments: allRegiments } = useAuth();
   const [regimentId, setRegimentId] = useState(regiments[0]?.id ?? "");
   const [categories, setCategories] = useState([]);
+  const [tiers, setTiers] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryFields, setNewCategoryFields] = useState([]);
   const [newCategoryPoints, setNewCategoryPoints] = useState("");
   const [newCategoryParticipantPoints, setNewCategoryParticipantPoints] = useState("");
   const [newFieldDraft, setNewFieldDraft] = useState("");
   const [newFieldDraftType, setNewFieldDraftType] = useState("text");
+  const [newFieldDraftAllowedRegimentIds, setNewFieldDraftAllowedRegimentIds] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   // Защита от гонки: устаревший ответ (для уже покинутого формирования) не должен
@@ -165,11 +267,18 @@ export function CategoryManagerModal({ regiments, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, regimentId]);
 
+  useEffect(() => {
+    api.getRanks(token).then(setTiers).catch(() => setTiers([]));
+  }, [token]);
+
   function handleAddFieldDraft() {
     if (!newFieldDraft.trim()) return;
-    setNewCategoryFields((prev) => [...prev, { name: newFieldDraft.trim(), type: newFieldDraftType }]);
+    const field = { name: newFieldDraft.trim(), type: newFieldDraftType };
+    if (newFieldDraftType === "roster") field.allowed_regiment_ids = newFieldDraftAllowedRegimentIds;
+    setNewCategoryFields((prev) => [...prev, field]);
     setNewFieldDraft("");
     setNewFieldDraftType("text");
+    setNewFieldDraftAllowedRegimentIds([]);
   }
 
   function handleRemoveFieldDraft(fieldName) {
@@ -205,7 +314,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
     }
   }
 
-  return (
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal category-manager-modal" onClick={(e) => e.stopPropagation()}>
         <h3>Категории и поля рапортов</h3>
@@ -226,7 +335,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
         {error && <p className="error-text">{error}</p>}
 
         {loading ? (
-          <p>Загрузка...</p>
+          <InlineSpinner />
         ) : (
           <>
             <ul className="category-rows">
@@ -234,6 +343,8 @@ export function CategoryManagerModal({ regiments, onClose }) {
                 <CategoryRow
                   key={c.id}
                   category={{ ...c, regiment_id: regimentId }}
+                  tiers={tiers}
+                  allRegiments={allRegiments}
                   onChanged={() => load(regimentId)}
                   onDeleted={handleDeleteCategory}
                 />
@@ -284,6 +395,14 @@ export function CategoryManagerModal({ regiments, onClose }) {
                   + поле
                 </button>
               </div>
+              {newFieldDraftType === "roster" && (
+                <RosterAllowedRegiments
+                  allRegiments={allRegiments}
+                  currentRegimentId={regimentId}
+                  selectedIds={newFieldDraftAllowedRegimentIds}
+                  onChange={setNewFieldDraftAllowedRegimentIds}
+                />
+              )}
 
               <label>
                 Баллы за рапорт (необязательно)
@@ -317,6 +436,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

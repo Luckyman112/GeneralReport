@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { MandatoryRequirementModal } from "../components/MandatoryRequirementModal";
 import { PageLoading } from "../components/PageLoading";
 import { PromotionReviewModal } from "../components/PromotionReviewModal";
 import { SaveBar } from "../components/SaveBar";
 import { useToast } from "../components/ToastContext";
+import { InfoHint } from "../components/Tooltip";
 import { formatFullName } from "../utils/formatName";
 
 const ALL_REGIMENTS = "__all__";
+
+const TIER_LIMIT_FIELDS = [
+  ["class_limit", "Общих классов"],
+  ["gear_limit", "Общего снаряжения"],
+  ["specialization_limit", "Общих специализаций"],
+  ["additional_specialization_limit", "Доп. специализаций"],
+  ["elite_specialization_limit", "Элитных специализаций"],
+];
 
 function toNum(v) {
   return v === "" || v == null ? 0 : Number(v);
@@ -28,14 +38,13 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   const [adminDraft, setAdminDraft] = useState({});
   const [cmdDraft, setCmdDraft] = useState({});
   const [tierDraft, setTierDraft] = useState({});
+  const [tierLimitsDraft, setTierLimitsDraft] = useState({});
   const [rankTenureDraft, setRankTenureDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  const [mandRankId, setMandRankId] = useState("");
-  const [mandCategoryName, setMandCategoryName] = useState("");
-  const [mandFields, setMandFields] = useState("");
-  const [mandCount, setMandCount] = useState(1);
+  const [mandatoryModalOpen, setMandatoryModalOpen] = useState(false);
+  const [editingMandatory, setEditingMandatory] = useState(null);
   const [localRankId, setLocalRankId] = useState("");
   const [localCategoryId, setLocalCategoryId] = useState("");
   const [localCount, setLocalCount] = useState(1);
@@ -53,20 +62,38 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
     () => Object.values(categories).filter((c) => !c.is_detention),
     [categories]
   );
+  // shown as one summary table since these apply across all regiments
+  const mandatoryRequirements = useMemo(
+    () => categoryRequirements.filter((r) => r.is_mandatory),
+    [categoryRequirements]
+  );
+  const mandatoryCategoryNames = useMemo(
+    () => [...new Set(mandatoryRequirements.map((r) => categories[r.category_id]?.name).filter(Boolean))],
+    [mandatoryRequirements, categories]
+  );
 
-  function applyLoaded(tiersData, reqData) {
+  function applyLoaded(tiersDataRaw, reqData) {
+    // jedi tiers excluded, separate promotion system
+    const tiersData = tiersDataRaw.filter((t) => !t.is_jedi);
     const admin = Object.fromEntries(reqData.map((r) => [r.rank_id, r.admin_points_required]));
     const cmd = Object.fromEntries(reqData.map((r) => [r.rank_id, r.points_required]));
     const tier = Object.fromEntries(tiersData.map((t) => [t.id, t.tenure_days_required ?? ""]));
     const rankTenure = Object.fromEntries(
       tiersData.flatMap((t) => t.ranks).map((r) => [r.id, r.tenure_days_required ?? ""])
     );
+    const tierLimits = Object.fromEntries(
+      tiersData.map((t) => [
+        t.id,
+        Object.fromEntries(TIER_LIMIT_FIELDS.map(([field]) => [field, t[field] ?? ""])),
+      ])
+    );
     setTiers(tiersData);
     setAdminDraft(admin);
     setCmdDraft(cmd);
     setTierDraft(tier);
     setRankTenureDraft(rankTenure);
-    setBaseline({ admin, cmd, tier, rankTenure });
+    setTierLimitsDraft(tierLimits);
+    setBaseline({ admin, cmd, tier, rankTenure, tierLimits });
   }
 
   // В режиме "Все формирования" баллы/требования по категориям берём с первого
@@ -96,7 +123,8 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
     (JSON.stringify(adminDraft) !== JSON.stringify(baseline.admin) ||
       JSON.stringify(cmdDraft) !== JSON.stringify(baseline.cmd) ||
       JSON.stringify(tierDraft) !== JSON.stringify(baseline.tier) ||
-      JSON.stringify(rankTenureDraft) !== JSON.stringify(baseline.rankTenure));
+      JSON.stringify(rankTenureDraft) !== JSON.stringify(baseline.rankTenure) ||
+      JSON.stringify(tierLimitsDraft) !== JSON.stringify(baseline.tierLimits));
 
   function handleReset() {
     if (!baseline) return;
@@ -104,6 +132,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
     setCmdDraft(baseline.cmd);
     setTierDraft(baseline.tier);
     setRankTenureDraft(baseline.rankTenure);
+    setTierLimitsDraft(baseline.tierLimits);
     setError(null);
   }
 
@@ -133,6 +162,13 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
         for (const [rankId, value] of Object.entries(rankTenureDraft)) {
           if (value === baseline.rankTenure[rankId]) continue;
           await api.updateRankTenure(token, rankId, value === "" ? null : Number(value));
+        }
+        for (const [tierId, limits] of Object.entries(tierLimitsDraft)) {
+          if (JSON.stringify(limits) === JSON.stringify(baseline.tierLimits[tierId])) continue;
+          const payload = Object.fromEntries(
+            Object.entries(limits).map(([field, value]) => [field, value === "" ? null : Number(value)])
+          );
+          await api.updateTierSpecializationLimits(token, tierId, payload);
         }
       }
       load();
@@ -164,29 +200,23 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
     }
   }
 
-  async function handleAddMandatory(e) {
-    e.preventDefault();
-    if (!mandRankId || !mandCategoryName.trim()) return;
-    setError(null);
-    try {
-      const fields = mandFields
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((name) => ({ name, type: "text" }));
-      await api.createMandatoryCategoryRequirement(token, {
-        rankId: Number(mandRankId),
-        categoryName: mandCategoryName.trim(),
-        categoryFields: fields,
-        countRequired: Number(mandCount) || 1,
-      });
-      setMandCategoryName("");
-      setMandFields("");
-      setMandCount(1);
-      load();
-    } catch (e) {
-      setError(e.message);
-    }
+  function openCreateMandatory() {
+    setEditingMandatory(null);
+    setMandatoryModalOpen(true);
+  }
+
+  function openEditMandatory(req) {
+    const category = categories[req.category_id];
+    setEditingMandatory({
+      groupId: req.mandatory_group_id,
+      rankId: req.rank_id,
+      categoryName: category?.name || "",
+      fields: category?.fields || [],
+      countRequired: req.count_required,
+      minRankId: category?.min_rank?.id ?? "",
+      commanderOnly: category?.commander_only ?? false,
+    });
+    setMandatoryModalOpen(true);
   }
 
   async function handleDeleteRequirement(id) {
@@ -228,6 +258,28 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
               tier.tenure_days_required != null && ` — дней выслуги: ${tier.tenure_days_required}`
             )}
           </p>
+          {canEditDays && (
+            <div className="tier-limits-row">
+              {TIER_LIMIT_FIELDS.map(([field, label]) => (
+                <label key={field} className="points-inline">
+                  {label}:
+                  <InfoHint text="Сколько специализаций этой категории может держать одновременно боец этого состава — пусто значит без ограничений." />
+                  <input
+                    type="number"
+                    min="0"
+                    value={tierLimitsDraft[tier.id]?.[field] ?? ""}
+                    onChange={(e) =>
+                      setTierLimitsDraft((prev) => ({
+                        ...prev,
+                        [tier.id]: { ...prev[tier.id], [field]: e.target.value },
+                      }))
+                    }
+                    placeholder="∞"
+                  />
+                </label>
+              ))}
+            </div>
+          )}
           <ul className="category-list">
             {tier.ranks.map((rank) => {
               const rankRequirements = requirementsByRankId.get(rank.id) || [];
@@ -238,6 +290,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
                     {canEditDays && !isAllMode && (
                       <span className="points-inline">
                         админ. база:
+                        <InfoHint text="Баллы за это звание, которые выставляет администратор/высшее командование — база, не зависящая от командира формирования." />
                         <input
                           type="number"
                           value={adminDraft[rank.id] ?? ""}
@@ -249,6 +302,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
                     {isAllMode && canEditDays && (
                       <span className="points-inline">
                         баллы (для всех):
+                        <InfoHint text="Применится сразу ко всем формированиям — тот же смысл, что и «админ. база»." />
                         <input
                           type="number"
                           value={adminDraft[rank.id] ?? ""}
@@ -260,6 +314,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
                     {!isAllMode && canEditPoints && (
                       <span className="points-inline">
                         + от командира:
+                        <InfoHint text="Надбавка к «админ. базе» — задаётся командиром этого формирования, суммируется в «Всего баллов»." />
                         <input
                           type="number"
                           value={cmdDraft[rank.id] ?? ""}
@@ -276,6 +331,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
                     {canEditDays && (
                       <span className="points-inline">
                         · своя выслуга:
+                        <InfoHint text="Переопределяет для конкретного звания, сколько дней нужно провести в нём — если оставить пустым, действует общее значение состава, указанное выше." />
                         <input
                           type="number"
                           value={rankTenureDraft[rank.id] ?? ""}
@@ -291,8 +347,15 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
                       {rankRequirements.map((req) => (
                         <li key={req.id}>
                           {categories[req.category_id]?.name || `#${req.category_id}`} — нужно {req.count_required}
-                          {req.is_mandatory && <span className="tag-mandatory">обязательное</span>}
-                          {((req.is_mandatory && canEditDays) || (!req.is_mandatory && canEditPoints && !isAllMode)) && (
+                          {req.is_mandatory && (
+                            <span className="hint-text"> (обязательно, для всех формирований)</span>
+                          )}
+                          {req.is_mandatory && canEditDays && (
+                            <button className="ghost" onClick={() => openEditMandatory(req)}>
+                              Изменить
+                            </button>
+                          )}
+                          {(req.is_mandatory ? canEditDays : canEditPoints && !isAllMode) && (
                             <button className="ghost" onClick={() => handleDeleteRequirement(req.id)}>
                               Удалить
                             </button>
@@ -340,36 +403,48 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
       )}
 
       {canEditDays && (
-        <form onSubmit={handleAddMandatory} className="add-category-form">
-          <select value={mandRankId} onChange={(e) => setMandRankId(e.target.value)}>
-            <option value="">— звание —</option>
-            {ranks.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.code} — {r.name}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            placeholder="Название категории (существующей или новой)"
-            value={mandCategoryName}
-            onChange={(e) => setMandCategoryName(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Поля новой категории через запятую (если создаётся впервые)"
-            value={mandFields}
-            onChange={(e) => setMandFields(e.target.value)}
-          />
-          <input
-            type="number"
-            min={1}
-            value={mandCount}
-            onChange={(e) => setMandCount(e.target.value)}
-            style={{ width: "5rem" }}
-          />
-          <button type="submit">Добавить обязательное требование (во все формирования)</button>
-        </form>
+        <div className="report-form-actions">
+          <button type="button" onClick={openCreateMandatory}>
+            + Обязательное требование (для всех формирований)
+          </button>
+        </div>
+      )}
+
+      {mandatoryModalOpen && (
+        <MandatoryRequirementModal
+          ranks={ranks}
+          existingCategoryNames={mandatoryCategoryNames}
+          initial={editingMandatory}
+          onClose={() => setMandatoryModalOpen(false)}
+          onSaved={() => {
+            setMandatoryModalOpen(false);
+            load();
+          }}
+        />
+      )}
+
+      {selectableCategories.length > 0 && (
+        <div className="member-list-group category-points-summary">
+          <p className="member-list-group-title">Баллы за рапорты по категориям</p>
+          <table className="category-points-table">
+            <thead>
+              <tr>
+                <th>Категория</th>
+                <th>Автору рапорта</th>
+                <th>Участникам (состав)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectableCategories.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.name}</td>
+                  <td className="mono-num">{c.points ?? "—"}</td>
+                  <td className="mono-num">{c.participant_points ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <SaveBar
@@ -390,7 +465,7 @@ export function PromotionsPage() {
   const [reviewRequestId, setReviewRequestId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [previewAsSoldier, setPreviewAsSoldier] = useState(false);
+  const [previewAsSoldier, setPreviewAsSoldier] = useState(true);
 
   const isAdminOrHighCommand = access?.is_admin || access?.is_high_command;
 
@@ -449,15 +524,9 @@ export function PromotionsPage() {
           </button>
         )}
       </div>
-      {previewAsSoldier && (
-        <p className="hint-text">
-          Вы видите требования так же, как их видит обычный боец — без полей редактирования.
-        </p>
-      )}
-
       {error && <p className="error-text">{error}</p>}
 
-      {requests.length > 0 && !previewAsSoldier && (
+      {requests.length > 0 && (
         <>
           <h3>Заявки на повышение</h3>
           <div className="report-list">

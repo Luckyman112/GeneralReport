@@ -10,7 +10,7 @@ export function formatFullName(user) {
 export function formatFullNameAtRank(user, rank) {
   if (!user) return "";
   if (user.service_id && rank && user.callsign) {
-    return `${user.service_id} ${rank.code} ${user.callsign}`;
+    return `${user.service_id} | ${rank.code} | ${user.callsign}`;
   }
   return user.nickname_override || user.username;
 }

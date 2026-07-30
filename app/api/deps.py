@@ -1,10 +1,12 @@
-"""Общие зависимости FastAPI: подключение к БД, текущий пользователь, уровень доступа."""
+# shared fastapi deps: db session, current user, access context
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from fastapi import Depends, Header
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.constants import PASSWORD_LOGIN_DISCORD_ID
 from app.core.security import decode_access_token
 from app.crud import app_settings as app_settings_crud
@@ -26,6 +28,14 @@ async def get_current_user(
     user = await user_crud.get_by_id(db, int(payload["sub"]))
     if user is None:
         raise UnauthorizedError("Пользователь не найден, войдите заново")
+
+    app_config = await app_settings_crud.get(db)
+    if app_config.sessions_revoked_at is not None:
+        issued_at_raw = payload.get("iat")
+        issued_at = datetime.fromtimestamp(issued_at_raw, tz=timezone.utc) if issued_at_raw is not None else None
+        if issued_at is None or issued_at < app_config.sessions_revoked_at:
+            raise UnauthorizedError("Сессия принудительно завершена — войдите заново")
+
     return user
 
 
@@ -35,30 +45,22 @@ class AccessContext:
 
     user: User
     is_admin: bool
-    # Вход по общему паролю (не через Discord) — используется только для доступа
-    # к странице настроек ролей, не смешивается с обычным is_admin
+    # password login, separate from real discord-based is_admin
     is_password_login: bool
-    # Настоящий статус администратора — не меняется в режиме "просмотр от лица"
-    # (см. X-View-As-* заголовки и build_view_as_context ниже), нужен фронту, чтобы
-    # показать переключатель просмотра и суметь выйти из симуляции
+    # unaffected by view-as simulation, so frontend can offer exit
     is_real_admin: bool = False
-    # Высшее командование — как командир/заместитель, но сразу для ВСЕХ формирований
-    # (отдельная Discord-роль, не завязана на конкретное формирование)
+    # computed once, before entering any view-as branch below
+    can_use_view_as: bool = False
     is_high_command: bool = False
-    # ID всех Discord-ролей пользователя — для ролевых прав (нарушения, рассылка,
-    # рапорт о задержании), которые не завязаны на формирование
+    # can grant/revoke specializations, unrelated to command roles
+    is_instructor: bool = False
     role_ids: set[str] = field(default_factory=set)
-    # Формирования, где пользователь — командир или заместитель (видит все рапорты,
-    # может одобрять/отклонять/удалять)
     commander_regiment_ids: set[int] = field(default_factory=set)
-    # Из commander_regiment_ids — только те, где назначение именно "командир"
-    # (влияет на баллы за рапорт — их не может ставить заместитель)
+    # subset of commander_regiment_ids where role is specifically "commander"
+    # (deputy can't set report points)
     category_manager_regiment_ids: set[int] = field(default_factory=set)
-    # Формирования, где пользователь — боец (видит только свои рапорты)
     soldier_regiment_ids: set[int] = field(default_factory=set)
-    # Формирования/роли, чьи участники могут заводить/просматривать записи о
-    # нарушениях, рассылать объявления, видеть кнопку рапорта о задержании —
-    # настраивается администратором, см. app/api/module_access.py
+    # configured by admin, see app/api/module_access.py
     violation_writer_regiment_ids: set[int] = field(default_factory=set)
     violation_writer_role_ids: set[str] = field(default_factory=set)
     violation_viewer_regiment_ids: set[int] = field(default_factory=set)
@@ -66,6 +68,16 @@ class AccessContext:
     broadcast_role_ids: set[str] = field(default_factory=set)
     detention_report_role_ids: set[str] = field(default_factory=set)
     detention_report_user_discord_ids: set[str] = field(default_factory=set)
+    training_viewer_role_ids: set[str] = field(default_factory=set)
+    # extends can_appeal_report beyond commander/deputy/mentor
+    report_appeal_regiment_ids: set[int] = field(default_factory=set)
+    report_appeal_role_ids: set[str] = field(default_factory=set)
+    # None = password login open to anyone who knows the password
+    password_login_owner_discord_id: str | None = None
+
+    @property
+    def can_escalate_password_login(self) -> bool:
+        return not self.password_login_owner_discord_id or self.password_login_owner_discord_id == self.user.discord_id
 
     @property
     def has_access(self) -> bool:
@@ -83,20 +95,21 @@ class AccessContext:
     def is_commander_of(self, regiment_id: int) -> bool:
         return self.is_admin or self.is_high_command or regiment_id in self.commander_regiment_ids
 
+    def can_appeal_report(self, regiment_id: int) -> bool:
+        return (
+            self.is_commander_of(regiment_id)
+            or bool(self.role_ids & self.report_appeal_role_ids)
+            or regiment_id in self.report_appeal_regiment_ids
+        )
+
     def is_full_commander_of(self, regiment_id: int) -> bool:
-        """Полноправный командир (не заместитель) — либо высшее командование/админ —
-        может выставлять баллы за рапорт."""
         return self.is_admin or self.is_high_command or regiment_id in self.category_manager_regiment_ids
 
     def can_manage_categories(self, regiment_id: int | None = None) -> bool:
-        """Конструктор категорий/полей рапортов — только высшее командование и
-        администратор. Обычным командирам и заместителям недоступен независимо от
-        формирования (regiment_id принимается только для совместимости вызовов)."""
+        # regiment_id accepted only for call-site compat, unused
         return self.is_admin or self.is_high_command
 
     def can_reprimand(self, regiment_id: int, *, target_is_commander: bool = False) -> bool:
-        """Выговор своим бойцам может выдать командир/заместитель этого формирования;
-        выговор командиру/заместителю — только высшее командование или админ."""
         if self.is_admin or self.is_high_command:
             return True
         if target_is_commander:
@@ -105,8 +118,6 @@ class AccessContext:
 
     @property
     def can_write_violations(self) -> bool:
-        """Может заводить записи о нарушениях — участник (боец или командир) одного
-        из формирований-"писателей", либо обладатель одной из ролей-"писателей"."""
         return (
             self.is_admin
             or self.is_high_command
@@ -116,16 +127,11 @@ class AccessContext:
 
     @property
     def can_view_violations(self) -> bool:
-        """Страницу "Нарушители" может открыть кто угодно с доступом хотя бы к
-        одному формированию — что именно он там увидит (все, по своему формированию
-        или только свои нарушения), определяет is_full_violation_viewer/
-        commander_regiment_ids в app/api/violations.py::list_violations."""
         return self.has_access
 
     @property
     def is_full_violation_viewer(self) -> bool:
-        """True — видно вообще все нарушения; False — только по своим формированиям
-        (см. can_view_violations и app/api/violations.py::list_violations)."""
+        # True = sees all violations, False = own regiments only
         return (
             self.is_admin
             or self.is_high_command
@@ -138,6 +144,19 @@ class AccessContext:
         return self.is_admin or self.is_high_command or bool(self.role_ids & self.broadcast_role_ids)
 
     @property
+    def can_grant_specializations(self) -> bool:
+        return self.is_admin or self.is_instructor
+
+    @property
+    def can_view_trainings(self) -> bool:
+        return (
+            self.is_admin
+            or self.is_high_command
+            or self.can_grant_specializations
+            or bool(self.role_ids & self.training_viewer_role_ids)
+        )
+
+    @property
     def can_file_detention_report(self) -> bool:
         return (
             self.is_admin
@@ -147,61 +166,41 @@ class AccessContext:
         )
 
 
-VIEW_AS_ROLES = {"soldier", "deputy", "commander", "high_command"}
+VIEW_AS_ROLES = {"soldier", "deputy", "commander", "mentor", "high_command"}
+# mixed into view-as role via X-View-As-Extra, see _apply_view_as_extras
+VIEW_AS_EXTRAS = {
+    "instructor",
+    "violation_writer",
+    "violation_viewer",
+    "broadcast",
+    "detention_report",
+    "training_viewer",
+    "report_appeal",
+}
+# synthetic marker role so set-intersection checks pass without faking real discord ids
+_VIEW_AS_MARKER_ROLE = "__view_as__"
 
 
-def build_view_as_context(user: User, *, role: str, regiment_id: int | None) -> AccessContext:
-    """Симуляция доступа для реального админа/высшего командования: доступ
-    урезается ДО указанной роли/формирования по-настоящему (это не косметика —
-    все остальные эндпоинты видят именно этот AccessContext), чтобы честно
-    показать, что видит и может человек с такими правами. role_ids/модульные
-    ролевые доступы намеренно не переносятся из реального аккаунта."""
-    context = AccessContext(
-        user=user,
-        is_admin=False,
-        is_password_login=False,
-        is_real_admin=True,
-        is_high_command=(role == "high_command"),
-    )
-    if regiment_id is not None:
-        if role in ("commander", "deputy"):
-            context.commander_regiment_ids = {regiment_id}
-            if role == "commander":
-                context.category_manager_regiment_ids = {regiment_id}
-        elif role == "soldier":
-            context.soldier_regiment_ids = {regiment_id}
-    return context
-
-
-async def get_access_context(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
-    view_as_regiment_id: int | None = Header(default=None, alias="X-View-As-Regiment-Id"),
-) -> AccessContext:
-    is_password_login = user.discord_id == PASSWORD_LOGIN_DISCORD_ID
+async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -> dict:
+    # shared by normal login and "view as real person" (see get_access_context)
     role_ids = set(user.roles)
 
-    app_config = await app_settings_crud.get(db)
-    is_admin = (
-        is_password_login
+    is_admin = bool(
+        user.discord_id == PASSWORD_LOGIN_DISCORD_ID
         or (app_config.admin_role_id in role_ids)
         or user.discord_id in (app_config.admin_user_discord_ids or [])
         or (app_config.founder_role_id and app_config.founder_role_id in role_ids)
     )
     is_high_command = bool(app_config.high_command_role_id) and app_config.high_command_role_id in role_ids
-    has_commander_role = app_config.commander_role_id in role_ids or app_config.deputy_role_id in role_ids
+    is_instructor = bool(app_config.instructor_role_id) and app_config.instructor_role_id in role_ids
 
-    # Явные назначения "этот discord_id командует этим конкретным формированием" —
-    # нужны, чтобы у человека с ролями сразу нескольких формирований (плюс общая роль
-    # "Командир"/"Заместитель") не появлялись командирские права сразу во всех них.
-    assignments_by_regiment: dict[int, str] = {}
-    if has_commander_role:
-        assignments_by_regiment = {
-            rc.regiment_id: rc.role_type
-            for rc in await regiment_commander_crud.get_all(db)
-            if rc.discord_id == user.discord_id
-        }
+    # explicit per-regiment assignment, so having a generic commander/deputy role
+    # doesn't grant command in every regiment the user's roles touch
+    assignments_by_regiment: dict[int, str] = {
+        rc.regiment_id: rc.role_type
+        for rc in await regiment_commander_crud.get_all(db)
+        if rc.discord_id == user.discord_id
+    }
 
     commander_regiment_ids: set[int] = set()
     category_manager_regiment_ids: set[int] = set()
@@ -217,21 +216,44 @@ async def get_access_context(
             if role_type == "commander":
                 category_manager_regiment_ids.add(regiment.id)
 
-    # "Просмотр от лица" — только реальный админ/высшее командование может себя
-    # так урезать, и только видит ЧЕСТНО урезанный доступ (см. build_view_as_context)
-    if view_as_role and view_as_role in VIEW_AS_ROLES and (is_admin or is_high_command):
-        return build_view_as_context(user, role=view_as_role, regiment_id=view_as_regiment_id)
+    # mentor: deputy-level access without needing the regiment's discord role
+    for regiment_id, role_type in assignments_by_regiment.items():
+        if role_type == "mentor" and regiment_id not in soldier_regiment_ids:
+            soldier_regiment_ids.add(regiment_id)
+            commander_regiment_ids.add(regiment_id)
 
+    return {
+        "is_admin": is_admin,
+        "is_high_command": is_high_command,
+        "is_instructor": is_instructor,
+        "role_ids": role_ids,
+        "commander_regiment_ids": commander_regiment_ids,
+        "category_manager_regiment_ids": category_manager_regiment_ids,
+        "soldier_regiment_ids": soldier_regiment_ids,
+    }
+
+
+def _build_access_context(
+    user: User,
+    fields: dict,
+    app_config,
+    *,
+    is_real_admin: bool,
+    can_use_view_as: bool,
+    is_password_login: bool = False,
+) -> AccessContext:
     return AccessContext(
         user=user,
-        is_admin=is_admin,
+        is_admin=fields["is_admin"],
         is_password_login=is_password_login,
-        is_real_admin=is_admin,
-        is_high_command=is_high_command,
-        role_ids=role_ids,
-        commander_regiment_ids=commander_regiment_ids,
-        category_manager_regiment_ids=category_manager_regiment_ids,
-        soldier_regiment_ids=soldier_regiment_ids,
+        is_real_admin=is_real_admin,
+        can_use_view_as=can_use_view_as,
+        is_high_command=fields["is_high_command"],
+        is_instructor=fields["is_instructor"],
+        role_ids=fields["role_ids"],
+        commander_regiment_ids=fields["commander_regiment_ids"],
+        category_manager_regiment_ids=fields["category_manager_regiment_ids"],
+        soldier_regiment_ids=fields["soldier_regiment_ids"],
         violation_writer_regiment_ids=set(app_config.violation_writer_regiment_ids),
         violation_writer_role_ids=set(app_config.violation_writer_role_ids),
         violation_viewer_regiment_ids=set(app_config.violation_viewer_regiment_ids),
@@ -239,4 +261,96 @@ async def get_access_context(
         broadcast_role_ids=set(app_config.broadcast_role_ids),
         detention_report_role_ids=set(app_config.detention_report_role_ids),
         detention_report_user_discord_ids=set(app_config.detention_report_user_discord_ids),
+        training_viewer_role_ids=set(app_config.training_viewer_role_ids),
+        report_appeal_regiment_ids=set(app_config.report_appeal_regiment_ids),
+        report_appeal_role_ids=set(app_config.report_appeal_role_ids),
+        password_login_owner_discord_id=settings.password_login_owner_discord_id
+        or app_config.password_login_authorized_discord_id,
+    )
+
+
+def build_view_as_context(user: User, *, role: str, regiment_id: int | None) -> AccessContext:
+    # real restriction, not cosmetic - every endpoint sees this context.
+    # role_ids/module perms intentionally not carried over from real account,
+    # mix in via X-View-As-Extra (_apply_view_as_extras) instead
+    context = AccessContext(
+        user=user,
+        is_admin=False,
+        is_password_login=False,
+        is_real_admin=True,
+        can_use_view_as=True,
+        is_high_command=(role == "high_command"),
+    )
+    if regiment_id is not None:
+        if role in ("commander", "deputy", "mentor"):
+            context.commander_regiment_ids = {regiment_id}
+            if role == "commander":
+                context.category_manager_regiment_ids = {regiment_id}
+        if role in ("soldier", "mentor"):
+            context.soldier_regiment_ids = {regiment_id}
+    return context
+
+
+def _apply_view_as_extras(context: AccessContext, extras: set[str], regiment_id: int | None) -> None:
+    if "instructor" in extras:
+        context.is_instructor = True
+    if "broadcast" in extras:
+        context.role_ids.add(_VIEW_AS_MARKER_ROLE)
+        context.broadcast_role_ids.add(_VIEW_AS_MARKER_ROLE)
+    if "detention_report" in extras:
+        context.role_ids.add(_VIEW_AS_MARKER_ROLE)
+        context.detention_report_role_ids.add(_VIEW_AS_MARKER_ROLE)
+    if "training_viewer" in extras:
+        context.role_ids.add(_VIEW_AS_MARKER_ROLE)
+        context.training_viewer_role_ids.add(_VIEW_AS_MARKER_ROLE)
+    if regiment_id is not None:
+        if "violation_writer" in extras:
+            context.violation_writer_regiment_ids.add(regiment_id)
+        if "violation_viewer" in extras:
+            context.violation_viewer_regiment_ids.add(regiment_id)
+        if "report_appeal" in extras:
+            context.report_appeal_regiment_ids.add(regiment_id)
+
+
+async def get_access_context(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
+    view_as_regiment_id: int | None = Header(default=None, alias="X-View-As-Regiment-Id"),
+    view_as_extra: str | None = Header(default=None, alias="X-View-As-Extra"),
+    view_as_discord_id: str | None = Header(default=None, alias="X-View-As-Discord-Id"),
+) -> AccessContext:
+    is_password_login = user.discord_id == PASSWORD_LOGIN_DISCORD_ID
+    app_config = await app_settings_crud.get(db)
+    fields = await _compute_permission_fields(db, user, app_config)
+    is_admin = fields["is_admin"]
+    is_high_command = fields["is_high_command"]
+    can_use_view_as = is_admin or is_high_command
+
+    # view-as-person: real discord roles of target user, not an abstract role.
+    # mutually exclusive with X-View-As-Role/Extra. audit still attributes to
+    # the real admin, not the impersonated user
+    if view_as_discord_id and can_use_view_as:
+        target = await user_crud.get_by_discord_id(db, view_as_discord_id)
+        if target is not None:
+            target_fields = await _compute_permission_fields(db, target, app_config)
+            return _build_access_context(
+                user, target_fields, app_config, is_real_admin=True, can_use_view_as=True
+            )
+
+    # view-as-role: admin/high-command only, restricted access via build_view_as_context
+    if view_as_role and view_as_role in VIEW_AS_ROLES and can_use_view_as:
+        context = build_view_as_context(user, role=view_as_role, regiment_id=view_as_regiment_id)
+        if view_as_extra:
+            extras = {e.strip() for e in view_as_extra.split(",") if e.strip() in VIEW_AS_EXTRAS}
+            _apply_view_as_extras(context, extras, view_as_regiment_id)
+        return context
+
+    return _build_access_context(
+        user,
+        fields,
+        app_config,
+        is_real_admin=is_admin,
+        can_use_view_as=can_use_view_as,
+        is_password_login=is_password_login,
     )

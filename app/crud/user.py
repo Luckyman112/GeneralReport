@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,13 +32,15 @@ async def upsert_user(
     """Создаёт пользователя при первом входе или обновляет его профиль/роли при повторном."""
     user = await get_by_discord_id(db, discord_id)
 
+    now = datetime.now(timezone.utc)
     if user is None:
-        user = User(discord_id=discord_id, username=username, avatar_url=avatar_url, roles=roles)
+        user = User(discord_id=discord_id, username=username, avatar_url=avatar_url, roles=roles, last_login_at=now)
         db.add(user)
     else:
         user.username = username
         user.avatar_url = avatar_url
         user.roles = roles
+        user.last_login_at = now
 
     await db.commit()
     await db.refresh(user)
@@ -56,6 +58,14 @@ async def get_by_discord_ids(db: AsyncSession, discord_ids: list[str]) -> list[U
         select(User).where(User.discord_id.in_(discord_ids)).options(selectinload(User.rank))
     )
     return list(result.scalars().all())
+
+
+async def count_active(db: AsyncSession) -> int:
+    # approved + active, not "recently logged in"
+    result = await db.execute(
+        select(func.count(User.id)).where(User.registration_status == "approved", User.is_inactive.is_(False))
+    )
+    return int(result.scalar_one())
 
 
 async def list_pending_registrations(db: AsyncSession) -> list[User]:

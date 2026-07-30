@@ -20,6 +20,7 @@ async def list_audit_log(
     action: str | None = Query(default=None),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
+    admin_only: bool = Query(default=False),
     limit: int = Query(default=200, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
@@ -27,6 +28,6 @@ async def list_audit_log(
     if not access.is_admin:
         raise ForbiddenError("Журнал действий доступен только администратору")
     entries = await audit_log_crud.list_recent(
-        db, limit=limit, action=action, date_from=date_from, date_to=date_to
+        db, limit=limit, action=action, date_from=date_from, date_to=date_to, admin_only=admin_only
     )
     return [AuditLogRead.model_validate(e) for e in entries]

@@ -2,14 +2,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.rank import RankRead
+
 
 class ReportCategoryField(BaseModel):
-    """Поле шаблона рапорта. type="text" — обычная строка; type="roster" — при
-    оформлении рапорта вместо текста показывается выплывающий список состава
-    формирования с возможностью отметить одного или нескольких бойцов."""
+    # allowed_regiment_ids (roster fields only): also allow picking members from these other regiments
 
     name: str
     type: Literal["text", "roster"] = "text"
+    allowed_regiment_ids: list[int] = []
 
 
 class ReportCategoryRead(BaseModel):
@@ -23,6 +24,10 @@ class ReportCategoryRead(BaseModel):
     participant_points: int | None = None
     is_detention: bool = False
     is_promotion: bool = False
+    is_demotion: bool = False
+    is_training: bool = False
+    min_rank: RankRead | None = None
+    commander_only: bool = False
 
 
 class ReportCategoryCreate(BaseModel):
@@ -31,6 +36,8 @@ class ReportCategoryCreate(BaseModel):
     points: int | None = None
     participant_points: int | None = None
     is_detention: bool = False
+    min_rank_id: int | None = None
+    commander_only: bool = False
 
 
 class ReportCategoryUpdate(BaseModel):
@@ -43,3 +50,5 @@ class ReportCategoryUpdate(BaseModel):
     points: int | None = None
     participant_points: int | None = None
     is_detention: bool | None = None
+    min_rank_id: int | None = None
+    commander_only: bool | None = None

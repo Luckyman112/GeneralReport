@@ -11,9 +11,23 @@ _LOAD_OPTIONS = [selectinload(AuditLog.actor).selectinload(User.rank)]
 
 
 async def log(
-    db: AsyncSession, *, actor_user_id: int, action: str, details: str, target_user_id: int | None = None
+    db: AsyncSession,
+    *,
+    actor_user_id: int,
+    action: str,
+    details: str,
+    target_user_id: int | None = None,
+    actor_is_admin: bool = False,
 ) -> None:
-    db.add(AuditLog(actor_user_id=actor_user_id, action=action, details=details, target_user_id=target_user_id))
+    db.add(
+        AuditLog(
+            actor_user_id=actor_user_id,
+            action=action,
+            details=details,
+            target_user_id=target_user_id,
+            actor_is_admin=actor_is_admin,
+        )
+    )
     await db.commit()
 
 
@@ -37,6 +51,7 @@ async def list_recent(
     action: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    admin_only: bool = False,
 ) -> list[AuditLog]:
     query = select(AuditLog).options(*_LOAD_OPTIONS)
     if action:
@@ -45,6 +60,8 @@ async def list_recent(
         query = query.where(AuditLog.created_at >= date_from)
     if date_to is not None:
         query = query.where(AuditLog.created_at <= date_to)
+    if admin_only:
+        query = query.where(AuditLog.actor_is_admin.is_(True))
     query = query.order_by(AuditLog.created_at.desc()).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())

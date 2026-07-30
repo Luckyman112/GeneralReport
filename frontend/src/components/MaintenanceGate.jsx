@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
-import { useAuth } from "../auth/AuthContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 
 const POLL_INTERVAL_MS = 60000;

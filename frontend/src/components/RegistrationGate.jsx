@@ -16,9 +16,20 @@ export function RegistrationGate() {
   const alreadySubmitted = Boolean(user?.service_id) && user?.registration_status === "pending";
   const isRejected = user?.registration_status === "rejected";
 
+  const SERVICE_ID_RE = /^\d{4}$/;
+  const STEAM_ID_RE = /^STEAM_[0-5]:[01]:\d+$/;
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!serviceId.trim() || !callsign.trim() || !steamId.trim()) return;
+    if (!SERVICE_ID_RE.test(serviceId.trim())) {
+      setError("ИДН должен состоять ровно из 4 цифр");
+      return;
+    }
+    if (!STEAM_ID_RE.test(steamId.trim())) {
+      setError("Steam ID должен быть в формате STEAM_0:0:214977435");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -56,7 +67,14 @@ export function RegistrationGate() {
       <form onSubmit={handleSubmit} className="report-form">
         <label>
           ИДН (4 цифры)
-          <input type="text" maxLength={4} value={serviceId} onChange={(e) => setServiceId(e.target.value)} />
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={4}
+            placeholder="0000"
+            value={serviceId}
+            onChange={(e) => setServiceId(e.target.value.replace(/\D/g, "").slice(0, 4))}
+          />
         </label>
         <label>
           Позывной

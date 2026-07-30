@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { PageLoading } from "../components/PageLoading";
 import { useToast } from "../components/ToastContext";
-import { downloadCsv } from "../utils/csv";
+import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
 
@@ -81,19 +81,19 @@ export function ReprimandsPage() {
   const regimentsById = useMemo(() => Object.fromEntries(regiments.map((r) => [r.id, r])), [regiments]);
   const isFullViewer = access?.is_admin || access?.is_high_command;
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setReprimands(await api.listAllReprimands(token));
     } catch (e) {
       setError(e.message);
     }
-  }
+  }, [token]);
+
+  useLiveEvents("reprimands", load);
 
   useEffect(() => {
-    load()
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    load().finally(() => setLoading(false));
+  }, [load]);
 
   const presentRegimentIds = useMemo(
     () => [...new Set(reprimands.map((r) => r.regiment_id))],
@@ -105,22 +105,6 @@ export function ReprimandsPage() {
 
   function canManage(regimentId) {
     return access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).includes(regimentId);
-  }
-
-  function exportCsv() {
-    downloadCsv(
-      "reprimands.csv",
-      ["Кто", "Формирование", "Тип", "Статус", "Причина", "Выдал", "Дата"],
-      visibleReprimands.map((r) => [
-        formatFullName(r.target),
-        regimentsById[r.regiment_id]?.name || `#${r.regiment_id}`,
-        r.severity === "verbal" ? "устный" : "строгий",
-        r.revoked_at ? "снят" : "действует",
-        r.reason,
-        formatFullName(r.issuer),
-        formatMskDate(r.issued_at),
-      ])
-    );
   }
 
   async function handleSelfRevoke(id) {
@@ -155,11 +139,6 @@ export function ReprimandsPage() {
     <div className="violations-page">
       <div className="reports-toolbar">
         <h2 style={{ margin: 0 }}>Выговоры</h2>
-        {visibleReprimands.length > 0 && (
-          <button className="ghost" onClick={exportCsv}>
-            Экспорт в CSV
-          </button>
-        )}
       </div>
       <p className="hint-text">
         Устный выговор ничего не ограничивает сам по себе, но два действующих устных выговора автоматически создают

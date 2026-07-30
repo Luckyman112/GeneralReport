@@ -12,6 +12,7 @@ export function RegimentsAdminPage() {
   const [newName, setNewName] = useState("");
   const [newRoleId, setNewRoleId] = useState("");
   const [newColor, setNewColor] = useState("#5865f2");
+  const [newIsJediOrder, setNewIsJediOrder] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,8 +39,14 @@ export function RegimentsAdminPage() {
     setCreating(true);
     setError(null);
     try {
-      await api.createRegiment(token, { name: newName.trim(), discordRoleId: newRoleId, color: newColor });
+      await api.createRegiment(token, {
+        name: newName.trim(),
+        discordRoleId: newRoleId,
+        color: newColor,
+        isJediOrder: newIsJediOrder,
+      });
       setNewName("");
+      setNewIsJediOrder(false);
       await loadAll();
     } catch (err) {
       setError(err.message);
@@ -71,6 +78,14 @@ export function RegimentsAdminPage() {
         <label className="color-picker-label">
           Цвет формирования
           <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} />
+        </label>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={newIsJediOrder}
+            onChange={(e) => setNewIsJediOrder(e.target.checked)}
+          />
+          Орден джедаев (основному профилю бойцов можно назначать только джедайские звания)
         </label>
         <div className="report-form-actions">
           <button className="primary" disabled={creating} type="submit">

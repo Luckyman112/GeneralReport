@@ -8,8 +8,9 @@ from app.exceptions import UnauthorizedError
 
 
 def create_access_token(user_id: int, discord_id: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
-    payload = {"sub": str(user_id), "discord_id": discord_id, "exp": expire}
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.jwt_expire_minutes)
+    payload = {"sub": str(user_id), "discord_id": discord_id, "exp": expire, "iat": now}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

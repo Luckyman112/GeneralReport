@@ -13,6 +13,7 @@ class RegimentRead(BaseModel):
     discord_role_id: str
     color: str | None = None
     discord_channel_url: str | None = None
+    is_jedi_order: bool = False
 
 
 class RegimentCreate(BaseModel):
@@ -20,6 +21,7 @@ class RegimentCreate(BaseModel):
     discord_role_id: str
     color: str | None = None
     discord_channel_url: str | None = None
+    is_jedi_order: bool = False
 
 
 class RegimentUpdate(BaseModel):
@@ -31,6 +33,7 @@ class RegimentUpdate(BaseModel):
     discord_role_id: str | None = None
     color: str | None = None
     discord_channel_url: str | None = None
+    is_jedi_order: bool | None = None
 
 
 class DiscordRoleOption(BaseModel):

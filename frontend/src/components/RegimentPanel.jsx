@@ -3,10 +3,10 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatFullName } from "../utils/formatName";
-import { InfoIcon } from "./icons";
+import { InlineSpinner } from "./InlineSpinner";
+import { LinkIcon } from "./icons";
 import { MemberDetailModal } from "./MemberDetailModal";
 import { PromotionReviewModal } from "./PromotionReviewModal";
-import { RegimentInfoModal } from "./RegimentInfoModal";
 
 const NO_RANK_GROUP = "Без звания";
 // SSE (см. useLiveEvents) обновляет мгновенно — поллинг оставлен редким запасным
@@ -22,7 +22,6 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
   const [members, setMembers] = useState([]);
   const [tiers, setTiers] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
-  const [showInfo, setShowInfo] = useState(false);
   const focusedDiscordIdRef = useRef(focusDiscordId ?? null);
 
   // Переход из глобального поиска — переключаемся на нужное формирование и,
@@ -106,9 +105,13 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
     api.getRanks(token).then(setTiers).catch(() => setTiers([]));
   }, [token]);
 
+  const [showInactive, setShowInactive] = useState(false);
+  const inactiveCount = members.filter((m) => m.is_inactive).length;
+  const visibleMembers = showInactive ? members : members.filter((m) => !m.is_inactive);
+
   const groups = useMemo(() => {
     const byTier = new Map();
-    for (const m of members) {
+    for (const m of visibleMembers) {
       const key = m.rank?.tier_id ?? NO_RANK_GROUP;
       if (!byTier.has(key)) byTier.set(key, []);
       byTier.get(key).push(m);
@@ -127,14 +130,14 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
       ordered.push({ title: NO_RANK_GROUP, members: byTier.get(NO_RANK_GROUP) });
     }
     return ordered;
-  }, [members, tiers]);
+  }, [visibleMembers, tiers]);
 
   return (
     <div className="regiment-panel">
       <div className="regiment-panel-toolbar">
         {regiments.length > 1 && (
           <label>
-            Формирование
+            Состав какого формирования показать
             <select value={regimentId} onChange={(e) => setRegimentId(e.target.value)}>
               {regiments.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -144,24 +147,21 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
             </select>
           </label>
         )}
-        {currentRegiment && (
-          <button
-            type="button"
-            className="ghost icon-button"
-            title="Информация о формировании"
-            onClick={() => setShowInfo(true)}
-          >
-            <InfoIcon /> Инфо
-          </button>
-        )}
       </div>
 
       {error && <p className="error-text">{error}</p>}
       {loading ? (
-        <p>Загрузка...</p>
+        <InlineSpinner />
       ) : (
         <>
-          <h4>Состав ({members.length})</h4>
+          <div className="reports-toolbar">
+            <h4 style={{ margin: 0 }}>Состав ({visibleMembers.length})</h4>
+            {canEditHere && inactiveCount > 0 && (
+              <button className="ghost" onClick={() => setShowInactive((v) => !v)}>
+                {showInactive ? "Скрыть разжалованных" : `Показать разжалованных (${inactiveCount})`}
+              </button>
+            )}
+          </div>
           {groups.map((group) => (
             <div key={group.title} className="member-list-group fade-in-up">
               <p className="member-list-group-title">{group.title}</p>
@@ -183,11 +183,13 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
                         </td>
                         <td>
                           <span className="roster-member-cell">
-                            {m.avatar_url && <img src={m.avatar_url} alt="" className="member-avatar" />}
+                            {(m.photo_url || m.avatar_url) && (
+                              <img src={m.photo_url || m.avatar_url} alt="" className="member-avatar" />
+                            )}
                             <span style={regimentColor ? { color: regimentColor } : undefined}>
                               {formatFullName(m)}
                             </span>
-                            {m.is_inactive && <span className="member-inactive-badge">неактивен</span>}
+                            {m.is_inactive && <span className="member-inactive-badge">разжалован</span>}
                           </span>
                         </td>
                         <td className="mono-num">{m.days_in_rank ?? "—"}</td>
@@ -213,6 +215,17 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
               </div>
             </div>
           ))}
+          {currentRegiment?.discord_channel_url && (
+            <a
+              href={currentRegiment.discord_channel_url}
+              target="_blank"
+              rel="noreferrer"
+              className="regiment-info-channel-link"
+              style={{ marginTop: "0.5rem" }}
+            >
+              <LinkIcon /> Канал формирования
+            </a>
+          )}
         </>
       )}
 
@@ -230,10 +243,6 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
 
       {reviewRequestId && (
         <PromotionReviewModal requestId={reviewRequestId} onClose={() => setReviewRequestId(null)} />
-      )}
-
-      {showInfo && currentRegiment && (
-        <RegimentInfoModal regiment={currentRegiment} onClose={() => setShowInfo(false)} />
       )}
     </div>
   );

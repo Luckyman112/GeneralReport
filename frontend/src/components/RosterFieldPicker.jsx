@@ -23,7 +23,11 @@ export function RosterFieldPicker({ members, selectedIds, onChange }) {
     }
   }
 
-  const selectedNames = members.filter((m) => selectedIds.includes(m.discord_id)).map((m) => m.username);
+  function label(m) {
+    return m._regimentName ? `${m.username} (${m._regimentName})` : m.username;
+  }
+
+  const selectedNames = members.filter((m) => selectedIds.includes(m.discord_id)).map(label);
 
   return (
     <div className="roster-picker" ref={wrapRef}>
@@ -42,7 +46,7 @@ export function RosterFieldPicker({ members, selectedIds, onChange }) {
                   checked={selectedIds.includes(m.discord_id)}
                   onChange={() => toggle(m.discord_id)}
                 />
-                {m.username}
+                {label(m)}
               </label>
             ))
           )}

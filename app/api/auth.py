@@ -10,7 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core import discord_client
 from app.core.constants import PASSWORD_LOGIN_DISCORD_ID
-from app.core.security import create_access_token
+from app.core.security import create_access_token, decode_access_token
+from app.crud import app_settings as app_settings_crud
+from app.crud import notification as notification_crud
+from app.crud import regiment as regiment_crud
+from app.crud import transfer_request as transfer_request_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import TooManyRequestsError, UnauthorizedError
@@ -57,21 +61,67 @@ async def login_via_discord(
 
     logger.info("Пользователь %s (%s) авторизовался, роли: %s", user.username, user.discord_id, roles)
 
+    user = await _finalize_transfer_if_ready(db, user)
+
     jwt_token = create_access_token(user_id=user.id, discord_id=user.discord_id)
     return TokenResponse(access_token=jwt_token, user=UserRead.model_validate(user))
+
+
+async def _finalize_transfer_if_ready(db: AsyncSession, user):
+    # unfreeze once discord role flips from source to target regiment
+    request = await transfer_request_crud.get_active_for_user(db, user_id=user.id)
+    if request is None or request.status != "approved":
+        return user
+
+    from_regiment = await regiment_crud.get_by_id(db, request.from_regiment_id)
+    to_regiment = await regiment_crud.get_by_id(db, request.to_regiment_id)
+    role_ids = set(user.roles)
+    has_from = from_regiment is not None and from_regiment.discord_role_id in role_ids
+    has_to = to_regiment is not None and to_regiment.discord_role_id in role_ids
+
+    if has_to and not has_from:
+        user = await user_crud.update_profile(
+            db,
+            discord_id=user.discord_id,
+            fallback_username=user.username,
+            changes={"rank_id": request.target_rank_id},
+        )
+        await transfer_request_crud.complete(db, request)
+        await notification_crud.create_personal_notification(
+            db,
+            target_user_id=user.id,
+            title="Перевод завершён",
+            body=f"Вы переведены в формирование «{to_regiment.name}».",
+            created_by=user.id,
+        )
+        logger.info("Перевод %s завершён для пользователя %s", request.id, user.discord_id)
+
+    return user
 
 
 @router.post("/password", response_model=TokenResponse)
 async def login_via_password(
     payload: PasswordLoginRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> TokenResponse:
-    """Вход по общему секретному паролю в обход Discord — даёт полный админский
-    доступ (is_admin вычисляется по самому discord_id=PASSWORD_LOGIN_DISCORD_ID в
-    app/api/deps.py, а не по ролям — так это не зависит от того, как настроен
-    ADMIN_ROLE_ID). Нужен для тестирования функционала без реального Discord-аккаунта
-    и для доступа к настройкам ролей. Ограничено rate-limit'ом на подбор пароля."""
+    # password login = full admin bypass, rate-limited
     client_ip = request.client.host if request.client else "unknown"
     _check_password_rate_limit(client_ip)
+
+    app_config = await app_settings_crud.get(db)
+    # env value wins over db setting, so owner can't be locked out via panel
+    authorized_discord_id = settings.password_login_owner_discord_id or app_config.password_login_authorized_discord_id
+    if authorized_discord_id:
+        auth_header = request.headers.get("authorization", "")
+        scheme, _, token = auth_header.partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            raise UnauthorizedError("Сначала войдите через Discord под авторизованным аккаунтом")
+        try:
+            token_payload = decode_access_token(token)
+            current_user = await user_crud.get_by_id(db, int(token_payload["sub"]))
+        except Exception:
+            current_user = None
+        if current_user is None or current_user.discord_id != authorized_discord_id:
+            raise UnauthorizedError("Вход по паролю разрешён только под авторизованным Discord-аккаунтом")
 
     if not secrets.compare_digest(payload.password, settings.admin_password):
         raise UnauthorizedError("Неверный пароль")

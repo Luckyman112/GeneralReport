@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -27,7 +28,7 @@ export function PromotionReviewModal({ requestId, onClose }) {
     navigate(`/reports?regiment=${report.regiment_id}&category=${report.category_id ?? ""}`);
   }
 
-  return (
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Обзор повышения</h3>
@@ -99,6 +100,7 @@ export function PromotionReviewModal({ requestId, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

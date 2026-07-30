@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.crud import app_settings as app_settings_crud
+from app.crud import audit_log as audit_log_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError
 from app.schemas.module_access import ModuleAccessRead, ModuleAccessUpdate
@@ -39,4 +40,11 @@ async def update_module_access(
     changes = payload.model_dump(exclude_unset=True)
     row = await app_settings_crud.update_module_access(db, **changes)
     logger.info("%s обновил настройки доступа к модулям: %s", access.user.username, changes)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=True,
+        action="settings_module_access_update",
+        details=f"Изменены настройки доступа к модулям: {changes}",
+    )
     return ModuleAccessRead.model_validate(row)

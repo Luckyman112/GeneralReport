@@ -1,4 +1,6 @@
-from sqlalchemy import JSON, Boolean, String, Text
+from datetime import datetime
+
+from sqlalchemy import JSON, Boolean, DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -29,6 +31,10 @@ class AppSettings(Base):
     # Высшее командование — как командир/зам, но сразу для всех формирований;
     # может выдавать выговоры даже командирам. Не совпадает с is_admin.
     high_command_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # can grant/revoke specializations, unrelated to command roles
+    instructor_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # if set, password login also requires a valid JWT for this discord account
+    password_login_authorized_discord_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Формирования/Discord-роли, чьи участники могут заводить записи о нарушениях
     violation_writer_regiment_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
@@ -47,8 +53,21 @@ class AppSettings(Base):
     detention_report_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     detention_report_user_discord_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
 
+    # view-only access to training reports, separate from who can grant them
+    training_viewer_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+    # regiments whose members count as mentor candidates elsewhere, admin-set
+    mentor_source_regiment_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+
+    # extends can_appeal_report beyond commander/deputy/mentor/admin
+    report_appeal_regiment_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    report_appeal_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+
     # Режим обслуживания — на время миграций/восстановления из бэкапа. Блокирует
     # доступ всем, кроме администратора (см. MaintenanceMiddleware); сообщение
     # показывается в баннере на фронте.
     maintenance_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     maintenance_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # tokens issued before this are rejected, even if still validly signed
+    sessions_revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
