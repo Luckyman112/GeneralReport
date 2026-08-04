@@ -36,8 +36,8 @@ class ReportCreate(BaseModel):
     # ReportCategory.participant_points при одобрении
     participant_discord_ids: list[str] = []
 
-    # training reports only
-    training_specialization_id: int | None = None
+    # training reports only — one point per specialization, credited to the author
+    training_specialization_ids: list[int] = []
 
 
 class ReportStatusUpdate(BaseModel):
@@ -93,4 +93,4 @@ class ReportRead(BaseModel):
     punishment_other_text: str | None = None
     punishment_amount: str | None = None
     violation_id: int | None = None
-    training_specialization: SpecializationRead | None = None
+    training_specializations: list[SpecializationRead] = []

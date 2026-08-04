@@ -103,6 +103,14 @@ function CategoryRow({ category, tiers, allRegiments, onChanged, onDeleted }) {
     }
   }
 
+  // system categories have a fixed structure (target/specialization fields), not
+  // the generic user-defined "fields" array — editing it here would do nothing
+  const isSystemCategory =
+    category.is_detention || category.is_promotion || category.is_demotion || category.is_training;
+  // only the filer earns points here (detaining officer / instructor) — no
+  // participant/roster mechanism applies to these two
+  const hasParticipantPoints = !category.is_detention && !category.is_training;
+
   return (
     <li className="category-row">
       <div className="category-row-header">
@@ -113,59 +121,63 @@ function CategoryRow({ category, tiers, allRegiments, onChanged, onDeleted }) {
           {category.is_demotion && <span className="detention-badge">понижение (системная)</span>}
           {category.is_training && <span className="detention-badge">обучение (системная)</span>}
         </strong>
-        {!category.is_detention && !category.is_promotion && !category.is_demotion && !category.is_training && (
+        {!isSystemCategory && (
           <button className="ghost" onClick={() => onDeleted(category.id)}>
             Удалить категорию
           </button>
         )}
       </div>
-      {category.fields.length > 0 && (
-        <div className="field-tags">
-          {category.fields.map((f) => (
-            <span key={f.name} className="field-tag">
-              {f.name}
-              <span className="field-tag-type">{FIELD_TYPE_LABELS[f.type] || f.type}</span>
-              {f.type === "roster" && f.allowed_regiment_ids?.length > 0 && (
-                <span className="hint-text">
-                  {" "}
-                  (+{f.allowed_regiment_ids
-                    .map((id) => allRegiments.find((r) => r.id === id)?.name)
-                    .filter(Boolean)
-                    .join(", ")})
+      {!isSystemCategory && (
+        <>
+          {category.fields.length > 0 && (
+            <div className="field-tags">
+              {category.fields.map((f) => (
+                <span key={f.name} className="field-tag">
+                  {f.name}
+                  <span className="field-tag-type">{FIELD_TYPE_LABELS[f.type] || f.type}</span>
+                  {f.type === "roster" && f.allowed_regiment_ids?.length > 0 && (
+                    <span className="hint-text">
+                      {" "}
+                      (+{f.allowed_regiment_ids
+                        .map((id) => allRegiments.find((r) => r.id === id)?.name)
+                        .filter(Boolean)
+                        .join(", ")})
+                    </span>
+                  )}
+                  <button type="button" onClick={() => handleRemoveField(f.name)}>
+                    ×
+                  </button>
                 </span>
-              )}
-              <button type="button" onClick={() => handleRemoveField(f.name)}>
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <form onSubmit={handleAddField} className="add-field-form">
-        <input
-          type="text"
-          placeholder="+ поле (например «Время поста»)"
-          value={newField}
-          onChange={(e) => setNewField(e.target.value)}
-        />
-        <select value={newFieldType} onChange={(e) => setNewFieldType(e.target.value)}>
-          <option value="text">Текст</option>
-          <option value="roster">Список состава</option>
-        </select>
-        <button type="submit">Добавить поле</button>
-      </form>
-      {newFieldType === "roster" && (
-        <RosterAllowedRegiments
-          allRegiments={allRegiments}
-          currentRegimentId={category.regiment_id}
-          selectedIds={newFieldAllowedRegimentIds}
-          onChange={setNewFieldAllowedRegimentIds}
-        />
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleAddField} className="add-field-form">
+            <input
+              type="text"
+              placeholder="+ поле (например «Время поста»)"
+              value={newField}
+              onChange={(e) => setNewField(e.target.value)}
+            />
+            <select value={newFieldType} onChange={(e) => setNewFieldType(e.target.value)}>
+              <option value="text">Текст</option>
+              <option value="roster">Список состава</option>
+            </select>
+            <button type="submit">Добавить поле</button>
+          </form>
+          {newFieldType === "roster" && (
+            <RosterAllowedRegiments
+              allRegiments={allRegiments}
+              currentRegimentId={category.regiment_id}
+              selectedIds={newFieldAllowedRegimentIds}
+              onChange={setNewFieldAllowedRegimentIds}
+            />
+          )}
+        </>
       )}
 
       <div className="points-inline">
         <label className="points-inline-label">
-          Баллы за рапорт
+          {category.is_training ? "Баллы за специализацию" : "Баллы за рапорт"}
           <input
             type="number"
             placeholder="не указано"
@@ -173,22 +185,26 @@ function CategoryRow({ category, tiers, allRegiments, onChanged, onDeleted }) {
             onChange={(e) => setPointsDraft(e.target.value)}
           />
         </label>
-        <label className="points-inline-label">
-          Баллы участникам (список состава)
-          <input
-            type="number"
-            placeholder="не указано"
-            value={participantPointsDraft}
-            onChange={(e) => setParticipantPointsDraft(e.target.value)}
-          />
-        </label>
+        {hasParticipantPoints && (
+          <label className="points-inline-label">
+            Баллы участникам (список состава)
+            <input
+              type="number"
+              placeholder="не указано"
+              value={participantPointsDraft}
+              onChange={(e) => setParticipantPointsDraft(e.target.value)}
+            />
+          </label>
+        )}
         <button type="button" onClick={handleSavePoints}>
           Сохранить баллы
         </button>
       </div>
       <p className="hint-text">
-        Начисляются автоматически при одобрении рапорта этой категории, если баллы ещё не
-        выставлены вручную. Баллы участникам получает каждый, кто указан в поле "Список состава".
+        {category.is_training
+          ? "Начисляются автору (инструктору) при одобрении — за каждую выбранную специализацию отдельно (баллы × количество специализаций в рапорте)."
+          : "Начисляются автоматически при одобрении рапорта этой категории, если баллы ещё не выставлены вручную." +
+            (hasParticipantPoints ? " Баллы участникам получает каждый, кто указан в поле \"Список состава\"." : "")}
       </p>
 
       <div className="points-inline">

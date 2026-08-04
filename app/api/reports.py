@@ -43,6 +43,8 @@ MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 МБ
 async def _check_category_filing_restrictions(db: AsyncSession, access: AccessContext, category) -> None:
     if access.is_admin or access.is_high_command:
         return
+    if category.is_training and access.can_grant_specializations:
+        return
 
     if category.commander_only and not access.is_commander_of(category.regiment_id):
         raise ForbiddenError(f"Подавать рапорт категории «{category.name}» может только заместитель+/командир формирования")
@@ -60,6 +62,17 @@ async def _check_category_filing_restrictions(db: AsyncSession, access: AccessCo
             raise ForbiddenError(f"Для рапорта категории «{category.name}» требуется как минимум звание {category.min_rank.code}")
 
 
+def _attach_training_specializations(read: ReportRead, report, specs_by_id: dict) -> None:
+    if report.training_specialization_ids:
+        from app.schemas.specialization import SpecializationRead
+
+        read.training_specializations = [
+            SpecializationRead.model_validate(specs_by_id[sid])
+            for sid in report.training_specialization_ids
+            if sid in specs_by_id
+        ]
+
+
 async def _to_report_read(db: AsyncSession, report) -> ReportRead:
     read = ReportRead.model_validate(report)
     # signature comes from character if author has one in this regiment
@@ -73,12 +86,16 @@ async def _to_report_read(db: AsyncSession, report) -> ReportRead:
             from app.schemas.rank import RankRead
 
             read.author_rank = RankRead.model_validate(character.rank)
+    if report.training_specialization_ids:
+        specs_by_id = {s.id: s for s in await specialization_crud.get_all(db)}
+        _attach_training_specializations(read, report, specs_by_id)
     return read
 
 
 async def _to_report_reads(db: AsyncSession, reports: list) -> list[ReportRead]:
     # cache per (user_id, regiment_id), reports outnumber unique pairs
     cache: dict[tuple[int, int], ReportRead | None] = {}
+    specs_by_id = {s.id: s for s in await specialization_crud.get_all(db)}
     reads = []
     for report in reports:
         key = (report.user_id, report.regiment_id)
@@ -96,6 +113,7 @@ async def _to_report_reads(db: AsyncSession, reports: list) -> list[ReportRead]:
                 from app.schemas.rank import RankRead
 
                 read.author_rank = RankRead.model_validate(character.rank)
+        _attach_training_specializations(read, report, specs_by_id)
         reads.append(read)
     return reads
 
@@ -120,10 +138,16 @@ async def list_reports(
     if not (access.is_admin or access.is_high_command) and access.user.registration_status != "approved":
         raise ForbiddenError("Регистрация ещё не пройдена или не одобрена — рапорты недоступны")
 
+    category_is_training = False
+    if category_id is not None:
+        category = await report_category_crud.get_by_id(db, category_id)
+        category_is_training = category is not None and category.is_training
+
     visible_target_regiment_ids: set[int] | None = None
-    if access.is_admin or access.is_high_command:
+    if access.is_admin or access.is_high_command or (category_is_training and access.can_grant_specializations):
         # Администратору/высшему командованию доступны все формирования — фильтр не
-        # ограничиваем, если явно не запрошено конкретное формирование
+        # ограничиваем, если явно не запрошено конкретное формирование; инструктор так же
+        # видит рапорты об обучении любого формирования (не только своего)
         visible_regiment_ids = [regiment_id] if regiment_id is not None else None
         user_id_filter = None
     else:
@@ -188,45 +212,60 @@ async def create_report(
     if not (access.is_admin or access.is_high_command) and access.user.registration_status != "approved":
         raise ForbiddenError("Регистрация ещё не пройдена или не одобрена — рапорты недоступны")
 
-    allowed_regiments = access.commander_regiment_ids | access.soldier_regiment_ids
-    if not (access.is_admin or access.is_high_command) and payload.regiment_id not in allowed_regiments:
-        raise ForbiddenError("Вы не состоите в этом формировании")
-
-    target_fields: dict = {}
     category = None
     if payload.category_id is not None:
         category = await report_category_crud.get_by_id(db, payload.category_id)
-        if category is not None and category.is_promotion:
-            raise ForbiddenError("Категория «Повышение» системная — рапорт в ней создаётся автоматически")
-        if category is not None and category.is_demotion:
-            raise ForbiddenError("Категория «Понижение» системная — рапорт в ней создаётся автоматически")
-        if category is not None and category.is_detention:
-            if not access.can_file_detention_report:
-                raise ForbiddenError("Подавать рапорт о задержании может только назначенный администратором круг лиц")
-            target_fields = await _resolve_detention_target(db, payload)
-            target_fields.update(_resolve_punishment(payload))
-        if category is not None and category.is_training:
-            if not access.can_grant_specializations:
-                raise ForbiddenError("Подавать рапорт об обучении может только инструктор или администратор")
-            target_fields = await _resolve_training_target(db, payload)
-        if category is not None:
-            await _check_category_filing_restrictions(db, access, category)
+
+    # instructor files a training report for any regiment, not only their own
+    is_instructor_training = category is not None and category.is_training and access.can_grant_specializations
+
+    allowed_regiments = access.commander_regiment_ids | access.soldier_regiment_ids
+    if (
+        not (access.is_admin or access.is_high_command or is_instructor_training)
+        and payload.regiment_id not in allowed_regiments
+    ):
+        raise ForbiddenError("Вы не состоите в этом формировании")
+
+    target_fields: dict = {}
+    if category is not None and category.is_promotion:
+        raise ForbiddenError("Категория «Повышение» системная — рапорт в ней создаётся автоматически")
+    if category is not None and category.is_demotion:
+        raise ForbiddenError("Категория «Понижение» системная — рапорт в ней создаётся автоматически")
+    if category is not None and category.is_detention:
+        if not access.can_file_detention_report:
+            raise ForbiddenError("Подавать рапорт о задержании может только назначенный администратором круг лиц")
+        target_fields = await _resolve_detention_target(db, payload)
+        target_fields.update(_resolve_punishment(payload))
+    if category is not None and category.is_training:
+        if not access.can_grant_specializations:
+            raise ForbiddenError("Подавать рапорт об обучении может только инструктор или администратор")
+        target_fields = await _resolve_training_target(db, payload)
+    if category is not None:
+        await _check_category_filing_restrictions(db, access, category)
 
     # training reports auto-approve, no commander review needed
     auto_approve = category is not None and category.is_training and payload.submit
     if auto_approve:
-        # check grant eligibility before creating the report, not after -
-        # a limit violation must block creation, not fail silently later
+        # check grant eligibility for EACH specialization before creating the report,
+        # not after — a limit violation must block creation, not fail silently later
         trainee = await user_crud.get_by_discord_id(db, target_fields["target_discord_id"])
-        specialization = await specialization_crud.get_by_id(db, target_fields["training_specialization_id"])
-        if trainee is not None and specialization is not None:
+        if trainee is not None:
             from app.api.specializations import _check_can_grant
 
-            await _check_can_grant(db, trainee, specialization)
+            for specialization_id in target_fields["training_specialization_ids"]:
+                specialization = await specialization_crud.get_by_id(db, specialization_id)
+                if specialization is not None:
+                    await _check_can_grant(db, trainee, specialization)
         status = ReportStatus.APPROVED
     else:
         status = ReportStatus.SUBMITTED if payload.submit else ReportStatus.DRAFT
-    points = category.points if (auto_approve and category.points is not None) else None
+    # training: one point per specialization, credited to the instructor (author) —
+    # not category.points flat, since the count is only known at filing time
+    if auto_approve and category.is_training:
+        per_spec = category.points if category.points is not None else 1
+        points = per_spec * len(target_fields["training_specialization_ids"])
+    else:
+        points = category.points if (auto_approve and category.points is not None) else None
     report = await report_crud.create_report(
         db,
         user_id=access.user.id,
@@ -283,15 +322,16 @@ async def _resolve_detention_target(db: AsyncSession, payload: ReportCreate) -> 
 
 
 async def _resolve_training_target(db: AsyncSession, payload: ReportCreate) -> dict:
-    # needs a real discord member (spec is granted to their account) plus catalog spec
+    # needs a real discord member (spec is granted to their account) plus catalog specs
     if not payload.target_discord_id:
         raise AppError("Укажите, кому провели обучение")
-    if not payload.training_specialization_id:
-        raise AppError("Укажите специализацию")
+    if not payload.training_specialization_ids:
+        raise AppError("Укажите хотя бы одну специализацию")
 
-    specialization = await specialization_crud.get_by_id(db, payload.training_specialization_id)
-    if specialization is None:
-        raise NotFoundError("Специализация не найдена")
+    specialization_ids = list(dict.fromkeys(payload.training_specialization_ids))  # de-dupe, keep order
+    for specialization_id in specialization_ids:
+        if await specialization_crud.get_by_id(db, specialization_id) is None:
+            raise NotFoundError("Специализация не найдена")
 
     members = await discord_client.fetch_guild_members()
     target = next((m for m in members if m["discord_id"] == payload.target_discord_id), None)
@@ -301,7 +341,7 @@ async def _resolve_training_target(db: AsyncSession, payload: ReportCreate) -> d
     return {
         "target_discord_id": target["discord_id"],
         "target_username": target["username"],
-        "training_specialization_id": specialization.id,
+        "training_specialization_ids": specialization_ids,
     }
 
 
@@ -348,42 +388,43 @@ async def _apply_approval_side_effects(db: AsyncSession, updated, category, acto
             )
         logger.info("Рапорт о задержании %s превращён в нарушение %s", updated.id, violation.id)
 
-    # best-effort: a limit violation shouldn't block an already-approved report, just skip the grant
-    if (
-        category is not None
-        and category.is_training
-        and updated.training_specialization_id is not None
-        and updated.target_discord_id is not None
-    ):
+    # best-effort per specialization: a limit violation on one shouldn't block the rest
+    if category is not None and category.is_training and updated.target_discord_id is not None:
         trainee = await user_crud.get_by_discord_id(db, updated.target_discord_id)
         if trainee is not None:
-            try:
-                from app.api.specializations import _check_can_grant
+            from app.api.specializations import _check_can_grant
 
-                specialization = await specialization_crud.get_by_id(db, updated.training_specialization_id)
-                if specialization is not None:
+            granted_names = []
+            for specialization_id in updated.training_specialization_ids:
+                try:
+                    specialization = await specialization_crud.get_by_id(db, specialization_id)
+                    if specialization is None:
+                        continue
                     await _check_can_grant(db, trainee, specialization)
-                await specialization_crud.grant(
-                    db,
-                    user_id=trainee.id,
-                    specialization_id=updated.training_specialization_id,
-                    granted_by_user_id=actor_user_id,
-                )
+                    await specialization_crud.grant(
+                        db,
+                        user_id=trainee.id,
+                        specialization_id=specialization_id,
+                        granted_by_user_id=actor_user_id,
+                    )
+                    granted_names.append(f"{specialization.code} — {specialization.name}")
+                    logger.info(
+                        "Рапорт об обучении %s одобрен — специализация %s выдана %s",
+                        updated.id,
+                        specialization_id,
+                        updated.target_discord_id,
+                    )
+                except AppError as e:
+                    logger.warning("Рапорт об обучении %s одобрен, но специализация %s не выдана: %s", updated.id, specialization_id, e)
+
+            if granted_names:
                 await notification_crud.create_personal_notification(
                     db,
                     target_user_id=trainee.id,
                     title="Выдана специализация",
-                    body="Вам выдана специализация по итогам рапорта об обучении.",
+                    body="Вам выдано по итогам обучения: " + ", ".join(granted_names),
                     created_by=actor_user_id,
                 )
-                logger.info(
-                    "Рапорт об обучении %s одобрен — специализация %s выдана %s",
-                    updated.id,
-                    updated.training_specialization_id,
-                    updated.target_discord_id,
-                )
-            except AppError as e:
-                logger.warning("Рапорт об обучении %s одобрен, но специализация не выдана: %s", updated.id, e)
 
     if category is not None and category.participant_points:
         if updated.participant_discord_ids:
@@ -548,12 +589,18 @@ async def update_report_points(
     access: AccessContext = Depends(get_access_context),
 ) -> ReportRead:
     """Выставить балл за рапорт — только полноправный командир (не заместитель)
-    или администратор."""
+    или администратор; для рапорта об обучении — также инструктор."""
     report = await report_crud.get_by_id(db, report_id)
     if report is None:
         raise NotFoundError("Рапорт не найден")
 
-    if not access.is_full_commander_of(report.regiment_id):
+    category = await report_category_crud.get_by_id(db, report.category_id) if report.category_id else None
+    is_training = category is not None and category.is_training
+
+    if is_training:
+        if not (access.is_full_commander_of(report.regiment_id) or access.can_grant_specializations):
+            raise ForbiddenError("Выставлять баллы может только инструктор, командир формирования или администратор")
+    elif not access.is_full_commander_of(report.regiment_id):
         raise ForbiddenError("Выставлять баллы может только командир формирования")
 
     updated = await report_crud.set_points(db, report, points=payload.points)

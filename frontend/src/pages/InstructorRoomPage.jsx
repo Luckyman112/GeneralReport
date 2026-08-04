@@ -71,13 +71,29 @@ export function InstructorRoomPage() {
 
   const accessibleRegimentIds = useMemo(() => {
     if (!access) return [];
-    if (access.is_admin || access.is_high_command) return regiments.map((r) => r.id);
+    // instructors see/grant training across every regiment, not only their own
+    if (access.is_admin || access.is_high_command || access.can_grant_specializations) {
+      return regiments.map((r) => r.id);
+    }
     return [...new Set([...(access.commander_regiment_ids || []), ...(access.soldier_regiment_ids || [])])];
   }, [access, regiments]);
 
   const creatableRegiments = useMemo(
     () => regiments.filter((r) => accessibleRegimentIds.includes(r.id)),
     [regiments, accessibleRegimentIds]
+  );
+
+  // "от чьего лица подаётся" — только формирования, где инструктор состоит сам
+  // (не весь список, в отличие от истории/поиска состава/запрета на обучение)
+  const ownRegimentIds = useMemo(() => {
+    if (!access) return [];
+    if (access.is_admin || access.is_high_command) return regiments.map((r) => r.id);
+    return [...new Set([...(access.commander_regiment_ids || []), ...(access.soldier_regiment_ids || [])])];
+  }, [access, regiments]);
+
+  const ownRegiments = useMemo(
+    () => regiments.filter((r) => ownRegimentIds.includes(r.id)),
+    [regiments, ownRegimentIds]
   );
 
   const displayTiers = useMemo(
@@ -142,9 +158,14 @@ export function InstructorRoomPage() {
   const reportsBySpecialization = useMemo(() => {
     const map = new Map();
     for (const r of trainingReports) {
-      const label = r.training_specialization ? `${r.training_specialization.code} — ${r.training_specialization.name}` : "Без указания специализации";
-      if (!map.has(label)) map.set(label, []);
-      map.get(label).push(r);
+      const specs = r.training_specializations?.length
+        ? r.training_specializations
+        : [null];
+      for (const spec of specs) {
+        const label = spec ? `${spec.code} — ${spec.name}` : "Без указания специализации";
+        if (!map.has(label)) map.set(label, []);
+        map.get(label).push(r);
+      }
     }
     return map;
   }, [trainingReports]);
@@ -160,7 +181,9 @@ export function InstructorRoomPage() {
       setBanMembers([]);
       return;
     }
-    api.getMembers(token, banRegimentId).then(setBanMembers).catch(() => setBanMembers([]));
+    // getMembers requires actual membership in the regiment; instructors banning
+    // across regiments they don't belong to need the broader candidates endpoint
+    api.getViolationTargetCandidates(token, banRegimentId).then(setBanMembers).catch(() => setBanMembers([]));
     setBanTargetDiscordId("");
   }, [token, banRegimentId]);
 
@@ -273,7 +296,7 @@ export function InstructorRoomPage() {
 
           {showTrainingForm && (
             <TrainingReportForm
-              regiments={creatableRegiments}
+              regiments={ownRegiments}
               categoriesById={categoriesById}
               onSubmit={handleCreateTraining}
               onCancel={() => setShowTrainingForm(false)}

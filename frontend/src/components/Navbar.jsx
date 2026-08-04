@@ -46,29 +46,35 @@ export function Navbar() {
     : buildPositionLabel(access, regiments);
   const nameColor = activeCharacter ? activeCharacter.regiment.color : ownRegimentColor(access, regiments);
   const displayName = activeCharacter?.callsign || user?.username;
+  const needsRegistration =
+    user?.registration_status !== "approved" && !access?.is_admin && !access?.is_high_command;
 
   return (
     <nav className="navbar">
       <div className="navbar-brand">COLLAPSAR</div>
       <div className="navbar-links">
-        <Link to="/main">Главное</Link>
-        <Link to="/reports">Рапорты</Link>
-        {access?.can_view_violations && <Link to="/violations">Нарушители</Link>}
-        <Link to="/instructor-room">Инструкторская</Link>
-        <Link to="/promotions">Повышения</Link>
-        <button className="ghost navbar-link-button" onClick={() => setShowRoster(true)}>
-          Состав
-        </button>
-        {(access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0) && (
-          <Link to="/registrations">Регистрации</Link>
+        {!needsRegistration && (
+          <>
+            <Link to="/main">Главное</Link>
+            <Link to="/reports">Рапорты</Link>
+            {access?.can_view_violations && <Link to="/violations">Нарушители</Link>}
+            <Link to="/instructor-room">Инструкторская</Link>
+            <Link to="/promotions">Повышения</Link>
+            <button className="ghost navbar-link-button" onClick={() => setShowRoster(true)}>
+              Состав
+            </button>
+            {(access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0) && (
+              <Link to="/registrations">Регистрации</Link>
+            )}
+            {(access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0) && (
+              <Link to="/transfers">Переводы</Link>
+            )}
+            {access?.is_admin && <Link to="/regiments">Формирования</Link>}
+            {access?.is_admin && <Link to="/admin-panel">Админ-панель</Link>}
+            {access?.is_admin && <Link to="/backups">Резервные копии</Link>}
+            {access?.is_admin && <Link to="/settings">Настройки</Link>}
+          </>
         )}
-        {(access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0) && (
-          <Link to="/transfers">Переводы</Link>
-        )}
-        {access?.is_admin && <Link to="/regiments">Формирования</Link>}
-        {access?.is_admin && <Link to="/admin-panel">Админ-панель</Link>}
-        {access?.is_admin && <Link to="/backups">Резервные копии</Link>}
-        {access?.is_admin && <Link to="/settings">Настройки</Link>}
       </div>
       <div className="navbar-user">
         <button

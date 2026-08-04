@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -23,3 +23,5 @@ class Regiment(Base):
     discord_channel_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # jedi order <-> jedi ranks only, no mixing
     is_jedi_order: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # None = стартовое звание по умолчанию (Рекрут), см. app/api/registration.py
+    starting_rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id", ondelete="SET NULL"), nullable=True)

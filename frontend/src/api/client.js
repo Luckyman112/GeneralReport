@@ -112,7 +112,7 @@ export const api = {
       punishmentOtherText,
       punishmentAmount,
       participantDiscordIds,
-      trainingSpecializationId,
+      trainingSpecializationIds,
     }
   ) =>
     request("/api/reports", {
@@ -132,7 +132,7 @@ export const api = {
         punishment_other_text: punishmentOtherText || null,
         punishment_amount: punishmentAmount || null,
         participant_discord_ids: participantDiscordIds || [],
-        training_specialization_id: trainingSpecializationId || null,
+        training_specialization_ids: trainingSpecializationIds || [],
       },
     }),
   updateReportStatus: (token, reportId, { status, rejectionReason }) =>
@@ -168,7 +168,7 @@ export const api = {
         is_jedi_order: !!isJediOrder,
       },
     }),
-  updateRegiment: (token, regimentId, { name, discordRoleId, color, discordChannelUrl, isJediOrder }) =>
+  updateRegiment: (token, regimentId, { name, discordRoleId, color, discordChannelUrl, isJediOrder, startingRankId }) =>
     request(`/api/regiments/${regimentId}`, {
       method: "PATCH",
       token,
@@ -178,6 +178,7 @@ export const api = {
         color: color || null,
         discord_channel_url: discordChannelUrl ?? null,
         is_jedi_order: isJediOrder,
+        starting_rank_id: startingRankId ?? null,
       },
     }),
 

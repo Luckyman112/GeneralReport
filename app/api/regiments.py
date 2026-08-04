@@ -104,6 +104,15 @@ async def create_regiment(
     if not access.is_admin:
         raise ForbiddenError("Только администратор может создавать формирования")
 
+    if payload.starting_rank_id is not None:
+        starting_rank = await rank_crud.get_by_id(db, payload.starting_rank_id)
+        if starting_rank is None:
+            raise NotFoundError("Стартовое звание не найдено")
+        if payload.is_jedi_order and not starting_rank.tier.is_jedi:
+            raise AppError("Этому формированию можно назначить только джедайское стартовое звание")
+        if not payload.is_jedi_order and starting_rank.tier.is_jedi:
+            raise AppError("Обычному формированию нельзя назначить джедайское стартовое звание")
+
     regiment = await regiment_crud.create(
         db,
         name=payload.name,
@@ -111,6 +120,7 @@ async def create_regiment(
         color=payload.color,
         discord_channel_url=payload.discord_channel_url,
         is_jedi_order=payload.is_jedi_order,
+        starting_rank_id=payload.starting_rank_id,
     )
     logger.info("Администратор %s создал формирование %s", access.user.username, regiment.name)
     return RegimentRead.model_validate(regiment)
@@ -129,6 +139,17 @@ async def update_regiment(
 
     regiment = await _get_regiment_or_404(db, regiment_id)
     changes = payload.model_dump(exclude_unset=True)
+
+    if changes.get("starting_rank_id") is not None:
+        starting_rank = await rank_crud.get_by_id(db, changes["starting_rank_id"])
+        if starting_rank is None:
+            raise NotFoundError("Стартовое звание не найдено")
+        is_jedi_order = changes.get("is_jedi_order", regiment.is_jedi_order)
+        if is_jedi_order and not starting_rank.tier.is_jedi:
+            raise AppError("Этому формированию можно назначить только джедайское стартовое звание")
+        if not is_jedi_order and starting_rank.tier.is_jedi:
+            raise AppError("Обычному формированию нельзя назначить джедайское стартовое звание")
+
     updated = await regiment_crud.update(db, regiment, **changes)
     logger.info("Администратор %s обновил формирование %s", access.user.username, updated.name)
     return RegimentRead.model_validate(updated)
@@ -143,8 +164,10 @@ async def list_categories(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> list[ReportCategoryRead]:
-    """Категории рапортов формирования — доступно всем, у кого есть доступ к формированию."""
-    _require_regiment_access(access, regiment_id)
+    """Категории рапортов формирования — доступно всем, у кого есть доступ к формированию,
+    а также инструктору (нужны категории обучения любого формирования)."""
+    if not access.can_grant_specializations:
+        _require_regiment_access(access, regiment_id)
     await _get_regiment_or_404(db, regiment_id)
     categories = await report_category_crud.get_by_regiment(db, regiment_id)
     return [ReportCategoryRead.model_validate(c) for c in categories]
@@ -417,9 +440,11 @@ async def get_members(
     access: AccessContext = Depends(get_access_context),
 ) -> list[GuildMemberRead]:
     """Список участников сервера, состоящих в этом формировании — виден бойцам,
-    командирам и администратору этого формирования. Ник переопределяется веб-ником,
-    если командир его задал (см. PATCH .../members/{discord_id}/nickname)."""
-    _require_regiment_access(access, regiment_id)
+    командирам и администратору этого формирования, а также инструктору (нужен
+    состав любого формирования для запрета на обучение). Ник переопределяется
+    веб-ником, если командир его задал (см. PATCH .../members/{discord_id}/nickname)."""
+    if not access.can_grant_specializations:
+        _require_regiment_access(access, regiment_id)
     regiment = await _get_regiment_or_404(db, regiment_id)
 
     members = await discord_client.fetch_guild_members()

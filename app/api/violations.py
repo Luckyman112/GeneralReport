@@ -38,7 +38,8 @@ async def get_target_candidates(
     """Список участников сервера — для выбора нарушителя при подаче записи.
     regiment_id — если передан, сужает список только до состава этого
     формирования (чтобы не листать весь сервер, когда формирование уже выбрано)."""
-    if not access.can_write_violations:
+    # shared by detention-target picker (violation writers) and training-target picker (instructors)
+    if not (access.can_write_violations or access.can_grant_specializations):
         raise ForbiddenError("Заводить записи о нарушениях может только участник соответствующего формирования")
 
     members = await discord_client.fetch_guild_members()

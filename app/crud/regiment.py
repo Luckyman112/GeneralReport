@@ -27,6 +27,7 @@ async def create(
     color: str | None = None,
     discord_channel_url: str | None = None,
     is_jedi_order: bool = False,
+    starting_rank_id: int | None = None,
 ) -> Regiment:
     regiment = Regiment(
         name=name,
@@ -34,6 +35,7 @@ async def create(
         color=color,
         discord_channel_url=discord_channel_url,
         is_jedi_order=is_jedi_order,
+        starting_rank_id=starting_rank_id,
     )
     db.add(regiment)
     await db.commit()

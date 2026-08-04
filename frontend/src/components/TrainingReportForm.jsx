@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { MemberSearchPicker } from "./MemberSearchPicker";
+import { MultiSelectDropdown } from "./MultiSelectDropdown";
 
 /** Рапорт об обучении — инструктор фиксирует, что провёл бойцу обучение конкретной
  * специализации. Работает как рапорт о задержании: живёт в разделе "Рапорты",
@@ -14,7 +15,7 @@ export function TrainingReportForm({ regiments, categoriesById, onSubmit, onCanc
   const [members, setMembers] = useState([]);
   const [targetId, setTargetId] = useState("");
   const [specializations, setSpecializations] = useState([]);
-  const [specializationId, setSpecializationId] = useState("");
+  const [specializationIds, setSpecializationIds] = useState([]);
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -39,7 +40,12 @@ export function TrainingReportForm({ regiments, categoriesById, onSubmit, onCanc
     (c) => c.regiment_id === Number(regimentId) && c.is_training
   );
 
-  const isValid = trainingCategory && targetRegimentId && targetId && specializationId && content.trim();
+  const specializationItems = useMemo(
+    () => specializations.map((s) => ({ id: s.id, name: `${s.code} — ${s.name}` })),
+    [specializations]
+  );
+
+  const isValid = trainingCategory && targetRegimentId && targetId && specializationIds.length > 0 && content.trim();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -52,7 +58,7 @@ export function TrainingReportForm({ regiments, categoriesById, onSubmit, onCanc
         categoryId: trainingCategory.id,
         content: content.trim(),
         targetDiscordId: targetId,
-        trainingSpecializationId: Number(specializationId),
+        trainingSpecializationIds: specializationIds,
       });
     } catch (e) {
       setError(e.message);
@@ -96,15 +102,13 @@ export function TrainingReportForm({ regiments, categoriesById, onSubmit, onCanc
       </label>
 
       <label>
-        Специализация
-        <select value={specializationId} onChange={(e) => setSpecializationId(e.target.value)}>
-          <option value="">— выбрать —</option>
-          {specializations.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.code} — {s.name}
-            </option>
-          ))}
-        </select>
+        Специализации (по баллу за каждую)
+        <MultiSelectDropdown
+          items={specializationItems}
+          selectedIds={specializationIds}
+          onChange={setSpecializationIds}
+          placeholder="— выбрать —"
+        />
       </label>
 
       <label>

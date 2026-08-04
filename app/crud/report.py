@@ -16,7 +16,6 @@ _LOAD_OPTIONS = [
     selectinload(Report.author_rank),
     selectinload(Report.updated_by_rank),
     selectinload(Report.category),
-    selectinload(Report.training_specialization),
 ]
 
 
@@ -40,7 +39,7 @@ async def create_report(
     punishment_type: str | None = None,
     punishment_other_text: str | None = None,
     punishment_amount: str | None = None,
-    training_specialization_id: int | None = None,
+    training_specialization_ids: list[int] | None = None,
 ) -> Report:
     report = Report(
         user_id=user_id,
@@ -60,7 +59,7 @@ async def create_report(
         punishment_type=punishment_type,
         punishment_other_text=punishment_other_text,
         punishment_amount=punishment_amount,
-        training_specialization_id=training_specialization_id,
+        training_specialization_ids=training_specialization_ids or [],
     )
     db.add(report)
     await db.commit()

@@ -4,13 +4,14 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { InfoHint } from "./Tooltip";
 
-export function RegimentConfigModal({ regiment, roles, onClose, onSaved }) {
+export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }) {
   const { token } = useAuth();
   const [name, setName] = useState(regiment.name);
   const [discordRoleId, setDiscordRoleId] = useState(regiment.discord_role_id);
   const [color, setColor] = useState(regiment.color || "#5865f2");
   const [discordChannelUrl, setDiscordChannelUrl] = useState(regiment.discord_channel_url || "");
   const [isJediOrder, setIsJediOrder] = useState(regiment.is_jedi_order || false);
+  const [startingRankId, setStartingRankId] = useState(regiment.starting_rank_id || "");
   const [commanders, setCommanders] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [mentorCandidates, setMentorCandidates] = useState([]);
@@ -23,6 +24,14 @@ export function RegimentConfigModal({ regiment, roles, onClose, onSaved }) {
     const source = selectedRoleType === "mentor" ? mentorCandidates : candidates;
     return source.filter((c) => !commanders.some((cmd) => cmd.discord_id === c.discord_id));
   }, [candidates, mentorCandidates, commanders, selectedRoleType]);
+
+  const availableRanks = useMemo(
+    () =>
+      (tiers || [])
+        .filter((t) => Boolean(t.is_jedi) === isJediOrder)
+        .flatMap((t) => t.ranks),
+    [tiers, isJediOrder]
+  );
 
   async function loadCommanders() {
     try {
@@ -44,6 +53,13 @@ export function RegimentConfigModal({ regiment, roles, onClose, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (startingRankId && !availableRanks.some((r) => r.id === Number(startingRankId))) {
+      setStartingRankId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isJediOrder]);
+
   async function handleSave() {
     setSaving(true);
     setError(null);
@@ -54,6 +70,7 @@ export function RegimentConfigModal({ regiment, roles, onClose, onSaved }) {
         color,
         discordChannelUrl: discordChannelUrl.trim() || null,
         isJediOrder,
+        startingRankId: startingRankId === "" ? null : Number(startingRankId),
       });
       onSaved();
     } catch (e) {
@@ -141,6 +158,19 @@ export function RegimentConfigModal({ regiment, roles, onClose, onSaved }) {
         <label className="checkbox-label">
           <input type="checkbox" checked={isJediOrder} onChange={(e) => setIsJediOrder(e.target.checked)} />
           Орден джедаев (основному профилю бойцов можно назначать только джедайские звания)
+        </label>
+
+        <label>
+          Стартовое звание при регистрации
+          <InfoHint text="Пусто — по умолчанию (Рекрут). Если у формирования нет рекрутского набора (принимают сразу с определённого звания), выберите его здесь." />
+          <select value={startingRankId} onChange={(e) => setStartingRankId(e.target.value)}>
+            <option value="">по умолчанию (Рекрут)</option>
+            {availableRanks.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.code} — {r.name}
+              </option>
+            ))}
+          </select>
         </label>
 
         <h4>

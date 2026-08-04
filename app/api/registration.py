@@ -41,9 +41,16 @@ async def submit_registration(
     if access.user.registration_status == "approved":
         raise AppError("Регистрация уже пройдена")
 
-    starting_rank = await rank_crud.get_by_code(db, STARTING_RANK_CODE)
-    if starting_rank is None:
+    default_starting_rank = await rank_crud.get_by_code(db, STARTING_RANK_CODE)
+    if default_starting_rank is None:
         raise AppError("Стартовое звание (RCT) не настроено — обратитесь к администратору")
+
+    # formation may override the default recruit rank (see Regiment.starting_rank_id)
+    user_regiments = await _regiments_for_user(db, access.user)
+    starting_rank = default_starting_rank
+    override_regiment = next((r for r in user_regiments if r.starting_rank_id is not None), None)
+    if override_regiment is not None:
+        starting_rank = await rank_crud.get_by_id(db, override_regiment.starting_rank_id) or default_starting_rank
 
     user = await user_crud.update_profile(
         db,
@@ -60,7 +67,7 @@ async def submit_registration(
     )
     logger.info("Пользователь %s подал заявку на регистрацию", user.username)
 
-    regiments = await _regiments_for_user(db, user)
+    regiments = user_regiments
     if regiments:
         from app.crud import regiment_commander as regiment_commander_crud
 

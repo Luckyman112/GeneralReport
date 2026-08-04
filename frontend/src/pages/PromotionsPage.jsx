@@ -32,6 +32,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   const isAllMode = regimentId === ALL_REGIMENTS;
 
   const [tiers, setTiers] = useState([]);
+  const [allRanks, setAllRanks] = useState([]);
   const [categories, setCategories] = useState({});
   const [categoryRequirements, setCategoryRequirements] = useState([]);
   const [baseline, setBaseline] = useState(null);
@@ -50,6 +51,12 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   const [localCount, setLocalCount] = useState(1);
 
   const ranks = useMemo(() => tiers.flatMap((t) => t.ranks), [tiers]);
+  const startingRank = useMemo(() => {
+    if (isAllMode) return null;
+    const regiment = allRegiments.find((r) => r.id === regimentId);
+    if (!regiment?.starting_rank_id) return null;
+    return allRanks.find((r) => r.id === regiment.starting_rank_id) || null;
+  }, [isAllMode, allRegiments, regimentId, allRanks]);
   const requirementsByRankId = useMemo(() => {
     const map = new Map();
     for (const req of categoryRequirements) {
@@ -75,6 +82,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   function applyLoaded(tiersDataRaw, reqData) {
     // jedi tiers excluded, separate promotion system
     const tiersData = tiersDataRaw.filter((t) => !t.is_jedi);
+    setAllRanks(tiersDataRaw.flatMap((t) => t.ranks));
     const admin = Object.fromEntries(reqData.map((r) => [r.rank_id, r.admin_points_required]));
     const cmd = Object.fromEntries(reqData.map((r) => [r.rank_id, r.points_required]));
     const tier = Object.fromEntries(tiersData.map((t) => [t.id, t.tenure_days_required ?? ""]));
@@ -237,6 +245,12 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
         <p className="hint-text">
           Режим "Все формирования": здесь можно разом выставить админскую базу баллов, выслугу и обязательные
           требования по категориям сразу для всех формирований.
+        </p>
+      )}
+
+      {startingRank && (
+        <p className="hint-text">
+          Набор в это формирование — со звания <strong>{startingRank.code} — {startingRank.name}</strong>
         </p>
       )}
 

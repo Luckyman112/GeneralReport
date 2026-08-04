@@ -34,10 +34,10 @@ export function ReportForm({ regiments, onSubmit, onCancel }) {
       .listCategories(token, regimentId)
       .then((data) => {
         if (ignore) return;
-        // Категории "задержание" и "повышение" системные — первая оформляется
-        // отдельной кнопкой "Рапорт о задержании", вторая создаётся автоматически
-        // при заявке на повышение — вручную выбрать их в обычной форме нельзя
-        const selectable = data.filter((c) => !c.is_detention && !c.is_promotion);
+        // Задержание/обучение оформляются отдельными формами (кнопка "Рапорт о
+        // задержании" и Инструкторская), повышение создаётся автоматически —
+        // вручную выбрать их в обычной форме нельзя
+        const selectable = data.filter((c) => !c.is_detention && !c.is_promotion && !c.is_demotion && !c.is_training);
         setCategories(selectable);
         setCategoryId(selectable[0]?.id ?? "");
       })

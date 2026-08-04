@@ -8,6 +8,7 @@ export function RegimentsAdminPage() {
   const { token } = useAuth();
   const [regiments, setRegiments] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [tiers, setTiers] = useState([]);
   const [editingRegiment, setEditingRegiment] = useState(null);
   const [newName, setNewName] = useState("");
   const [newRoleId, setNewRoleId] = useState("");
@@ -18,12 +19,14 @@ export function RegimentsAdminPage() {
   const [loading, setLoading] = useState(true);
 
   const loadAll = useCallback(async () => {
-    const [regimentsData, rolesData] = await Promise.all([
+    const [regimentsData, rolesData, tiersData] = await Promise.all([
       api.listRegiments(token),
       api.getDiscordRoles(token),
+      api.getRanks(token),
     ]);
     setRegiments(regimentsData);
     setRoles(rolesData);
+    setTiers(tiersData);
     setNewRoleId((current) => current || rolesData[0]?.id || "");
   }, [token]);
 
@@ -112,6 +115,7 @@ export function RegimentsAdminPage() {
         <RegimentConfigModal
           regiment={editingRegiment}
           roles={roles}
+          tiers={tiers}
           onClose={() => setEditingRegiment(null)}
           onSaved={() => {
             setEditingRegiment(null);

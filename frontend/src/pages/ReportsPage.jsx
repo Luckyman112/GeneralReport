@@ -78,8 +78,10 @@ export function ReportsPage() {
   // сразу для всех формирований, не привязан к конкретному
   const manageableRegiments = access?.can_manage_categories ? regiments : [];
 
-  function canSetPoints(regimentId) {
-    return access?.is_admin || access?.is_high_command || (access?.category_manager_regiment_ids || []).includes(regimentId);
+  function canSetPoints(report) {
+    if (access?.is_admin || access?.is_high_command) return true;
+    if (categoriesById[report.category_id]?.is_training) return Boolean(access?.can_grant_specializations);
+    return (access?.category_manager_regiment_ids || []).includes(report.regiment_id);
   }
 
   function canManageMembers(regimentId) {
@@ -365,7 +367,7 @@ export function ReportsPage() {
                   canManage={canManage(report)}
                   canDelete={canDelete(report)}
                   canReject={canReject(report)}
-                  canSetPoints={canSetPoints(report.regiment_id)}
+                  canSetPoints={canSetPoints(report)}
                   onSubmitDraft={() => handleSubmitDraft(report.id)}
                   onApprove={() => handleApprove(report.id)}
                   onReject={(reason) => handleReject(report.id, reason)}
