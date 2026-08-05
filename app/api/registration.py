@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core.events import event_bus
+from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
 from app.crud import rank as rank_crud
 from app.crud import regiment as regiment_crud
@@ -147,6 +148,14 @@ async def approve_registration(
         db, discord_id=discord_id, fallback_username=target.username, changes={"registration_status": "approved"}
     )
     logger.info("%s одобрил регистрацию %s", access.user.username, discord_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="registration_approve",
+        details=f"Одобрил регистрацию бойца {discord_id}",
+        target_user_id=user.id,
+    )
     await notification_crud.create_personal_notification(
         db,
         target_user_id=user.id,
@@ -182,6 +191,14 @@ async def reject_registration(
         },
     )
     logger.info("%s отклонил регистрацию %s", access.user.username, discord_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="registration_reject",
+        details=f"Отклонил регистрацию бойца {discord_id}",
+        target_user_id=user.id,
+    )
     await notification_crud.create_personal_notification(
         db,
         target_user_id=user.id,

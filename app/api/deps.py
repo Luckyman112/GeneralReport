@@ -12,9 +12,10 @@ from app.core.security import decode_access_token
 from app.crud import app_settings as app_settings_crud
 from app.crud import regiment as regiment_crud
 from app.crud import regiment_commander as regiment_commander_crud
+from app.crud import specialization as specialization_crud
 from app.crud import user as user_crud
 from app.database import get_db
-from app.exceptions import UnauthorizedError
+from app.exceptions import NotFoundError, UnauthorizedError
 from app.models.user import User
 
 bearer_scheme = HTTPBearer()
@@ -54,6 +55,12 @@ class AccessContext:
     is_high_command: bool = False
     # can grant/revoke specializations, unrelated to command roles
     is_instructor: bool = False
+    # discipline instructor roles (MED/PIL/ENG | INS) — какие дисциплины
+    # (Specialization.category из DISCIPLINE_CATEGORIES) разрешено выдавать этому
+    # инструктору; is_universal_instructor (роль вроде "ARC | INS") — выдаёт всё,
+    # включая обычные (не-дисциплинарные) категории специализаций
+    instructor_disciplines: set[str] = field(default_factory=set)
+    is_universal_instructor: bool = False
     role_ids: set[str] = field(default_factory=set)
     commander_regiment_ids: set[int] = field(default_factory=set)
     # subset of commander_regiment_ids where role is specifically "commander"
@@ -145,7 +152,26 @@ class AccessContext:
 
     @property
     def can_grant_specializations(self) -> bool:
+        """Общий доступ в Инструкторскую/к выдаче — КАКИЕ именно специализации
+        можно выдать конкретному инструктору, решает can_grant_specialization
+        (ниже), у которого есть доступ к самой специализации."""
         return self.is_admin or self.is_instructor
+
+    def can_grant_specialization(self, specialization) -> bool:
+        """Дисциплинарные категории (медик/пилот/инженер) выдаёт только
+        инструктор соответствующей дисциплины или универсальный (can_teach_all,
+        напр. роль "ARC | INS"); обычные категории — любой инструктор, как раньше."""
+        if self.is_admin or self.is_universal_instructor:
+            return True
+        if not self.is_instructor:
+            return False
+        if specialization.category in self.instructor_disciplines:
+            return True
+        # не дисциплинарная категория (class/gear/specialization/...) — доступна
+        # любому инструктору, дисциплины на неё не распространяются
+        from app.models.specialization import DISCIPLINE_CATEGORIES
+
+        return specialization.category not in DISCIPLINE_CATEGORIES
 
     @property
     def can_view_trainings(self) -> bool:
@@ -190,9 +216,16 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
         or (app_config.admin_role_id in role_ids)
         or user.discord_id in (app_config.admin_user_discord_ids or [])
         or (app_config.founder_role_id and app_config.founder_role_id in role_ids)
+        or user.discord_id in (app_config.founder_user_discord_ids or [])
     )
     is_high_command = bool(app_config.high_command_role_id) and app_config.high_command_role_id in role_ids
-    is_instructor = bool(app_config.instructor_role_id) and app_config.instructor_role_id in role_ids
+
+    matched_instructor_roles = [
+        r for r in await specialization_crud.list_instructor_roles(db) if r.discord_role_id in role_ids
+    ]
+    is_instructor = bool(matched_instructor_roles)
+    is_universal_instructor = any(r.can_teach_all for r in matched_instructor_roles)
+    instructor_disciplines = {r.discipline for r in matched_instructor_roles if r.discipline}
 
     # explicit per-regiment assignment, so having a generic commander/deputy role
     # doesn't grant command in every regiment the user's roles touch
@@ -226,6 +259,8 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
         "is_admin": is_admin,
         "is_high_command": is_high_command,
         "is_instructor": is_instructor,
+        "instructor_disciplines": instructor_disciplines,
+        "is_universal_instructor": is_universal_instructor,
         "role_ids": role_ids,
         "commander_regiment_ids": commander_regiment_ids,
         "category_manager_regiment_ids": category_manager_regiment_ids,
@@ -250,6 +285,8 @@ def _build_access_context(
         can_use_view_as=can_use_view_as,
         is_high_command=fields["is_high_command"],
         is_instructor=fields["is_instructor"],
+        instructor_disciplines=fields["instructor_disciplines"],
+        is_universal_instructor=fields["is_universal_instructor"],
         role_ids=fields["role_ids"],
         commander_regiment_ids=fields["commander_regiment_ids"],
         category_manager_regiment_ids=fields["category_manager_regiment_ids"],
@@ -294,6 +331,9 @@ def build_view_as_context(user: User, *, role: str, regiment_id: int | None) -> 
 def _apply_view_as_extras(context: AccessContext, extras: set[str], regiment_id: int | None) -> None:
     if "instructor" in extras:
         context.is_instructor = True
+        # view-as для дебага UI — не сужаем по дисциплинам, иначе не увидишь форму
+        # выдачи целиком
+        context.is_universal_instructor = True
     if "broadcast" in extras:
         context.role_ids.add(_VIEW_AS_MARKER_ROLE)
         context.broadcast_role_ids.add(_VIEW_AS_MARKER_ROLE)
@@ -332,11 +372,15 @@ async def get_access_context(
     # the real admin, not the impersonated user
     if view_as_discord_id and can_use_view_as:
         target = await user_crud.get_by_discord_id(db, view_as_discord_id)
-        if target is not None:
-            target_fields = await _compute_permission_fields(db, target, app_config)
-            return _build_access_context(
-                user, target_fields, app_config, is_real_admin=True, can_use_view_as=True
-            )
+        if target is None:
+            # раньше здесь молча проваливалось дальше и отдавало контекст РЕАЛЬНОГО
+            # админа вместо ошибки — admin думал, что смотрит "глазами" другого
+            # пользователя, а на деле видел свои же права
+            raise NotFoundError("Пользователь с таким Discord ID не найден — он ни разу не логинился на сайте")
+        target_fields = await _compute_permission_fields(db, target, app_config)
+        return _build_access_context(
+            user, target_fields, app_config, is_real_admin=True, can_use_view_as=True
+        )
 
     # view-as-role: admin/high-command only, restricted access via build_view_as_context
     if view_as_role and view_as_role in VIEW_AS_ROLES and can_use_view_as:

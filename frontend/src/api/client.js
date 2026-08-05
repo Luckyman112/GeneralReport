@@ -183,11 +183,17 @@ export const api = {
     }),
 
   listCategories: (token, regimentId) => request(`/api/regiments/${regimentId}/categories`, { token }),
-  createCategory: (token, regimentId, { name, fields, points, participantPoints }) =>
+  createCategory: (token, regimentId, { name, fields, points, participantPoints, requiredSpecializationId }) =>
     request(`/api/regiments/${regimentId}/categories`, {
       method: "POST",
       token,
-      body: { name, fields: fields || [], points: points ?? null, participant_points: participantPoints ?? null },
+      body: {
+        name,
+        fields: fields || [],
+        points: points ?? null,
+        participant_points: participantPoints ?? null,
+        required_specialization_id: requiredSpecializationId ?? null,
+      },
     }),
   // Передаём только реально переданные поля (без null-заполнителей) — бэкенд
   // трактует отсутствие ключа как "не менять", а points: null как явную очистку
@@ -254,7 +260,15 @@ export const api = {
   getAppSettings: (token) => request("/api/app-settings", { token }),
   updateAppSettings: (
     token,
-    { adminRoleId, commanderRoleId, deputyRoleId, highCommandRoleId, adminUserDiscordIds, founderRoleId, instructorRoleId }
+    {
+      adminRoleId,
+      commanderRoleId,
+      deputyRoleId,
+      highCommandRoleId,
+      adminUserDiscordIds,
+      founderRoleId,
+      founderUserDiscordIds,
+    }
   ) =>
     request("/api/app-settings", {
       method: "PATCH",
@@ -266,7 +280,7 @@ export const api = {
         high_command_role_id: highCommandRoleId ?? null,
         admin_user_discord_ids: adminUserDiscordIds ?? null,
         founder_role_id: founderRoleId ?? null,
-        instructor_role_id: instructorRoleId ?? null,
+        founder_user_discord_ids: founderUserDiscordIds ?? null,
       },
     }),
   getAppSettingsMembers: (token) => request("/api/app-settings/discord-members", { token }),
@@ -275,20 +289,43 @@ export const api = {
   getInstructorActivity: (token) => request("/api/specializations/instructor-activity", { token }),
   getSystemHealth: (token, staleDays = 3) =>
     request(`/api/admin/health?stale_days=${staleDays}`, { token }),
-  createSpecialization: (token, { code, name, category, minRankId }) =>
+  createSpecialization: (token, { code, name, category, minRankId, requiredRegimentId, parentId }) =>
     request("/api/specializations", {
       method: "POST",
       token,
-      body: { code, name, category, min_rank_id: minRankId ?? null },
+      body: {
+        code,
+        name,
+        category,
+        min_rank_id: minRankId ?? null,
+        required_regiment_id: requiredRegimentId ?? null,
+        parent_id: parentId ?? null,
+      },
     }),
-  updateSpecialization: (token, specializationId, { code, name, category, minRankId }) =>
+  updateSpecialization: (token, specializationId, { code, name, category, minRankId, requiredRegimentId, parentId }) =>
     request(`/api/specializations/${specializationId}`, {
       method: "PATCH",
       token,
-      body: { code, name, category, min_rank_id: minRankId },
+      body: {
+        code,
+        name,
+        category,
+        min_rank_id: minRankId,
+        required_regiment_id: requiredRegimentId,
+        parent_id: parentId,
+      },
     }),
   deleteSpecialization: (token, specializationId) =>
     request(`/api/specializations/${specializationId}`, { method: "DELETE", token }),
+
+  listInstructorRoles: (token) => request("/api/instructor-roles", { token }),
+  createInstructorRole: (token, { discordRoleId, label, discipline, canTeachAll }) =>
+    request("/api/instructor-roles", {
+      method: "POST",
+      token,
+      body: { discord_role_id: discordRoleId, label, discipline: discipline ?? null, can_teach_all: canTeachAll },
+    }),
+  deleteInstructorRole: (token, id) => request(`/api/instructor-roles/${id}`, { method: "DELETE", token }),
   listMemberSpecializations: (token, discordId) =>
     request(`/api/members/${discordId}/specializations`, { token }),
   grantSpecialization: (token, discordId, specializationId) =>
@@ -339,6 +376,7 @@ export const api = {
   markAllNotificationsRead: (token) => request("/api/notifications/read-all", { method: "POST", token }),
   sendBroadcast: (token, { title, body }) =>
     request("/api/notifications/broadcast", { method: "POST", token, body: { title, body } }),
+  deleteNotification: (token, id) => request(`/api/notifications/${id}`, { method: "DELETE", token }),
 
   listReprimands: (token, regimentId) => request(`/api/regiments/${regimentId}/reprimands`, { token }),
   issueReprimand: (token, regimentId, { targetDiscordId, reason, severity, pointsRequired }) =>

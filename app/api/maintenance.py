@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AccessContext, get_access_context
 from app.core.events import event_bus
 from app.crud import app_settings as app_settings_crud
+from app.crud import audit_log as audit_log_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError
 from app.schemas.maintenance import MaintenanceStatusRead, MaintenanceUpdate
@@ -28,5 +29,13 @@ async def update_maintenance(
     if not access.is_admin:
         raise ForbiddenError("Режим обслуживания может менять только администратор")
     row = await app_settings_crud.set_maintenance_mode(db, enabled=payload.enabled, message=payload.message)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="maintenance_toggle",
+        details=f"Режим обслуживания: {'включён' if payload.enabled else 'выключен'}"
+        + (f" ({payload.message})" if payload.message else ""),
+    )
     event_bus.publish("maintenance")
     return MaintenanceStatusRead(enabled=row.maintenance_mode, message=row.maintenance_message)

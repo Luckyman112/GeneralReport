@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -58,7 +58,15 @@ export function ViolationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Начальную загрузку уже делает эффект выше — не дублируем тот же запрос на
+  // монтировании (иначе оба стреляют почти одновременно с одинаковыми пустыми
+  // фильтрами); при реальном изменении search/dateFrom/dateTo — грузим с debounce, как раньше.
+  const isFirstFilterRunRef = useRef(true);
   useEffect(() => {
+    if (isFirstFilterRunRef.current) {
+      isFirstFilterRunRef.current = false;
+      return;
+    }
     const timeout = setTimeout(() => {
       load().catch((e) => setError(e.message));
     }, 300);

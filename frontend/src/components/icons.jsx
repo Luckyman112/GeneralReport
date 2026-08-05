@@ -56,6 +56,16 @@ export function CrossIcon(props) {
   );
 }
 
+export function MenuIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M2.5 4.5h11" />
+      <path d="M2.5 8h11" />
+      <path d="M2.5 11.5h11" />
+    </svg>
+  );
+}
+
 export function TrashIcon(props) {
   return (
     <svg {...common} {...props}>

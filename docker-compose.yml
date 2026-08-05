@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: collapsar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: collapsar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: collapsar
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U collapsar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: .
+    container_name: collapsar-backend
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+      - backups_data:/app/backups
+    ports:
+      # только на localhost, для отладки/curl с самого сервера — cloudflared достаёт
+      # backend напрямую по имени сервиса через docker-сеть, этот проброс не обязателен.
+      # Порт хоста 8001 (не 8000) — 8000 на этой машине уже занят Portainer.
+      - "127.0.0.1:8001:8000"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: collapsar-tunnel
+    restart: unless-stopped
+    # ingress (какой домен куда вести) — из смонтированного config.yml;
+    # авторизация туннеля — через TUNNEL_TOKEN, оба способа комбинируются
+    command: tunnel --config /etc/cloudflared/config.yml run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    volumes:
+      - ./deploy/cloudflared:/etc/cloudflared:ro
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  uploads_data:
+  backups_data:

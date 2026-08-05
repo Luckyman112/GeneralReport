@@ -123,6 +123,13 @@ async def create_regiment(
         starting_rank_id=payload.starting_rank_id,
     )
     logger.info("Администратор %s создал формирование %s", access.user.username, regiment.name)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="regiment_create",
+        details=f"Создал формирование «{regiment.name}»",
+    )
     return RegimentRead.model_validate(regiment)
 
 
@@ -152,6 +159,13 @@ async def update_regiment(
 
     updated = await regiment_crud.update(db, regiment, **changes)
     logger.info("Администратор %s обновил формирование %s", access.user.username, updated.name)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="regiment_update",
+        details=f"Изменил формирование «{updated.name}»: {changes}",
+    )
     return RegimentRead.model_validate(updated)
 
 
@@ -197,8 +211,16 @@ async def create_category(
         is_detention=False,
         min_rank_id=payload.min_rank_id,
         commander_only=payload.commander_only,
+        required_specialization_id=payload.required_specialization_id,
     )
     logger.info("%s добавил категорию '%s' формированию %s", access.user.username, category.name, regiment_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="category_create",
+        details=f"Добавил категорию «{category.name}» формированию #{regiment_id}",
+    )
     return ReportCategoryRead.model_validate(category)
 
 
@@ -224,6 +246,13 @@ async def update_category(
     # автоматически при создании формирования)
     changes.pop("is_detention", None)
     updated = await report_category_crud.update(db, category, **changes)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="category_update",
+        details=f"Изменил категорию «{updated.name}»: {changes}",
+    )
     return ReportCategoryRead.model_validate(updated)
 
 
@@ -245,6 +274,13 @@ async def delete_category(
         raise ForbiddenError("Это системная категория, её нельзя удалить")
 
     await report_category_crud.delete(db, category)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="category_delete",
+        details=f"Удалил категорию «{category.name}» формирования #{regiment_id}",
+    )
 
 
 # --- Назначение командиров ---------------------------------------------------------
@@ -367,6 +403,13 @@ async def add_commander(
         payload.username,
         regiment_id,
     )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="commander_assign",
+        details=f"Назначил {payload.username} ({payload.role_type}) на формирование #{regiment_id}",
+    )
     return RegimentCommanderRead.model_validate(commander)
 
 
@@ -385,6 +428,13 @@ async def remove_commander(
     if not removed:
         raise NotFoundError("Назначение не найдено")
     logger.info("Администратор %s снял командира %s с формирования %s", access.user.username, discord_id, regiment_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="commander_remove",
+        details=f"Снял командира {discord_id} с формирования #{regiment_id}",
+    )
 
 
 # --- Состав формирования (ростер) ---------------------------------------------------

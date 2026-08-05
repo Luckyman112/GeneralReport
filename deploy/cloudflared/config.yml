@@ -1,0 +1,8 @@
+# Маршрутизация именного туннеля "collapsar" — авторизация идёт через
+# TUNNEL_TOKEN (переменная окружения в docker-compose.yml), этот файл только
+# про то, куда отправлять трафик с домена. "backend" — имя сервиса в
+# docker-compose.yml, Docker сам резолвит его в адрес контейнера.
+ingress:
+  - hostname: starwarsmycollapsar.ru
+    service: http://backend:8000
+  - service: http_status:404

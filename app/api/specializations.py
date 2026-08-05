@@ -19,6 +19,8 @@ from app.models.user import User
 from app.schemas.specialization import (
     GrantSpecializationRequest,
     InstructorActivityRead,
+    InstructorRoleCreate,
+    InstructorRoleRead,
     SpecializationBanCreate,
     SpecializationBanRead,
     SpecializationBanWithUserRead,
@@ -43,9 +45,24 @@ _CATEGORY_LABELS = {
 
 
 async def _check_can_grant(db: AsyncSession, target: User, specialization: Specialization) -> None:
-    """Бросает AppError, если выдача нарушает временный запрет на обучение,
-    минимальное звание специализации или лимит по составу (см. вики: "Рядовой
-    состав - 1 Общий Класс..." и "Обучение доступно со звания PVT+")."""
+    """Бросает AppError, если выдача нарушает требование по родительской
+    специализации/формированию, временный запрет на обучение, минимальное
+    звание специализации или лимит по составу (см. вики: "Рядовой состав -
+    1 Общий Класс..." и "Обучение доступно со звания PVT+")."""
+    if specialization.parent_id is not None:
+        has_parent = await specialization_crud.has_specialization(
+            db, user_id=target.id, specialization_id=specialization.parent_id
+        )
+        if not has_parent:
+            parent_label = specialization.parent.code if specialization.parent else "базовая специализация"
+            raise AppError(f"Сначала нужна специализация «{parent_label}» — эта подспециализация от неё")
+
+    if specialization.required_regiment_id is not None:
+        required_role = specialization.required_regiment.discord_role_id if specialization.required_regiment else None
+        if required_role is None or required_role not in target.roles:
+            regiment_label = specialization.required_regiment.name if specialization.required_regiment else "формирования"
+            raise AppError(f"Эта специализация доступна только бойцам формирования «{regiment_label}»")
+
     ban = await specialization_crud.get_active_blocking_ban(
         db, user_id=target.id, specialization_id=specialization.id
     )
@@ -127,6 +144,8 @@ async def create_specialization(
         name=payload.name.strip(),
         category=payload.category,
         min_rank_id=payload.min_rank_id,
+        required_regiment_id=payload.required_regiment_id,
+        parent_id=payload.parent_id,
     )
     logger.info("%s добавил специализацию %s (%s)", access.user.username, specialization.code, specialization.name)
     return SpecializationRead.model_validate(specialization)
@@ -200,6 +219,10 @@ async def grant_specialization(
     specialization = await specialization_crud.get_by_id(db, payload.specialization_id)
     if specialization is None:
         raise NotFoundError("Специализация не найдена")
+    if not access.can_grant_specialization(specialization):
+        raise ForbiddenError(
+            f"Ваша роль инструктора не позволяет выдавать специализации категории «{specialization.category}»"
+        )
 
     await _check_can_grant(db, target, specialization)
 
@@ -340,3 +363,75 @@ async def delete_specialization_ban(
 
     await specialization_crud.delete_ban(db, ban)
     logger.info("%s снял запрет на обучение у бойца %s раньше срока", access.user.username, discord_id)
+
+
+# --- Роли инструкторов (Discord-роль -> дисциплина/"учит всему") --------------------
+
+
+@router.get("/instructor-roles", response_model=list[InstructorRoleRead])
+async def list_instructor_roles(
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[InstructorRoleRead]:
+    if not access.is_admin:
+        raise ForbiddenError("Настройка ролей инструкторов доступна только администратору")
+    rows = await specialization_crud.list_instructor_roles(db)
+    return [InstructorRoleRead.model_validate(r) for r in rows]
+
+
+@router.post("/instructor-roles", response_model=InstructorRoleRead, status_code=201)
+async def create_instructor_role(
+    payload: InstructorRoleCreate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> InstructorRoleRead:
+    if not access.is_admin:
+        raise ForbiddenError("Настройка ролей инструкторов доступна только администратору")
+    if not payload.can_teach_all and payload.discipline is None:
+        raise AppError("Укажите дисциплину, либо включите «учит всему»")
+    if payload.can_teach_all and payload.discipline is not None:
+        raise AppError("«Учит всему» и конкретная дисциплина одновременно не имеют смысла")
+
+    row = await specialization_crud.create_instructor_role(
+        db,
+        discord_role_id=payload.discord_role_id.strip(),
+        label=payload.label.strip(),
+        discipline=payload.discipline,
+        can_teach_all=payload.can_teach_all,
+    )
+    logger.info(
+        "%s добавил роль инструктора «%s» (%s)",
+        access.user.username,
+        row.label,
+        "учит всему" if row.can_teach_all else row.discipline,
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="instructor_role_create",
+        details=f"Добавил роль инструктора «{row.label}» ({'учит всему' if row.can_teach_all else row.discipline})",
+    )
+    return InstructorRoleRead.model_validate(row)
+
+
+@router.delete("/instructor-roles/{instructor_role_id}", status_code=204)
+async def delete_instructor_role(
+    instructor_role_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> None:
+    if not access.is_admin:
+        raise ForbiddenError("Настройка ролей инструкторов доступна только администратору")
+    row = await specialization_crud.get_instructor_role_by_id(db, instructor_role_id)
+    if row is None:
+        raise NotFoundError("Роль инструктора не найдена")
+    await specialization_crud.delete_instructor_role(db, row)
+    logger.info("%s удалил роль инструктора «%s»", access.user.username, row.label)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="instructor_role_delete",
+        details=f"Удалил роль инструктора «{row.label}»",
+    )

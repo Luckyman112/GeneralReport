@@ -2,16 +2,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
-import { BellIcon } from "./icons";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { BellIcon, TrashIcon } from "./icons";
+import { useToast } from "./ToastContext";
 import { formatMskDate } from "../utils/formatDate";
 
 // SSE обновляет мгновенно — поллинг оставлен редким запасным вариантом
 const POLL_INTERVAL_MS = 120000;
 
 export function NotificationBell() {
-  const { token } = useAuth();
+  const { token, access } = useAuth();
+  const showToast = useToast();
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const wrapRef = useRef(null);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
@@ -54,6 +58,15 @@ export function NotificationBell() {
     }
   }
 
+  async function handleDelete(id) {
+    try {
+      await api.deleteNotification(token, id);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } catch (e) {
+      showToast(e.message || "Не удалось удалить объявление", "error");
+    }
+  }
+
   return (
     <div className="notification-bell-wrap" ref={wrapRef}>
       <button type="button" className="ghost notification-bell-button" onClick={handleToggle} title="Уведомления">
@@ -68,7 +81,19 @@ export function NotificationBell() {
           ) : (
             notifications.map((n) => (
               <div key={n.id} className="notification-item">
-                <strong>{n.title}</strong>
+                <div className="notification-item-header">
+                  <strong>{n.title}</strong>
+                  {n.kind === "broadcast" && access?.can_send_broadcast && (
+                    <button
+                      type="button"
+                      className="ghost icon-button notification-item-delete"
+                      title="Удалить объявление"
+                      onClick={() => setConfirmDeleteId(n.id)}
+                    >
+                      <TrashIcon />
+                    </button>
+                  )}
+                </div>
                 <p>{n.body}</p>
                 <span className="notification-item-date">{formatMskDate(n.created_at)} МСК</span>
               </div>
@@ -76,6 +101,16 @@ export function NotificationBell() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteId != null}
+        message="Удалить это объявление? Оно пропадёт у всех, действие необратимо."
+        onConfirm={() => {
+          handleDelete(confirmDeleteId);
+          setConfirmDeleteId(null);
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   );
 }

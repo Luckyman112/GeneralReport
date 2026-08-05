@@ -49,6 +49,21 @@ async def mark_all_read(db: AsyncSession, *, user_id: int, notification_ids: lis
     await db.commit()
 
 
+async def get_by_id(db: AsyncSession, notification_id: int) -> Notification | None:
+    return await db.get(Notification, notification_id)
+
+
+async def delete(db: AsyncSession, notification: Notification) -> None:
+    # notification_reads.notification_id -> notifications.id без ON DELETE CASCADE —
+    # сначала чистим отметки "прочитано", иначе упрёмся в FK
+    await db.execute(
+        NotificationRead.__table__.delete().where(NotificationRead.notification_id == notification.id)
+    )
+    await db.delete(notification)
+    await db.commit()
+    event_bus.publish("notifications")
+
+
 async def create_broadcast(db: AsyncSession, *, title: str, body: str, created_by: int) -> Notification:
     notification = Notification(kind="broadcast", title=title, body=body, created_by=created_by)
     db.add(notification)

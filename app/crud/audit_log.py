@@ -7,7 +7,10 @@ from sqlalchemy.orm import selectinload
 from app.models.audit_log import AuditLog
 from app.models.user import User
 
-_LOAD_OPTIONS = [selectinload(AuditLog.actor).selectinload(User.rank)]
+_LOAD_OPTIONS = [
+    selectinload(AuditLog.actor).selectinload(User.rank),
+    selectinload(AuditLog.target).selectinload(User.rank),
+]
 
 
 async def log(

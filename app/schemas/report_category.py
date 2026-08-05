@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.rank import RankRead
+from app.schemas.specialization import SpecializationRead
 
 
 class ReportCategoryField(BaseModel):
@@ -28,6 +29,7 @@ class ReportCategoryRead(BaseModel):
     is_training: bool = False
     min_rank: RankRead | None = None
     commander_only: bool = False
+    required_specialization: SpecializationRead | None = None
 
 
 class ReportCategoryCreate(BaseModel):
@@ -38,6 +40,9 @@ class ReportCategoryCreate(BaseModel):
     is_detention: bool = False
     min_rank_id: int | None = None
     commander_only: bool = False
+    # Подать рапорт может только тот, у кого есть эта специализация (например
+    # "Медицинский рапорт" -> базовый класс "Медик") — None = ограничения нет
+    required_specialization_id: int | None = None
 
 
 class ReportCategoryUpdate(BaseModel):
@@ -52,3 +57,4 @@ class ReportCategoryUpdate(BaseModel):
     is_detention: bool | None = None
     min_rank_id: int | None = None
     commander_only: bool | None = None
+    required_specialization_id: int | None = None

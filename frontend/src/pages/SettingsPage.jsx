@@ -186,6 +186,137 @@ function ModuleAccessSettings() {
   );
 }
 
+const INSTRUCTOR_DISCIPLINE_LABELS = {
+  medic: "Медицина",
+  pilot: "Пилотирование",
+  engineer: "Инженерия",
+};
+
+// Discord-роль -> какие специализации разрешено выдавать: конкретная дисциплина
+// (медик/пилот/инженер, видит только свои подспециализации) или "учит всему"
+// (напр. роль "ARC | INS") — в отличие от старой единой роли "Инструктор",
+// можно завести сколько угодно ролей с разными правами
+function InstructorRolesSettings() {
+  const { token } = useAuth();
+  const [roles, setRoles] = useState([]);
+  const [instructorRoles, setInstructorRoles] = useState([]);
+  const [newRoleId, setNewRoleId] = useState("");
+  const [newDiscipline, setNewDiscipline] = useState("medic");
+  const [newCanTeachAll, setNewCanTeachAll] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    Promise.all([api.getDiscordRoles(token), api.listInstructorRoles(token)])
+      .then(([rolesData, instructorRolesData]) => {
+        setRoles(rolesData);
+        setInstructorRoles(instructorRolesData);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const rolesById = Object.fromEntries(roles.map((r) => [r.id, r]));
+  const configuredRoleIds = new Set(instructorRoles.map((r) => r.discord_role_id));
+  const availableRoles = roles.filter((r) => !configuredRoleIds.has(r.id));
+
+  async function handleAdd() {
+    if (!newRoleId) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await api.createInstructorRole(token, {
+        discordRoleId: newRoleId,
+        label: rolesById[newRoleId]?.name || newRoleId,
+        discipline: newCanTeachAll ? null : newDiscipline,
+        canTeachAll: newCanTeachAll,
+      });
+      setInstructorRoles((prev) => [...prev, created]);
+      setNewRoleId("");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id) {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.deleteInstructorRole(token, id);
+      setInstructorRoles((prev) => prev.filter((r) => r.id !== id));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <InlineSpinner />;
+
+  return (
+    <div className="regiment-panel fade-in-up">
+      <h4>Инструкторы и дисциплины</h4>
+      <p className="hint-text">
+        Каждая Discord-роль разрешает выдавать либо конкретную дисциплину (боец увидит в Инструкторской только
+        её подспециализации), либо вообще всё — для роли-универсала вроде «ARC | INS». Обычные (не дисциплинарные)
+        категории специализаций доступны любому инструктору из списка ниже.
+      </p>
+
+      {instructorRoles.length > 0 && (
+        <ul className="chip-list">
+          {instructorRoles.map((r) => (
+            <li key={r.id} className="chip">
+              {r.label} — {r.can_teach_all ? "учит всему" : INSTRUCTOR_DISCIPLINE_LABELS[r.discipline] || r.discipline}
+              <button type="button" onClick={() => handleDelete(r.id)} disabled={saving}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="picker-row">
+        <select value={newRoleId} onChange={(e) => setNewRoleId(e.target.value)}>
+          <option value="">— выбрать Discord-роль —</option>
+          {availableRoles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={newCanTeachAll ? "all" : newDiscipline}
+          onChange={(e) => {
+            if (e.target.value === "all") {
+              setNewCanTeachAll(true);
+            } else {
+              setNewCanTeachAll(false);
+              setNewDiscipline(e.target.value);
+            }
+          }}
+        >
+          {Object.entries(INSTRUCTOR_DISCIPLINE_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+          <option value="all">Учит всему</option>
+        </select>
+
+        <button type="button" onClick={handleAdd} disabled={!newRoleId || saving}>
+          Добавить
+        </button>
+      </div>
+
+      {error && <p className="error-text">{error}</p>}
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const { token, access } = useAuth();
   const [roles, setRoles] = useState([]);
@@ -195,7 +326,8 @@ export function SettingsPage() {
   const [deputyRoleId, setDeputyRoleId] = useState("");
   const [highCommandRoleId, setHighCommandRoleId] = useState("");
   const [founderRoleId, setFounderRoleId] = useState("");
-  const [instructorRoleId, setInstructorRoleId] = useState("");
+  const [founderUserDiscordIds, setFounderUserDiscordIds] = useState([]);
+  const [addFounderId, setAddFounderId] = useState("");
   const [adminUserDiscordIds, setAdminUserDiscordIds] = useState([]);
   const [addAdminId, setAddAdminId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -227,7 +359,7 @@ export function SettingsPage() {
         setHighCommandRoleId(current.high_command_role_id || "");
         setAdminUserDiscordIds(current.admin_user_discord_ids || []);
         setFounderRoleId(current.founder_role_id || "");
-        setInstructorRoleId(current.instructor_role_id || "");
+        setFounderUserDiscordIds(current.founder_user_discord_ids || []);
       } catch (e) {
         setError(e.message);
       } finally {
@@ -247,6 +379,16 @@ export function SettingsPage() {
     setAdminUserDiscordIds((prev) => prev.filter((id) => id !== discordId));
   }
 
+  function handleAddFounder() {
+    if (!addFounderId || founderUserDiscordIds.includes(addFounderId)) return;
+    setFounderUserDiscordIds((prev) => [...prev, addFounderId]);
+    setAddFounderId("");
+  }
+
+  function handleRemoveFounder(discordId) {
+    setFounderUserDiscordIds((prev) => prev.filter((id) => id !== discordId));
+  }
+
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
@@ -262,7 +404,7 @@ export function SettingsPage() {
         highCommandRoleId,
         adminUserDiscordIds,
         founderRoleId,
-        instructorRoleId,
+        founderUserDiscordIds,
       });
       setSaved(true);
     } catch (e) {
@@ -301,15 +443,6 @@ export function SettingsPage() {
           <form className="settings-role-list" onSubmit={handleSave}>
             {/* От меньшего уровня доступа к большему — так порядок полей совпадает с
                 иерархией прав, а не расположен вразнобой */}
-            <div className="regiment-panel fade-in-up settings-role-card">
-              <h4>Инструктор</h4>
-              <p className="hint-text">Может выдавать и снимать специализации бойцам в их личном деле.</p>
-              <label>
-                Discord-роль
-                <RoleSelect value={instructorRoleId} onChange={setInstructorRoleId} />
-              </label>
-            </div>
-
             <div className="regiment-panel fade-in-up settings-role-card">
               <h4>Заместитель</h4>
               <label>
@@ -377,6 +510,28 @@ export function SettingsPage() {
                 Discord-роль
                 <RoleSelect value={founderRoleId} onChange={setFounderRoleId} />
               </label>
+
+              <label>
+                Отдельные основатели (в дополнение к роли)
+                <span className="picker-row">
+                  <MemberSearchPicker members={members} selectedId={addFounderId} onSelect={setAddFounderId} />
+                  <button type="button" onClick={handleAddFounder} disabled={!addFounderId}>
+                    Добавить
+                  </button>
+                </span>
+              </label>
+              {founderUserDiscordIds.length > 0 && (
+                <ul className="chip-list">
+                  {founderUserDiscordIds.map((discordId) => (
+                    <li key={discordId} className="chip">
+                      {membersById[discordId]?.username || discordId}
+                      <button type="button" onClick={() => handleRemoveFounder(discordId)}>
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {error && <p className="error-text">{error}</p>}
@@ -392,6 +547,7 @@ export function SettingsPage() {
       )}
 
       {access?.is_admin && <ModuleAccessSettings />}
+      {access?.is_admin && <InstructorRolesSettings />}
     </div>
   );
 }

@@ -39,7 +39,7 @@ function RosterAllowedRegiments({ allRegiments, currentRegimentId, selectedIds, 
   );
 }
 
-function CategoryRow({ category, tiers, allRegiments, onChanged, onDeleted }) {
+function CategoryRow({ category, tiers, allRegiments, specializations, onChanged, onDeleted }) {
   const { token } = useAuth();
   const [newField, setNewField] = useState("");
   const [newFieldType, setNewFieldType] = useState("text");
@@ -48,6 +48,9 @@ function CategoryRow({ category, tiers, allRegiments, onChanged, onDeleted }) {
   const [participantPointsDraft, setParticipantPointsDraft] = useState(category.participant_points ?? "");
   const [minRankDraft, setMinRankDraft] = useState(category.min_rank?.id ?? "");
   const [commanderOnlyDraft, setCommanderOnlyDraft] = useState(category.commander_only ?? false);
+  const [requiredSpecializationDraft, setRequiredSpecializationDraft] = useState(
+    category.required_specialization?.id ?? ""
+  );
   const [error, setError] = useState(null);
 
   async function handleAddField(e) {
@@ -96,6 +99,7 @@ function CategoryRow({ category, tiers, allRegiments, onChanged, onDeleted }) {
       await api.updateCategory(token, category.regiment_id, category.id, {
         min_rank_id: minRankDraft === "" ? null : Number(minRankDraft),
         commander_only: commanderOnlyDraft,
+        required_specialization_id: requiredSpecializationDraft === "" ? null : Number(requiredSpecializationDraft),
       });
       onChanged();
     } catch (e) {
@@ -229,13 +233,25 @@ function CategoryRow({ category, tiers, allRegiments, onChanged, onDeleted }) {
           />
           Только заместитель+/командир
         </label>
+        <label className="points-inline-label">
+          Только со специализацией
+          <select value={requiredSpecializationDraft} onChange={(e) => setRequiredSpecializationDraft(e.target.value)}>
+            <option value="">не ограничено</option>
+            {specializations.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.code} — {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <button type="button" onClick={handleSaveRestrictions}>
           Сохранить ограничения
         </button>
       </div>
       <p className="hint-text">
         Ограничивает, кто может подать рапорт этой категории (например, "обучение на Ряд может проводить только
-        CPL+" или "аттестации — только зам-КМД"). Не влияет на просмотр уже поданных рапортов.
+        CPL+", "аттестации — только зам-КМД" или "Медицинский рапорт — только со специализацией «Медик»"). Не
+        влияет на просмотр уже поданных рапортов.
       </p>
 
       {error && <p className="error-text">{error}</p>}
@@ -251,10 +267,12 @@ export function CategoryManagerModal({ regiments, onClose }) {
   const [regimentId, setRegimentId] = useState(regiments[0]?.id ?? "");
   const [categories, setCategories] = useState([]);
   const [tiers, setTiers] = useState([]);
+  const [specializations, setSpecializations] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryFields, setNewCategoryFields] = useState([]);
   const [newCategoryPoints, setNewCategoryPoints] = useState("");
   const [newCategoryParticipantPoints, setNewCategoryParticipantPoints] = useState("");
+  const [newCategoryRequiredSpecializationId, setNewCategoryRequiredSpecializationId] = useState("");
   const [newFieldDraft, setNewFieldDraft] = useState("");
   const [newFieldDraftType, setNewFieldDraftType] = useState("text");
   const [newFieldDraftAllowedRegimentIds, setNewFieldDraftAllowedRegimentIds] = useState([]);
@@ -285,6 +303,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
 
   useEffect(() => {
     api.getRanks(token).then(setTiers).catch(() => setTiers([]));
+    api.listSpecializations(token).then(setSpecializations).catch(() => setSpecializations([]));
   }, [token]);
 
   function handleAddFieldDraft() {
@@ -310,11 +329,13 @@ export function CategoryManagerModal({ regiments, onClose }) {
         fields: newCategoryFields,
         points: newCategoryPoints === "" ? null : Number(newCategoryPoints),
         participantPoints: newCategoryParticipantPoints === "" ? null : Number(newCategoryParticipantPoints),
+        requiredSpecializationId: newCategoryRequiredSpecializationId === "" ? null : Number(newCategoryRequiredSpecializationId),
       });
       setNewCategoryName("");
       setNewCategoryFields([]);
       setNewCategoryPoints("");
       setNewCategoryParticipantPoints("");
+      setNewCategoryRequiredSpecializationId("");
       await load(regimentId);
     } catch (e) {
       setError(e.message);
@@ -361,6 +382,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
                   category={{ ...c, regiment_id: regimentId }}
                   tiers={tiers}
                   allRegiments={allRegiments}
+                  specializations={specializations}
                   onChanged={() => load(regimentId)}
                   onDeleted={handleDeleteCategory}
                 />
@@ -437,6 +459,20 @@ export function CategoryManagerModal({ regiments, onClose }) {
                   value={newCategoryParticipantPoints}
                   onChange={(e) => setNewCategoryParticipantPoints(e.target.value)}
                 />
+              </label>
+              <label>
+                Только со специализацией (необязательно)
+                <select
+                  value={newCategoryRequiredSpecializationId}
+                  onChange={(e) => setNewCategoryRequiredSpecializationId(e.target.value)}
+                >
+                  <option value="">не ограничено</option>
+                  {specializations.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.code} — {s.name}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <button type="submit" className="primary">

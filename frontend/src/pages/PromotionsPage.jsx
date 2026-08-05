@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { MandatoryRequirementModal } from "../components/MandatoryRequirementModal";
@@ -17,6 +17,9 @@ const TIER_LIMIT_FIELDS = [
   ["specialization_limit", "Общих специализаций"],
   ["additional_specialization_limit", "Доп. специализаций"],
   ["elite_specialization_limit", "Элитных специализаций"],
+  ["medic_limit", "Медицинских дисциплин"],
+  ["pilot_limit", "Пилотских дисциплин"],
+  ["engineer_limit", "Инженерных дисциплин"],
 ];
 
 function toNum(v) {
@@ -43,6 +46,9 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   const [rankTenureDraft, setRankTenureDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // Защита от гонки: если формирование переключили в <select>, пока летели старые
+  // запросы, их устаревшие ответы не должны затереть уже актуальные данные
+  const requestIdRef = useRef(0);
 
   const [mandatoryModalOpen, setMandatoryModalOpen] = useState(false);
   const [editingMandatory, setEditingMandatory] = useState(null);
@@ -110,14 +116,21 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   const referenceRegimentId = isAllMode ? allRegiments[0]?.id : regimentId;
 
   function load() {
+    const requestId = ++requestIdRef.current;
     Promise.all([api.getRanks(token), api.getPromotionRequirements(token, referenceRegimentId)]).then(
-      ([tiersData, reqData]) => applyLoaded(tiersData, reqData)
+      ([tiersData, reqData]) => {
+        if (requestIdRef.current === requestId) applyLoaded(tiersData, reqData);
+      }
     );
     if (referenceRegimentId) {
       api.listCategories(token, referenceRegimentId).then((data) => {
-        setCategories(Object.fromEntries(data.map((c) => [c.id, c])));
+        if (requestIdRef.current === requestId) {
+          setCategories(Object.fromEntries(data.map((c) => [c.id, c])));
+        }
       });
-      api.getCategoryRequirements(token, referenceRegimentId).then(setCategoryRequirements);
+      api.getCategoryRequirements(token, referenceRegimentId).then((data) => {
+        if (requestIdRef.current === requestId) setCategoryRequirements(data);
+      });
     }
   }
 
@@ -440,24 +453,26 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
       {selectableCategories.length > 0 && (
         <div className="member-list-group category-points-summary">
           <p className="member-list-group-title">Баллы за рапорты по категориям</p>
-          <table className="category-points-table">
-            <thead>
-              <tr>
-                <th>Категория</th>
-                <th>Автору рапорта</th>
-                <th>Участникам (состав)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selectableCategories.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.name}</td>
-                  <td className="mono-num">{c.points ?? "—"}</td>
-                  <td className="mono-num">{c.participant_points ?? "—"}</td>
+          <div className="table-scroll">
+            <table className="category-points-table">
+              <thead>
+                <tr>
+                  <th>Категория</th>
+                  <th>Автору рапорта</th>
+                  <th>Участникам (состав)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {selectableCategories.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.name}</td>
+                    <td className="mono-num">{c.points ?? "—"}</td>
+                    <td className="mono-num">{c.participant_points ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

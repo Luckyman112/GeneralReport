@@ -710,24 +710,149 @@ label {
   }
 }
 
+/* Скрыт по умолчанию (десктоп) — правило ДО медиа-запроса ниже специально:
+   при равной специфичности CSS-каскад решает по порядку в файле, а не по
+   "медиа-запрос всегда сильнее" — если бы это правило шло ПОСЛЕ медиа-блока,
+   display:none отсюда перебивал бы display:inline-flex из медиа-запроса даже
+   на мобильном, и бургер-кнопка никогда бы не появлялась (реальный баг,
+   который тут и был). */
+.navbar-burger {
+  display: none;
+  padding: 0.4rem 0.5rem;
+}
+
+/* Та же причина, что у .navbar-burger выше — эти правила тоже должны стоять
+   ДО медиа-запроса, иначе их display:none/contents отсюда перебивает
+   мобильные значения из медиа-блока по порядку в файле. */
+.navbar-links-group {
+  display: contents;
+}
+
+.navbar-links-group-label {
+  display: none;
+}
+
+.navbar-links-backdrop {
+  display: none;
+}
+
+/* Дублирует тему/выход внутри мобильного меню — на десктопе эти же действия
+   уже есть в .navbar-user, второй раз не нужны. */
+.navbar-links-group-user {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .page-container {
     padding: 1rem 0.6rem;
   }
 
   .navbar {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
     gap: 0.5rem;
     padding: 0.6rem 0.75rem;
   }
 
+  .navbar-burger {
+    display: inline-flex;
+    order: -1;
+  }
+
+  /* burger + brand остаются прижаты друг к другу слева, иконки-действия — справа */
+  .navbar-user {
+    margin-left: auto;
+  }
+
+  /* Пункты меню больше не толкаются в общей строке навбара — открываются
+     отдельной выезжающей панелью справа поверх страницы, по кнопке-бургеру. */
   .navbar-links {
-    order: 3;
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: 1.25rem;
+    width: min(85vw, 320px);
+    height: 100dvh;
+    margin: 0;
+    padding: 4.25rem 1.1rem 1.5rem;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.35);
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .navbar-links-open {
+    transform: translateX(0);
+  }
+
+  .navbar-links-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(1px);
+    animation: overlay-fade-in 0.15s ease both;
+  }
+
+  .navbar-links-group {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.15rem;
+    padding-bottom: 1.1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .navbar-links-group:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .navbar-links-group-label {
+    display: block;
+    font-family: var(--font-display);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-bottom: 0.4rem;
+  }
+
+  .navbar-links-group-user {
+    display: flex;
+  }
+
+  /* Полноширинные пункты с нормальной высотой тапа — вместо плотного ряда
+     ссылок, рассчитанного на курсор мыши */
+  .navbar-links a,
+  .navbar-links .navbar-link-button {
+    display: block;
     width: 100%;
-    gap: 0.5rem 1rem;
-    flex-wrap: wrap;
-    padding-top: 0.4rem;
-    border-top: 1px solid var(--border);
+    padding: 0.55rem 0.4rem;
+    border-radius: 6px;
+  }
+
+  .navbar-links a:hover,
+  .navbar-links a:active,
+  .navbar-links .navbar-link-button:hover,
+  .navbar-links .navbar-link-button:active {
+    background: var(--surface-2);
+  }
+
+  /* Действия в верхней строке, которые продублированы в самом меню (тема,
+     выход) — на мобильном скрыты, чтобы не толкаться с бургером */
+  .navbar-theme-toggle,
+  .navbar-logout {
+    display: none;
   }
 
   .navbar-user-info {
@@ -1112,6 +1237,7 @@ label {
   position: absolute;
   top: 100%;
   right: 0;
+  max-width: calc(100vw - 1.5rem);
   white-space: nowrap;
   font-size: 0.78rem;
   margin: 0.25rem 0 0;
@@ -1121,6 +1247,8 @@ label {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
   padding: 0.75rem 1.5rem;
   background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 160%);
   border-bottom: 1px solid var(--border);
@@ -1136,25 +1264,41 @@ label {
 
 .navbar-links {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 0.4rem;
   gap: 1.25rem;
 }
 
 .navbar-links a {
   color: var(--text);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .navbar-links a:hover {
   color: var(--accent);
 }
 
+/* Кнопка "Состав" среди пунктов-ссылок навбара: сбрасываем базовые стили
+   <button> (padding/border из общего правила `button`, невидимый внутренний
+   отступ фокуса в Firefox) так, чтобы она выглядела и выравнивалась
+   идентично соседним <a> — иначе на широких экранах видна лишняя щель. */
 .navbar-link-button {
   background: none;
   border: none;
   padding: 0;
+  margin: 0;
   font: inherit;
+  line-height: inherit;
   color: var(--text);
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.navbar-link-button::-moz-focus-inner {
+  border: 0;
+  padding: 0;
 }
 
 .navbar-link-button:hover {
@@ -1163,6 +1307,8 @@ label {
 
 .navbar-user {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 0.6rem;
 }
@@ -1390,6 +1536,7 @@ label {
   padding: 0.6rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   width: 300px;
+  max-width: calc(100vw - 1.5rem);
   max-height: 360px;
   overflow-y: auto;
   display: flex;
@@ -1402,6 +1549,23 @@ label {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.5rem 0.6rem;
+}
+
+.notification-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.notification-item-delete {
+  flex-shrink: 0;
+  padding: 0.2rem;
+  color: var(--text-muted);
+}
+
+.notification-item-delete:hover {
+  color: var(--danger);
 }
 
 .notification-item p {
@@ -1440,6 +1604,7 @@ label {
   padding: 0.6rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   width: 320px;
+  max-width: calc(100vw - 1.5rem);
   max-height: 400px;
   overflow-y: auto;
   display: flex;
@@ -1986,8 +2151,15 @@ input[type="file"]::-webkit-file-upload-button:hover {
   width: auto;
 }
 
+/* Обёртка для таблиц без своего wrap-контейнера — не даёт им раздвигать
+   страницу по горизонтали на узких экранах, скроллятся внутри себя */
+.table-scroll {
+  overflow-x: auto;
+}
+
 .category-points-table {
   width: 100%;
+  min-width: 420px;
   border-collapse: collapse;
   font-size: 0.9rem;
 }
@@ -2719,6 +2891,78 @@ input[type="file"]::-webkit-file-upload-button:hover {
   margin-left: 0.5rem;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+/* Журнал действий (LogsPage) — сгруппирован по дням, чтобы не тонуть в потоке
+   при большом объёме записей */
+.logs-days {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.logs-day-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.35rem;
+}
+
+.logs-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.logs-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+}
+
+.logs-row-destructive {
+  border-left-color: var(--danger);
+}
+
+.logs-row-time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  min-width: 3.2rem;
+}
+
+.logs-row-action {
+  font-weight: 600;
+}
+
+.logs-row-actor {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.logs-row-target {
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.logs-row-details {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .member-report-content {

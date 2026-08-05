@@ -27,6 +27,9 @@ class RankTierRead(BaseModel):
     specialization_limit: int | None = None
     additional_specialization_limit: int | None = None
     elite_specialization_limit: int | None = None
+    medic_limit: int | None = None
+    pilot_limit: int | None = None
+    engineer_limit: int | None = None
     is_jedi: bool = False
     ranks: list[RankRead]
 
@@ -37,3 +40,6 @@ class RankTierLimitsUpdate(BaseModel):
     specialization_limit: int | None = None
     additional_specialization_limit: int | None = None
     elite_specialization_limit: int | None = None
+    medic_limit: int | None = None
+    pilot_limit: int | None = None
+    engineer_limit: int | None = None

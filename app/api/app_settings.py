@@ -49,6 +49,7 @@ async def update_app_settings(
         high_command_role_id=payload.high_command_role_id,
         admin_user_discord_ids=payload.admin_user_discord_ids,
         founder_role_id=payload.founder_role_id,
+        founder_user_discord_ids=payload.founder_user_discord_ids,
         instructor_role_id=payload.instructor_role_id,
         password_login_authorized_discord_id=payload.password_login_authorized_discord_id,
     )

@@ -62,6 +62,7 @@ async def update(
     high_command_role_id: str | None = None,
     admin_user_discord_ids: list[str] | None = None,
     founder_role_id: str | None = None,
+    founder_user_discord_ids: list[str] | None = None,
     instructor_role_id: str | None = None,
     password_login_authorized_discord_id: str | None = None,
 ) -> AppSettings:
@@ -81,6 +82,8 @@ async def update(
         row.admin_user_discord_ids = admin_user_discord_ids
     if founder_role_id is not None:
         row.founder_role_id = founder_role_id or None
+    if founder_user_discord_ids is not None:
+        row.founder_user_discord_ids = founder_user_discord_ids
     if instructor_role_id is not None:
         row.instructor_role_id = instructor_role_id or None
     if password_login_authorized_discord_id is not None:

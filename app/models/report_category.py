@@ -7,6 +7,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.rank import Rank
+    from app.models.specialization import Specialization
 
 
 class ReportCategory(Base):
@@ -50,3 +51,8 @@ class ReportCategory(Base):
     min_rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)
     commander_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     min_rank: Mapped["Rank | None"] = relationship()
+    # Подавать рапорт этой категории может только тот, у кого есть эта
+    # специализация (например "Медицинский рапорт" -> базовый класс "Медик") —
+    # None означает, что такого ограничения нет, как раньше
+    required_specialization_id: Mapped[int | None] = mapped_column(ForeignKey("specializations.id"), nullable=True)
+    required_specialization: Mapped["Specialization | None"] = relationship()

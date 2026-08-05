@@ -200,6 +200,7 @@ export function RosterBrowserModal({ onClose }) {
       {createPortal(modalContent, document.body)}
       {selectedMember && (
         <MemberDetailModal
+          key={selectedMember.discord_id}
           member={selectedMember}
           regimentId={regimentId}
           canEdit={canEditHere}

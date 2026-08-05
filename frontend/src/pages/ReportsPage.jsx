@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -97,7 +97,15 @@ export function ReportsPage() {
     return () => clearTimeout(timeout);
   }, [searchInput]);
 
+  // Растёт при каждом ПОЛНОМ перезаборе списка (loadReports) — "Показать ещё"
+  // сверяется с этим значением после своего ответа: если полный перезабор успел
+  // произойти, пока грузилась следующая страница (live-событие/поллинг), offset
+  // из уже неактуального снимка reports.length больше не соответствует текущему
+  // списку — доклеивать его нельзя, получится дыра/дубли.
+  const reportsGenerationRef = useRef(0);
+
   const loadReports = useCallback(async () => {
+    const generation = ++reportsGenerationRef.current;
     try {
       const { data, total } = await api.listReports(token, {
         status: statusFilter || undefined,
@@ -107,6 +115,7 @@ export function ReportsPage() {
         limit: REPORTS_PAGE_SIZE,
         offset: 0,
       });
+      if (generation !== reportsGenerationRef.current) return; // обогнан более новым перезабором
       setReports(data);
       setTotalReportsCount(total);
     } catch (e) {
@@ -115,6 +124,7 @@ export function ReportsPage() {
   }, [token, statusFilter, regimentFilter, categoryFilter, searchQuery]);
 
   async function loadMoreReports() {
+    const generation = reportsGenerationRef.current;
     setLoadingMore(true);
     try {
       const { data, total } = await api.listReports(token, {
@@ -125,6 +135,7 @@ export function ReportsPage() {
         limit: REPORTS_PAGE_SIZE,
         offset: reports.length,
       });
+      if (generation !== reportsGenerationRef.current) return; // список уже перезагружен целиком
       setReports((prev) => [...prev, ...data]);
       setTotalReportsCount(total);
     } catch (e) {
@@ -164,9 +175,16 @@ export function ReportsPage() {
 
   useLiveEvents("reports", loadReports);
 
+  // Первый вызов loadReports на монтировании уже делает init() выше — не дублируем
+  // тот же запрос; при последующих сменах loadReports (фильтры/поиск) грузим сразу,
+  // как и раньше, плюс держим редкий запасной поллинг на случай обрыва SSE.
+  const isFirstPollRunRef = useRef(true);
   useEffect(() => {
-    loadReports();
-    // SSE обновляет мгновенно — это лишь редкий запасной поллинг на случай обрыва
+    if (isFirstPollRunRef.current) {
+      isFirstPollRunRef.current = false;
+    } else {
+      loadReports();
+    }
     const interval = setInterval(loadReports, REPORTS_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [loadReports]);

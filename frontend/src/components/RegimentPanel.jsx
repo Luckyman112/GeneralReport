@@ -231,6 +231,7 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
 
       {selectedMember && (
         <MemberDetailModal
+          key={selectedMember.discord_id}
           member={selectedMember}
           regimentId={Number(regimentId)}
           canEdit={canEditHere}

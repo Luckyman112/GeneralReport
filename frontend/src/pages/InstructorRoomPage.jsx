@@ -262,22 +262,24 @@ export function InstructorRoomPage() {
         {[...specializationsByCategory.entries()].map(([category, specs]) => (
           <div key={category} className="member-list-group">
             <p className="member-list-group-title">{CATEGORY_LABELS[category] || category}</p>
-            <table className="category-points-table specialization-catalog-table">
-              <thead>
-                <tr>
-                  <th>Специализация</th>
-                  <th>Требование по званию</th>
-                </tr>
-              </thead>
-              <tbody>
-                {specs.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.code} — {s.name}</td>
-                    <td>{s.min_rank ? `от ${s.min_rank.code}` : "не требуется"}</td>
+            <div className="table-scroll">
+              <table className="category-points-table specialization-catalog-table">
+                <thead>
+                  <tr>
+                    <th>Специализация</th>
+                    <th>Требование по званию</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {specs.map((s) => (
+                    <tr key={s.id}>
+                      <td>{s.code} — {s.name}</td>
+                      <td>{s.min_rank ? `от ${s.min_rank.code}` : "не требуется"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         ))}
         {specializations.length === 0 && <EmptyState text="Каталог специализаций пока пуст." />}

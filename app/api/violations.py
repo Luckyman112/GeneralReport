@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
+from app.core.events import event_bus
 from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
 from app.crud import rank as rank_crud
@@ -178,6 +179,7 @@ async def create_violation(
             created_by=access.user.id,
         )
 
+    event_bus.publish("violations")
     return ViolationRead.model_validate(violation)
 
 
@@ -208,3 +210,4 @@ async def delete_violation(
         action="violation_delete",
         details=f"Удалил запись о нарушении #{violation_id}",
     )
+    event_bus.publish("violations")

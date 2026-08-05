@@ -7,9 +7,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
+from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
 from app.database import get_db
-from app.exceptions import ForbiddenError
+from app.exceptions import ForbiddenError, NotFoundError
 from app.schemas.notification import BroadcastCreate, NotificationRead
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,13 @@ async def create_broadcast(
         db, title=payload.title, body=payload.body, created_by=access.user.id
     )
     logger.info("%s отправил объявление '%s'", access.user.username, payload.title)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="broadcast_create",
+        details=f"Отправил объявление «{payload.title}»: {payload.body}",
+    )
     return NotificationRead(
         id=notification.id,
         kind=notification.kind,
@@ -83,4 +91,33 @@ async def create_broadcast(
         violation_id=notification.violation_id,
         created_at=notification.created_at,
         is_read=False,
+    )
+
+
+@router.delete("/{notification_id}", status_code=204)
+async def delete_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> None:
+    """Удалить общее объявление (kind="broadcast") — тем же правом, что и на
+    отправку. Автосозданные уведомления о нарушениях/личные решения так не
+    удаляются — это часть истории, а не сообщение, которое можно отозвать."""
+    if not access.can_send_broadcast:
+        raise ForbiddenError("У вас нет прав на удаление объявлений")
+
+    notification = await notification_crud.get_by_id(db, notification_id)
+    if notification is None:
+        raise NotFoundError("Объявление не найдено")
+    if notification.kind != "broadcast":
+        raise ForbiddenError("Удалить так можно только общее объявление")
+
+    await notification_crud.delete(db, notification)
+    logger.info("%s удалил объявление '%s'", access.user.username, notification.title)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="broadcast_delete",
+        details=f"Удалил объявление «{notification.title}»",
     )

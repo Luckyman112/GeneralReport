@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.exceptions import AppError
-from app.models.specialization import Specialization, SpecializationBan, UserSpecialization
+from app.models.specialization import InstructorRole, Specialization, SpecializationBan, UserSpecialization
 from app.models.user import User
 
 _GRANT_LOAD_OPTIONS = [
@@ -30,21 +30,42 @@ async def count_grants_by_instructor(db: AsyncSession) -> list[tuple[int, int]]:
     return list(result.all())
 
 
+_SPECIALIZATION_LOAD_OPTIONS = [
+    selectinload(Specialization.min_rank),
+    selectinload(Specialization.parent),
+    selectinload(Specialization.required_regiment),
+]
+
+
 async def get_all(db: AsyncSession) -> list[Specialization]:
     result = await db.execute(
-        select(Specialization).options(selectinload(Specialization.min_rank)).order_by(Specialization.name)
+        select(Specialization).options(*_SPECIALIZATION_LOAD_OPTIONS).order_by(Specialization.name)
     )
     return list(result.scalars().all())
 
 
 async def get_by_id(db: AsyncSession, specialization_id: int) -> Specialization | None:
-    return await db.get(Specialization, specialization_id, options=[selectinload(Specialization.min_rank)])
+    return await db.get(Specialization, specialization_id, options=_SPECIALIZATION_LOAD_OPTIONS)
 
 
 async def create(
-    db: AsyncSession, *, code: str, name: str, category: str, min_rank_id: int | None = None
+    db: AsyncSession,
+    *,
+    code: str,
+    name: str,
+    category: str,
+    min_rank_id: int | None = None,
+    required_regiment_id: int | None = None,
+    parent_id: int | None = None,
 ) -> Specialization:
-    specialization = Specialization(code=code, name=name, category=category, min_rank_id=min_rank_id)
+    specialization = Specialization(
+        code=code,
+        name=name,
+        category=category,
+        min_rank_id=min_rank_id,
+        required_regiment_id=required_regiment_id,
+        parent_id=parent_id,
+    )
     db.add(specialization)
     try:
         await db.commit()
@@ -68,6 +89,15 @@ async def update(db: AsyncSession, specialization: Specialization, **changes) ->
         raise AppError(f"Специализация с кодом «{changes.get('code', specialization.code)}» уже существует")
     await db.refresh(specialization, attribute_names=["min_rank"])
     return specialization
+
+
+async def has_specialization(db: AsyncSession, *, user_id: int, specialization_id: int) -> bool:
+    result = await db.execute(
+        select(func.count(UserSpecialization.id)).where(
+            UserSpecialization.user_id == user_id, UserSpecialization.specialization_id == specialization_id
+        )
+    )
+    return result.scalar_one() > 0
 
 
 async def delete(db: AsyncSession, specialization: Specialization) -> None:
@@ -201,4 +231,37 @@ async def get_ban_by_id(db: AsyncSession, ban_id: int) -> SpecializationBan | No
 
 async def delete_ban(db: AsyncSession, ban: SpecializationBan) -> None:
     await db.delete(ban)
+    await db.commit()
+
+
+# --- Роли инструкторов (Discord-роль -> дисциплина/"учит всему") --------------------
+
+
+async def list_instructor_roles(db: AsyncSession) -> list[InstructorRole]:
+    result = await db.execute(select(InstructorRole).order_by(InstructorRole.label))
+    return list(result.scalars().all())
+
+
+async def get_instructor_role_by_id(db: AsyncSession, instructor_role_id: int) -> InstructorRole | None:
+    return await db.get(InstructorRole, instructor_role_id)
+
+
+async def create_instructor_role(
+    db: AsyncSession, *, discord_role_id: str, label: str, discipline: str | None, can_teach_all: bool
+) -> InstructorRole:
+    row = InstructorRole(
+        discord_role_id=discord_role_id, label=label, discipline=discipline, can_teach_all=can_teach_all
+    )
+    db.add(row)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise AppError("Эта Discord-роль уже настроена как роль инструктора")
+    await db.refresh(row)
+    return row
+
+
+async def delete_instructor_role(db: AsyncSession, row: InstructorRole) -> None:
+    await db.delete(row)
     await db.commit()

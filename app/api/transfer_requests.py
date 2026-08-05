@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core.events import event_bus
+from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
 from app.crud import rank as rank_crud
 from app.crud import regiment as regiment_crud
@@ -125,6 +126,14 @@ async def approve_transfer_source(
             created_by=access.user.id,
         )
     logger.info("%s одобрил перевод %s со стороны формирования-источника", access.user.username, request_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="transfer_approve_source",
+        details=f"Одобрил перевод #{request_id} со стороны формирования-источника",
+        target_user_id=updated.user_id,
+    )
     event_bus.publish("transfer_requests")
     return TransferRequestRead.model_validate(updated)
 
@@ -163,6 +172,14 @@ async def approve_transfer_target(
             created_by=access.user.id,
         )
     logger.info("%s одобрил перевод %s со стороны формирования-получателя (звание: %s)", access.user.username, request_id, rank.code)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="transfer_approve_target",
+        details=f"Одобрил перевод #{request_id} со стороны формирования-получателя, звание {rank.code}",
+        target_user_id=updated.user_id,
+    )
     event_bus.publish("transfer_requests")
     return TransferRequestRead.model_validate(updated)
 
@@ -189,5 +206,13 @@ async def reject_transfer_request(
         created_by=access.user.id,
     )
     logger.info("%s отклонил заявку на перевод %s", access.user.username, request_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="transfer_reject",
+        details=f"Отклонил заявку на перевод #{request_id}" + (f": {payload.reason}" if payload.reason else ""),
+        target_user_id=updated.user_id,
+    )
     event_bus.publish("transfer_requests")
     return TransferRequestRead.model_validate(updated)

@@ -1,7 +1,15 @@
 """Резервные копии базы данных — запуск pg_dump внутри Docker-контейнера Postgres
 (collapsar-postgres, как и весь остальной проект это подразумевает), файлы кладутся
-в backups/ в корне проекта (в .gitignore). Только администратор."""
+в backups/ в корне проекта (в .gitignore). Только администратор.
+
+Если Docker недоступен или контейнер не найден (self-host с "голым" PostgreSQL,
+без Docker) — откатываемся на pg_dump, запущенный напрямую по TCP (см.
+_run_native_pg_dump). Это на случай отклонения от документированного
+Docker-деплоя, а не замена ему."""
+import asyncio
 import logging
+import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,6 +64,18 @@ async def list_backups(access: AccessContext = Depends(get_access_context)) -> l
     ]
 
 
+def _find_native_pg_dump() -> str | None:
+    """pg_dump в PATH — обычный случай на Linux-сервере с системным postgresql-client.
+    На Windows при установке через оф. инсталлятор bin/ в PATH обычно не попадает,
+    поэтому дополнительно ищем в стандартной директории установки."""
+    found = shutil.which("pg_dump")
+    if found:
+        return found
+    for candidate in Path("C:/Program Files/PostgreSQL").glob("*/bin/pg_dump.exe"):
+        return str(candidate)
+    return None
+
+
 def run_pg_dump(*, label: str) -> BackupRead:
     """Общая логика создания резервной копии — используется и ручной кнопкой, и
     фоновым планировщиком (см. app/core/backup_scheduler.py)."""
@@ -65,28 +85,61 @@ def run_pg_dump(*, label: str) -> BackupRead:
     db_user = parsed.username or "postgres"
     db_password = parsed.password or ""
     db_name = (parsed.path or "/").lstrip("/")
+    db_host = parsed.hostname or "localhost"
+    db_port = str(parsed.port or 5432)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
     filename = f"backup_{timestamp}.sql"
     target = BACKUPS_DIR / filename
 
-    command = ["docker", "exec", "-e", f"PGPASSWORD={db_password}", POSTGRES_CONTAINER_NAME, "pg_dump", "-U", db_user, db_name]
+    docker_command = ["docker", "exec", "-e", f"PGPASSWORD={db_password}", POSTGRES_CONTAINER_NAME, "pg_dump", "-U", db_user, db_name]
     logger.info("%s запустил резервное копирование БД -> %s", label, filename)
 
-    try:
-        with open(target, "wb") as f:
-            result = subprocess.run(command, stdout=f, stderr=subprocess.PIPE, timeout=300)
-    except FileNotFoundError as exc:
-        raise AppError("Docker не найден в PATH — не удалось запустить pg_dump") from exc
-    except subprocess.TimeoutExpired as exc:
-        target.unlink(missing_ok=True)
-        raise AppError("Резервное копирование не уложилось в таймаут (5 минут)") from exc
+    env = {**os.environ, "PGPASSWORD": db_password}
+    docker_available = shutil.which("docker") is not None
+    result = None
+    used_native = False
+
+    if docker_available:
+        try:
+            with open(target, "wb") as f:
+                result = subprocess.run(docker_command, stdout=f, stderr=subprocess.PIPE, timeout=300)
+        except subprocess.TimeoutExpired as exc:
+            target.unlink(missing_ok=True)
+            raise AppError("Резервное копирование не уложилось в таймаут (5 минут)") from exc
+
+    if result is None or result.returncode != 0:
+        # Docker недоступен или контейнер collapsar-postgres не найден (self-host
+        # с "голым" PostgreSQL) — пробуем напрямую по TCP тем же pg_dump
+        if result is not None:
+            logger.warning(
+                "pg_dump через docker exec не сработал (%s) — пробую напрямую по TCP",
+                result.stderr.decode("utf-8", errors="replace")[:300],
+            )
+        native_pg_dump = _find_native_pg_dump()
+        if native_pg_dump is None:
+            target.unlink(missing_ok=True)
+            raise AppError(
+                "Не найден ни Docker с контейнером collapsar-postgres, ни pg_dump в PATH — "
+                "резервное копирование недоступно"
+            )
+        native_command = [native_pg_dump, "-h", db_host, "-p", db_port, "-U", db_user, db_name]
+        used_native = True
+        try:
+            with open(target, "wb") as f:
+                result = subprocess.run(native_command, stdout=f, stderr=subprocess.PIPE, timeout=300, env=env)
+        except subprocess.TimeoutExpired as exc:
+            target.unlink(missing_ok=True)
+            raise AppError("Резервное копирование не уложилось в таймаут (5 минут)") from exc
 
     if result.returncode != 0:
         target.unlink(missing_ok=True)
         error_text = result.stderr.decode("utf-8", errors="replace")
         logger.error("pg_dump завершился с ошибкой: %s", error_text)
         raise AppError(f"Не удалось создать резервную копию: {error_text[:500]}")
+
+    if used_native:
+        logger.info("Резервная копия создана напрямую через pg_dump (без Docker) -> %s", filename)
 
     _rotate_old_backups()
 
@@ -109,7 +162,11 @@ def _rotate_old_backups() -> None:
 @router.post("", response_model=BackupRead, status_code=201)
 async def create_backup(access: AccessContext = Depends(get_access_context)) -> BackupRead:
     _require_admin(access)
-    return run_pg_dump(label=access.user.username)
+    # run_pg_dump блокирует (subprocess.run с таймаутом до 5 минут) — в отдельном
+    # потоке, иначе на всё это время встаёт единственный event loop процесса и
+    # виснут запросы всех остальных пользователей (как уже сделано для планового
+    # автобэкапа в app/core/backup_scheduler.py)
+    return await asyncio.to_thread(run_pg_dump, label=access.user.username)
 
 
 def _row_to_dict(obj, *, exclude: set[str] = frozenset()) -> dict:

@@ -8,6 +8,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.rank import Rank
+    from app.models.regiment import Regiment
     from app.models.user import User
 
 
@@ -16,12 +17,21 @@ CATEGORY_GEAR = "gear"
 CATEGORY_SPECIALIZATION = "specialization"
 CATEGORY_ADDITIONAL_SPECIALIZATION = "additional_specialization"
 CATEGORY_ELITE_SPECIALIZATION = "elite_specialization"
+# Дисциплины (подспециализации внутри общего класса — Медик/Пилот/Инженер, см.
+# Specialization.parent_id): свой лимит по составу, как и у обычных категорий
+# (RankTier.medic_limit и т.д.), но выдаёт их только инструктор соответствующей
+# дисциплины (см. InstructorRole), а не любой инструктор
+CATEGORY_MEDIC = "medic"
+CATEGORY_PILOT = "pilot"
+CATEGORY_ENGINEER = "engineer"
+DISCIPLINE_CATEGORIES = [CATEGORY_MEDIC, CATEGORY_PILOT, CATEGORY_ENGINEER]
 SPECIALIZATION_CATEGORIES = [
     CATEGORY_CLASS,
     CATEGORY_GEAR,
     CATEGORY_SPECIALIZATION,
     CATEGORY_ADDITIONAL_SPECIALIZATION,
     CATEGORY_ELITE_SPECIALIZATION,
+    *DISCIPLINE_CATEGORIES,
 ]
 # Специализация с этим кодом освобождает бойца от всех лимитов на обучение по
 # составу (см. вики: "ЭРК [ARC] - Без ограничений")
@@ -49,6 +59,16 @@ class Specialization(Base):
     # минимального звания нет (ограничивают только лимиты по составу)
     min_rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)
     min_rank: Mapped["Rank | None"] = relationship()
+    # Доп. требование по формированию — редкое (у большинства специализаций не
+    # задано), но у некоторых обучение доступно только бойцам конкретного
+    # формирования (например снаряжение/подспециализация, привязанная к части)
+    required_regiment_id: Mapped[int | None] = mapped_column(ForeignKey("regiments.id"), nullable=True)
+    required_regiment: Mapped["Regiment | None"] = relationship()
+    # Подспециализация внутри общего класса (Медик -> Психолог/Физиотерапевт и
+    # т.д., category у детей — одна из DISCIPLINE_CATEGORIES) — выдать её нельзя,
+    # пока у бойца нет родительской (см. _check_can_grant)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("specializations.id"), nullable=True)
+    parent: Mapped["Specialization | None"] = relationship(remote_side=[id])
 
 
 class UserSpecialization(Base):
@@ -89,3 +109,21 @@ class SpecializationBan(Base):
     user: Mapped["User"] = relationship(foreign_keys=[user_id])
     specialization: Mapped["Specialization | None"] = relationship()
     created_by: Mapped["User"] = relationship(foreign_keys=[created_by_user_id])
+
+
+class InstructorRole(Base):
+    """Discord-роль -> какие специализации она разрешает выдавать: конкретная
+    дисциплина (discipline из DISCIPLINE_CATEGORIES — например "medic", видно
+    только медицинские подспециализации) или can_teach_all=True (видно вообще
+    всё — например роль "ARC | INS"). discipline=None и can_teach_all=False
+    одновременно не имеет смысла, но допускается на уровне БД — проверяется в
+    API. Одна Discord-роль -> одна запись (уникальность на discord_role_id)."""
+
+    __tablename__ = "instructor_roles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    discord_role_id: Mapped[str] = mapped_column(String(32), unique=True)
+    # Название роли на момент настройки — только для отображения в панели
+    label: Mapped[str] = mapped_column(String(255))
+    discipline: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    can_teach_all: Mapped[bool] = mapped_column(default=False, server_default="false")

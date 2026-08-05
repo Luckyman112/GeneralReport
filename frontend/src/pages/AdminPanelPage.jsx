@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { SaveBar } from "../components/SaveBar";
 import { useToast } from "../components/ToastContext";
-import { formatMskDate } from "../utils/formatDate";
-import { formatFullName } from "../utils/formatName";
 import { SPECIALIZATION_CATEGORIES } from "../utils/specialization";
 
 /** Админ-панель ("God mode") — правки, недоступные обычному командиру/заместителю:
@@ -22,6 +21,7 @@ function profileSnapshot(member) {
 export function AdminPanelPage() {
   const { token, regiments } = useAuth();
   const showToast = useToast();
+  const navigate = useNavigate();
   const [regimentId, setRegimentId] = useState(regiments[0]?.id ?? "");
   const [members, setMembers] = useState([]);
   const [discordId, setDiscordId] = useState("");
@@ -73,17 +73,14 @@ export function AdminPanelPage() {
   const [newSpecName, setNewSpecName] = useState("");
   const [newSpecCategory, setNewSpecCategory] = useState("specialization");
   const [newSpecMinRankId, setNewSpecMinRankId] = useState("");
+  const [newSpecParentId, setNewSpecParentId] = useState("");
+  const [newSpecRequiredRegimentId, setNewSpecRequiredRegimentId] = useState("");
   const [editingSpecId, setEditingSpecId] = useState(null);
   const [editSpecCode, setEditSpecCode] = useState("");
   const [editSpecName, setEditSpecName] = useState("");
   const [editSpecMinRankId, setEditSpecMinRankId] = useState("");
-
-  const [auditLog, setAuditLog] = useState([]);
-  const [showAuditLog, setShowAuditLog] = useState(false);
-  const [auditActionFilter, setAuditActionFilter] = useState("");
-  const [auditDateFrom, setAuditDateFrom] = useState("");
-  const [auditDateTo, setAuditDateTo] = useState("");
-  const [auditAdminOnly, setAuditAdminOnly] = useState(false);
+  const [editSpecParentId, setEditSpecParentId] = useState("");
+  const [editSpecRequiredRegimentId, setEditSpecRequiredRegimentId] = useState("");
 
   const [systemHealth, setSystemHealth] = useState(null);
   const [healthStaleDays, setHealthStaleDays] = useState(3);
@@ -134,10 +131,14 @@ export function AdminPanelPage() {
         name: newSpecName.trim(),
         category: newSpecCategory,
         minRankId: newSpecMinRankId === "" ? null : Number(newSpecMinRankId),
+        requiredRegimentId: newSpecRequiredRegimentId === "" ? null : Number(newSpecRequiredRegimentId),
+        parentId: newSpecParentId === "" ? null : Number(newSpecParentId),
       });
       setNewSpecCode("");
       setNewSpecName("");
       setNewSpecMinRankId("");
+      setNewSpecParentId("");
+      setNewSpecRequiredRegimentId("");
       loadSpecializations();
       showToast("Специализация добавлена");
     } catch (e) {
@@ -151,6 +152,8 @@ export function AdminPanelPage() {
     setEditSpecCode(s.code);
     setEditSpecName(s.name);
     setEditSpecMinRankId(s.min_rank?.id ?? "");
+    setEditSpecParentId(s.parent_id ?? "");
+    setEditSpecRequiredRegimentId(s.required_regiment_id ?? "");
   }
 
   function cancelEditSpecialization() {
@@ -164,6 +167,8 @@ export function AdminPanelPage() {
         code: editSpecCode.trim().toUpperCase(),
         name: editSpecName.trim(),
         minRankId: editSpecMinRankId === "" ? null : Number(editSpecMinRankId),
+        requiredRegimentId: editSpecRequiredRegimentId === "" ? null : Number(editSpecRequiredRegimentId),
+        parentId: editSpecParentId === "" ? null : Number(editSpecParentId),
       });
       setEditingSpecId(null);
       loadSpecializations();
@@ -362,19 +367,6 @@ export function AdminPanelPage() {
       satisfied: overrideSatisfied,
     });
   });
-
-  function loadAuditLog() {
-    api
-      .listAuditLog(token, {
-        action: auditActionFilter,
-        dateFrom: auditDateFrom,
-        dateTo: auditDateTo,
-        adminOnly: auditAdminOnly,
-      })
-      .then(setAuditLog)
-      .catch((e) => setError(e.message));
-    setShowAuditLog(true);
-  }
 
   return (
     <div className="violations-page">
@@ -809,6 +801,27 @@ export function AdminPanelPage() {
                           ))
                         )}
                       </select>
+                      <select value={editSpecParentId} onChange={(e) => setEditSpecParentId(e.target.value)}>
+                        <option value="">— без родительской —</option>
+                        {specializations
+                          .filter((p) => p.id !== s.id)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.code} — {p.name}
+                            </option>
+                          ))}
+                      </select>
+                      <select
+                        value={editSpecRequiredRegimentId}
+                        onChange={(e) => setEditSpecRequiredRegimentId(e.target.value)}
+                      >
+                        <option value="">— любое формирование —</option>
+                        {regiments.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
                       <button type="button" onClick={() => handleSaveSpecialization(s.id)}>
                         Сохранить
                       </button>
@@ -820,6 +833,18 @@ export function AdminPanelPage() {
                     <li key={s.id} className="chip">
                       {s.code} — {s.name}
                       {s.min_rank && <span className="hint-text"> (от {s.min_rank.code})</span>}
+                      {s.parent_id && (
+                        <span className="hint-text">
+                          {" "}
+                          (после {specializations.find((p) => p.id === s.parent_id)?.code || "?"})
+                        </span>
+                      )}
+                      {s.required_regiment_id && (
+                        <span className="hint-text">
+                          {" "}
+                          [{regiments.find((r) => r.id === s.required_regiment_id)?.name || "?"}]
+                        </span>
+                      )}
                       <button type="button" title="Редактировать" onClick={() => startEditSpecialization(s)}>
                         ✎
                       </button>
@@ -864,6 +889,22 @@ export function AdminPanelPage() {
               ))
             )}
           </select>
+          <select value={newSpecParentId} onChange={(e) => setNewSpecParentId(e.target.value)}>
+            <option value="">— без родительской —</option>
+            {specializations.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code} — {p.name}
+              </option>
+            ))}
+          </select>
+          <select value={newSpecRequiredRegimentId} onChange={(e) => setNewSpecRequiredRegimentId(e.target.value)}>
+            <option value="">— любое формирование —</option>
+            {regiments.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
           <button type="button" disabled={!newSpecCode.trim() || !newSpecName.trim()} onClick={handleAddSpecialization}>
             Добавить
           </button>
@@ -871,57 +912,13 @@ export function AdminPanelPage() {
       </div>
 
       <div className="regiment-panel fade-in-up">
-        <h4>Журнал действий администрации</h4>
-
-        {showAuditLog && (
-          <div className="audit-log-filters">
-            <label>
-              Действие
-              <input
-                type="text"
-                placeholder="например, reprimand"
-                value={auditActionFilter}
-                onChange={(e) => setAuditActionFilter(e.target.value)}
-              />
-            </label>
-            <label>
-              С даты
-              <input type="date" value={auditDateFrom} onChange={(e) => setAuditDateFrom(e.target.value)} />
-            </label>
-            <label>
-              По дату
-              <input type="date" value={auditDateTo} onChange={(e) => setAuditDateTo(e.target.value)} />
-            </label>
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={auditAdminOnly}
-                onChange={(e) => setAuditAdminOnly(e.target.checked)}
-              />
-              Только действия администраторов
-            </label>
-            <button onClick={loadAuditLog}>Применить</button>
-          </div>
-        )}
-
-        {!showAuditLog ? (
-          <button onClick={loadAuditLog}>Показать журнал</button>
-        ) : auditLog.length === 0 ? (
-          <p className="hint-text">Записей нет.</p>
-        ) : (
-          <ul className="member-report-list">
-            {auditLog.map((entry) => (
-              <li key={entry.id}>
-                <span className="member-report-date">{formatMskDate(entry.created_at)} МСК</span>
-                <p className="member-report-content">
-                  <strong>{formatFullName(entry.actor)}</strong>
-                  {entry.actor_is_admin && <span className="detention-badge">админ</span>} — {entry.action}:{" "}
-                  {entry.details}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
+        <h4>Журнал действий</h4>
+        <p className="hint-text">
+          Полный журнал (кто/что/когда, с фильтрами по действию, дате и типу) переехал на отдельную страницу.
+        </p>
+        <button type="button" className="primary" onClick={() => navigate("/logs")}>
+          Открыть журнал
+        </button>
       </div>
     </div>
   );

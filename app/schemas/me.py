@@ -13,6 +13,10 @@ class AccessInfo(BaseModel):
     is_high_command: bool
     is_instructor: bool = False
     can_grant_specializations: bool = False
+    # дисциплины (медик/пилот/инженер), которые этот инструктор может выдавать —
+    # фронт использует, чтобы сузить список специализаций в форме выдачи
+    instructor_disciplines: list[str] = []
+    is_universal_instructor: bool = False
     commander_regiment_ids: list[int]
     category_manager_regiment_ids: list[int]
     soldier_regiment_ids: list[int]

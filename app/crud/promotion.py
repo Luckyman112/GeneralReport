@@ -158,6 +158,7 @@ async def decide(db: AsyncSession, request: PromotionRequest, *, approve: bool, 
         user.early_promoted_by_username = None
         user.early_promotion_reason = None
 
+    mirror_report_changed = False
     if request.mirror_report_id is not None:
         decider = await db.get(User, decided_by)
         mirror_report = await db.get(Report, request.mirror_report_id)
@@ -165,9 +166,15 @@ async def decide(db: AsyncSession, request: PromotionRequest, *, approve: bool, 
             mirror_report.status = ReportStatus.APPROVED if approve else ReportStatus.REJECTED
             mirror_report.updated_by = decided_by
             mirror_report.updated_by_rank_id = decider.rank_id if decider else None
+            mirror_report_changed = True
 
     await db.commit()
     event_bus.publish("promotions")
+    if mirror_report_changed:
+        # статус зеркального рапорта (категория "Повышение"/"Понижение") меняется
+        # в обход report_crud.update_status — публикуем и "reports" отдельно, иначе
+        # открытая лента рапортов в другой вкладке не увидит это изменение
+        event_bus.publish("reports")
     return await get_request_by_id(db, request.id)
 
 

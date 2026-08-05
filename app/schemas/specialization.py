@@ -7,7 +7,14 @@ from app.schemas.rank import RankRead
 from app.schemas.user import UserBrief
 
 SpecializationCategory = Literal[
-    "class", "gear", "specialization", "additional_specialization", "elite_specialization"
+    "class",
+    "gear",
+    "specialization",
+    "additional_specialization",
+    "elite_specialization",
+    "medic",
+    "pilot",
+    "engineer",
 ]
 
 
@@ -19,6 +26,8 @@ class SpecializationRead(BaseModel):
     name: str
     category: SpecializationCategory
     min_rank: RankRead | None = None
+    required_regiment_id: int | None = None
+    parent_id: int | None = None
 
 
 class SpecializationCreate(BaseModel):
@@ -26,17 +35,24 @@ class SpecializationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     category: SpecializationCategory = "specialization"
     min_rank_id: int | None = None
+    # Редкое доп. требование — обучение доступно только бойцам этого формирования
+    required_regiment_id: int | None = None
+    # Подспециализация — выдать её можно только тем, у кого уже есть родительская
+    parent_id: int | None = None
 
 
 class SpecializationUpdate(BaseModel):
     """Поля, отсутствующие в теле запроса, не изменяются (см. exclude_unset в
     эндпоинте) — так же, как в остальных частичных обновлениях проекта, это
-    позволяет явно очистить min_rank_id, отправив null, не трогая остальное."""
+    позволяет явно очистить min_rank_id/required_regiment_id/parent_id, отправив
+    null, не трогая остальное."""
 
     code: str | None = Field(default=None, min_length=1, max_length=16)
     name: str | None = Field(default=None, min_length=1, max_length=255)
     category: SpecializationCategory | None = None
     min_rank_id: int | None = None
+    required_regiment_id: int | None = None
+    parent_id: int | None = None
 
 
 class UserSpecializationRead(BaseModel):
@@ -82,3 +98,24 @@ class SpecializationBanCreate(BaseModel):
 class InstructorActivityRead(BaseModel):
     instructor: UserBrief
     grants_count: int
+
+
+InstructorDiscipline = Literal["medic", "pilot", "engineer"]
+
+
+class InstructorRoleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    discord_role_id: str
+    label: str
+    discipline: InstructorDiscipline | None
+    can_teach_all: bool
+
+
+class InstructorRoleCreate(BaseModel):
+    discord_role_id: str = Field(min_length=1, max_length=32)
+    label: str = Field(min_length=1, max_length=255)
+    # ровно одно из двух: либо конкретная дисциплина, либо "может учить всему"
+    discipline: InstructorDiscipline | None = None
+    can_teach_all: bool = False

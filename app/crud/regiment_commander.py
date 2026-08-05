@@ -1,6 +1,8 @@
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.exceptions import AppError
 from app.models.regiment_commander import RegimentCommander
 
 
@@ -23,7 +25,13 @@ async def add(
         regiment_id=regiment_id, discord_id=discord_id, username=username, role_type=role_type
     )
     db.add(commander)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # уникальный констрейнт (regiment_id, discord_id) — повторный клик/заявка
+        # на уже назначенного человека, а не гонка с реальным дублированием
+        await db.rollback()
+        raise AppError("Этот человек уже назначен на это формирование — сначала снимите старое назначение")
     await db.refresh(commander)
     return commander
 

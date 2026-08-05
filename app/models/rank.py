@@ -23,6 +23,13 @@ class RankTier(Base):
     specialization_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     additional_specialization_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     elite_specialization_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Лимиты по дисциплинам (подспециализации внутри Медика/Пилота/Инженера —
+    # см. Specialization.parent_id/DISCIPLINE_CATEGORIES). Обычно 1, но для
+    # некоторых составов может быть больше (боец с двумя медицинскими
+    # подспециализациями сразу)
+    medic_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pilot_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    engineer_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # separate hierarchy for jedi characters, excluded from normal promotion flow
     is_jedi: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

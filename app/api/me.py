@@ -36,6 +36,8 @@ async def get_me(
             is_high_command=access.is_high_command,
             is_instructor=access.is_instructor,
             can_grant_specializations=access.can_grant_specializations,
+            instructor_disciplines=sorted(access.instructor_disciplines),
+            is_universal_instructor=access.is_universal_instructor,
             commander_regiment_ids=sorted(access.commander_regiment_ids),
             category_manager_regiment_ids=sorted(access.category_manager_regiment_ids),
             soldier_regiment_ids=sorted(access.soldier_regiment_ids),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { DonutChart } from "../components/DonutChart";
@@ -256,9 +256,20 @@ function RegimentStats({ regimentId, regimentName }) {
   const [period, setPeriod] = useState("all");
   const [stats, setStats] = useState(null);
   const [drillDown, setDrillDown] = useState(null); // { title, reports }
+  // Защита от гонки: если период/формирование переключили, пока летел старый
+  // запрос, его устаревший ответ не должен затереть уже актуальные данные
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    api.getRegimentStats(token, regimentId, period).then(setStats).catch(() => setStats(null));
+    const requestId = ++requestIdRef.current;
+    api
+      .getRegimentStats(token, regimentId, period)
+      .then((data) => {
+        if (requestIdRef.current === requestId) setStats(data);
+      })
+      .catch(() => {
+        if (requestIdRef.current === requestId) setStats(null);
+      });
     setDrillDown(null);
   }, [token, regimentId, period]);
 
@@ -330,9 +341,18 @@ function FormationComparison() {
   const [period, setPeriod] = useState("all");
   const [stats, setStats] = useState(null);
   const [drillDown, setDrillDown] = useState(null); // { title, reports }
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    api.getFormationStats(token, period).then(setStats).catch(() => setStats(null));
+    const requestId = ++requestIdRef.current;
+    api
+      .getFormationStats(token, period)
+      .then((data) => {
+        if (requestIdRef.current === requestId) setStats(data);
+      })
+      .catch(() => {
+        if (requestIdRef.current === requestId) setStats(null);
+      });
     setDrillDown(null);
   }, [token, period]);
 

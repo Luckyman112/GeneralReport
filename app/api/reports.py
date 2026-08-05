@@ -61,6 +61,14 @@ async def _check_category_filing_restrictions(db: AsyncSession, access: AccessCo
         ):
             raise ForbiddenError(f"Для рапорта категории «{category.name}» требуется как минимум звание {category.min_rank.code}")
 
+    if category.required_specialization_id is not None:
+        has_it = await specialization_crud.has_specialization(
+            db, user_id=access.user.id, specialization_id=category.required_specialization_id
+        )
+        if not has_it:
+            spec_label = category.required_specialization.name if category.required_specialization else "нужная специализация"
+            raise ForbiddenError(f"Подавать рапорт категории «{category.name}» может только боец со специализацией «{spec_label}»")
+
 
 def _attach_training_specializations(read: ReportRead, report, specs_by_id: dict) -> None:
     if report.training_specialization_ids:
@@ -506,6 +514,20 @@ async def update_report_status(
     logger.info(
         "Командир %s изменил статус рапорта %s на %s", access.user.username, report_id, payload.status
     )
+    if not is_self_submit and payload.status in (ReportStatus.APPROVED, ReportStatus.REJECTED):
+        # self-submit (автор сам отправляет свой черновик) — рутинное действие,
+        # не решение командира, в журнал не пишем (см. докстринг AuditLog)
+        details = f"Рапорт «{category.name if category else 'без категории'}» -> {payload.status.value}"
+        if payload.status == ReportStatus.REJECTED and payload.rejection_reason:
+            details += f" ({payload.rejection_reason})"
+        await audit_log_crud.log(
+            db,
+            actor_user_id=access.user.id,
+            actor_is_admin=access.is_admin,
+            action="report_status_change",
+            details=details,
+            target_user_id=report.user_id,
+        )
 
     if payload.status == ReportStatus.APPROVED:
         updated = await _apply_approval_side_effects(db, updated, category, access.user.id)
@@ -551,6 +573,7 @@ async def delete_report(
         raise NotFoundError("Рапорт не найден")
 
     is_own_draft = report.user_id == access.user.id and report.status == ReportStatus.DRAFT
+    was_approved = report.status == ReportStatus.APPROVED
 
     category = None
     if report.category_id is not None:
@@ -575,8 +598,24 @@ async def delete_report(
     elif not access.can_appeal_report(report.regiment_id):
         raise ForbiddenError("Удалять рапорт может только командир формирования")
 
+    if was_approved:
+        # как и при отклонении уже одобренного рапорта (update_report_status) — не
+        # оставляем участникам задвоенные баллы за аннулированный рапорт
+        await report_participant_crud.delete_for_report(db, report_id=report.id)
+
     deleted = await report_crud.soft_delete(db, report, updated_by=access.user.id)
     logger.info("%s удалил рапорт %s", access.user.username, report_id)
+    if not is_own_draft and (category is None or not category.is_detention):
+        # аннулирование задержания уже залогировано отдельно (detention_report_delete)
+        # выше по коду — здесь остальные случаи (не свой черновик)
+        await audit_log_crud.log(
+            db,
+            actor_user_id=access.user.id,
+            actor_is_admin=access.is_admin,
+            action="report_delete",
+            details=f"Удалил рапорт «{category.name if category else 'без категории'}» (формирование {report.regiment_id})",
+            target_user_id=report.user_id,
+        )
     event_bus.publish("reports")
     return await _to_report_read(db, deleted)
 
@@ -605,11 +644,20 @@ async def update_report_points(
 
     updated = await report_crud.set_points(db, report, points=payload.points)
     logger.info("%s выставил %s баллов рапорту %s", access.user.username, payload.points, report_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="report_points_set",
+        details=f"Выставил {payload.points} баллов рапорту «{category.name if category else 'без категории'}»",
+        target_user_id=report.user_id,
+    )
 
     # points may change after approval, recheck promotion eligibility
     if updated.status == ReportStatus.APPROVED:
         await promotion_crud.check_and_create_promotion_request(db, updated.author, regiment_id=updated.regiment_id)
     event_bus.publish("promotions")
+    event_bus.publish("reports")
     return await _to_report_read(db, updated)
 
 

@@ -14,3 +14,4 @@ class AuditLogRead(BaseModel):
     created_at: datetime
     actor: UserBrief
     actor_is_admin: bool = False
+    target: UserBrief | None = None

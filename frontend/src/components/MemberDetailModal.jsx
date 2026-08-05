@@ -11,6 +11,7 @@ import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName, formatFullNameAtRank } from "../utils/formatName";
 import { steamProfileUrl } from "../utils/steam";
+import { DISCIPLINE_CATEGORIES } from "../utils/specialization";
 
 function profileSnapshot(member) {
   return {
@@ -169,8 +170,23 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
 
   const canDeleteReprimandHistory = access?.is_admin || access?.is_high_command;
 
+  // дисциплинарные категории (медик/пилот/инженер) выдаёт только инструктор
+  // соответствующей дисциплины или универсальный (см. Settings -> Инструкторы и
+  // дисциплины)
+  const canGrantCategory = (category) =>
+    access?.is_admin ||
+    access?.is_universal_instructor ||
+    (access?.instructor_disciplines || []).includes(category) ||
+    !DISCIPLINE_CATEGORIES.includes(category);
+
   const grantedSpecializationIds = new Set(specializations.map((s) => s.specialization.id));
-  const availableSpecializations = specializationCatalog.filter((s) => !grantedSpecializationIds.has(s.id));
+  const availableSpecializations = specializationCatalog.filter(
+    (s) =>
+      !grantedSpecializationIds.has(s.id) &&
+      canGrantCategory(s.category) &&
+      // подспециализация — сначала нужна родительская
+      (s.parent_id == null || grantedSpecializationIds.has(s.parent_id))
+  );
 
   async function handleGrantSpecialization() {
     if (!newSpecializationId) return;

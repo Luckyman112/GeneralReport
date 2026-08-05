@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import { api, clearViewAs, getViewAs, setViewAs } from "../api/client";
 
 const STORAGE_KEY = "collapsar_token";
@@ -111,6 +111,11 @@ export function AuthProvider({ children }) {
     ? (access?.characters || []).find((c) => c.regiment.id === activeCharacterRegimentId) || null
     : null;
 
+  // React StrictMode (dev) вызывает этот эффект дважды подряд при монтировании —
+  // код Discord одноразовый, поэтому без этой защиты второй обмен тем же ?code=
+  // гарантированно падает с ошибкой сразу после успешного первого входа
+  const exchangeStartedRef = useRef(false);
+
   // При первой загрузке страницы: если Discord вернул ?code= — обменять его на токен.
   // Иначе, если токен уже сохранён — проверить его через /api/me.
   useEffect(() => {
@@ -119,6 +124,8 @@ export function AuthProvider({ children }) {
       const code = url.searchParams.get("code");
 
       if (code) {
+        if (exchangeStartedRef.current) return;
+        exchangeStartedRef.current = true;
         try {
           const result = await api.loginWithDiscord(code, getRedirectUri());
           await applyLoginResult(result);
