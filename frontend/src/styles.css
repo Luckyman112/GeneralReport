@@ -742,11 +742,12 @@ label {
   display: none;
 }
 
-@media (max-width: 640px) {
-  .page-container {
-    padding: 1rem 0.6rem;
-  }
-
+/* Бургер-меню включается заметно раньше мобильного брейкпоинта (960px, не
+   640px) — с ростом числа пунктов навбара (Штаб, Журнал и т.д.) плоский ряд
+   ссылок уже не помещается в одну строку на обычном desktop-окне вроде
+   1024px/немаксимизированного браузера, и вместо аккуратного бургера получался
+   некрасивый перенос ссылок в несколько строк вперемешку с блоком юзера. */
+@media (max-width: 960px) {
   .navbar {
     flex-wrap: nowrap;
     justify-content: flex-start;
@@ -857,6 +858,12 @@ label {
 
   .navbar-user-info {
     display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-container {
+    padding: 1rem 0.6rem;
   }
 
   .reports-toolbar {
