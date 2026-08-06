@@ -52,13 +52,26 @@ export function ReportsPage() {
 
   const accessibleRegimentIds = useMemo(() => {
     if (access?.is_admin || access?.is_high_command) return regiments.map((r) => r.id);
-    return [...new Set([...(access?.commander_regiment_ids || []), ...(access?.soldier_regiment_ids || [])])];
+    const ids = new Set([...(access?.commander_regiment_ids || []), ...(access?.soldier_regiment_ids || [])]);
+    // командир/зам ЛЮБОГО формирования видит Штаб — там могут быть категории
+    // "открытые командирам всех формирований" (open_to_regiment_leadership),
+    // даже если сам он в Штабе не состоит
+    if (access?.is_regiment_leadership) {
+      const hq = regiments.find((r) => r.name === "Штаб");
+      if (hq) ids.add(hq.id);
+    }
+    return [...ids];
   }, [access, regiments]);
 
-  // only regiments the user can actually access, else nav shows categories they can't see
+  // only regiments the user can actually access, else nav shows categories they can't see;
+  // when regimentFilter is set (напр. по ссылке "Штаб"), сужаем список категорий до одного
+  // формирования — иначе категории Штаба тонут среди категорий остальных формирований
   const categoriesList = useMemo(
-    () => Object.values(categoriesById).filter((c) => accessibleRegimentIds.includes(c.regiment_id)),
-    [categoriesById, accessibleRegimentIds]
+    () =>
+      Object.values(categoriesById).filter(
+        (c) => accessibleRegimentIds.includes(c.regiment_id) && (!regimentFilter || c.regiment_id === Number(regimentFilter))
+      ),
+    [categoriesById, accessibleRegimentIds, regimentFilter]
   );
   // promotion/demotion are system mirror categories, shown next to Reprimands/Leave instead
   const regularCategoriesList = useMemo(
@@ -69,10 +82,10 @@ export function ReportsPage() {
   const demotionCategories = useMemo(() => categoriesList.filter((c) => c.is_demotion), [categoriesList]);
   const trainingCategories = useMemo(() => categoriesList.filter((c) => c.is_training), [categoriesList]);
 
-  const creatableRegiments = useMemo(
-    () => (access?.is_admin || access?.is_high_command ? regiments : regiments.filter((r) => accessibleRegimentIds.includes(r.id))),
-    [regiments, access, accessibleRegimentIds]
-  );
+  const creatableRegiments = useMemo(() => {
+    const base = access?.is_admin || access?.is_high_command ? regiments : regiments.filter((r) => accessibleRegimentIds.includes(r.id));
+    return regimentFilter ? base.filter((r) => r.id === Number(regimentFilter)) : base;
+  }, [regiments, access, accessibleRegimentIds, regimentFilter]);
 
   // Конструктор категорий теперь доступен только высшему командованию/админу — и
   // сразу для всех формирований, не привязан к конкретному

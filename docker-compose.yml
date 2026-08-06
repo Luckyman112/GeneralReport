@@ -16,7 +16,13 @@ services:
       retries: 10
 
   backend:
-    build: .
+    build:
+      context: .
+      args:
+        # публичное значение (Discord client_id не секрет, светится прямо в
+        # OAuth-ссылке) — но Vite инлайнит его на этапе сборки образа, так что
+        # без явной передачи сюда прод получает "client_id=undefined"
+        VITE_DISCORD_CLIENT_ID: ${VITE_DISCORD_CLIENT_ID}
     container_name: collapsar-backend
     restart: unless-stopped
     env_file: .env

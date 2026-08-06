@@ -212,6 +212,7 @@ async def create_category(
         min_rank_id=payload.min_rank_id,
         commander_only=payload.commander_only,
         required_specialization_id=payload.required_specialization_id,
+        open_to_regiment_leadership=payload.open_to_regiment_leadership,
     )
     logger.info("%s добавил категорию '%s' формированию %s", access.user.username, category.name, regiment_id)
     await audit_log_crud.log(

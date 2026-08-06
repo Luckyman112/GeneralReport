@@ -4,6 +4,11 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# Vite инлайнит import.meta.env.VITE_* в бандл на этапе сборки (не рантайма!) —
+# без этого ARG/ENV фронтенд в проде получает client_id=undefined в OAuth-ссылке,
+# т.к. frontend/.env локальный и в образ не копируется (.dockerignore/.gitignore)
+ARG VITE_DISCORD_CLIENT_ID
+ENV VITE_DISCORD_CLIENT_ID=$VITE_DISCORD_CLIENT_ID
 RUN npm run build
 
 # ---- backend: рантайм ----

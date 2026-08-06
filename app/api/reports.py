@@ -46,7 +46,8 @@ async def _check_category_filing_restrictions(db: AsyncSession, access: AccessCo
     if category.is_training and access.can_grant_specializations:
         return
 
-    if category.commander_only and not access.is_commander_of(category.regiment_id):
+    is_foreign_leadership = category.open_to_regiment_leadership and bool(access.commander_regiment_ids)
+    if category.commander_only and not (access.is_commander_of(category.regiment_id) or is_foreign_leadership):
         raise ForbiddenError(f"Подавать рапорт категории «{category.name}» может только заместитель+/командир формирования")
 
     if category.min_rank_id is not None:
@@ -226,10 +227,15 @@ async def create_report(
 
     # instructor files a training report for any regiment, not only their own
     is_instructor_training = category is not None and category.is_training and access.can_grant_specializations
+    # category explicitly open to any regiment's leadership (e.g. Штаб's "Боевая
+    # готовность"/"Защита ОВО" — other formations' commanders/deputies report in)
+    is_leadership_report = (
+        category is not None and category.open_to_regiment_leadership and bool(access.commander_regiment_ids)
+    )
 
     allowed_regiments = access.commander_regiment_ids | access.soldier_regiment_ids
     if (
-        not (access.is_admin or access.is_high_command or is_instructor_training)
+        not (access.is_admin or access.is_high_command or is_instructor_training or is_leadership_report)
         and payload.regiment_id not in allowed_regiments
     ):
         raise ForbiddenError("Вы не состоите в этом формировании")

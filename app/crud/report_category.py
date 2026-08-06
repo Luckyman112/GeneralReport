@@ -85,6 +85,7 @@ async def create(
     min_rank_id: int | None = None,
     commander_only: bool = False,
     required_specialization_id: int | None = None,
+    open_to_regiment_leadership: bool = False,
 ) -> ReportCategory:
     category = ReportCategory(
         regiment_id=regiment_id,
@@ -96,6 +97,7 @@ async def create(
         min_rank_id=min_rank_id,
         commander_only=commander_only,
         required_specialization_id=required_specialization_id,
+        open_to_regiment_leadership=open_to_regiment_leadership,
     )
     db.add(category)
     await db.commit()

@@ -13,17 +13,26 @@ const FIELD_TYPE_LABELS = {
 function RosterAllowedRegiments({ allRegiments, currentRegimentId, selectedIds, onChange }) {
   const otherRegiments = allRegiments.filter((r) => r.id !== Number(currentRegimentId));
   if (otherRegiments.length === 0) return null;
+  const allSelected = otherRegiments.every((r) => selectedIds.includes(r.id));
 
   function toggle(id) {
     onChange(selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]);
+  }
+
+  function toggleAll() {
+    onChange(allSelected ? [] : otherRegiments.map((r) => r.id));
   }
 
   return (
     <div className="field-tags">
       <span>
         Ещё формирования
-        <InfoHint text="Список состава этого поля будет искать бойцов ещё и в отмеченных формированиях, не только в своём." />
+        <InfoHint text="Список состава этого поля будет искать бойцов ещё и в отмеченных формированиях, не только в своём. Например для общих тренировок — отметьте «Все формирования»." />
       </span>
+      <label className="field-tag" style={{ cursor: "pointer" }}>
+        <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ marginRight: "0.3rem" }} />
+        Все формирования
+      </label>
       {otherRegiments.map((r) => (
         <label key={r.id} className="field-tag" style={{ cursor: "pointer" }}>
           <input
@@ -51,6 +60,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
   const [requiredSpecializationDraft, setRequiredSpecializationDraft] = useState(
     category.required_specialization?.id ?? ""
   );
+  const [openToLeadershipDraft, setOpenToLeadershipDraft] = useState(category.open_to_regiment_leadership ?? false);
   const [error, setError] = useState(null);
 
   async function handleAddField(e) {
@@ -100,6 +110,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
         min_rank_id: minRankDraft === "" ? null : Number(minRankDraft),
         commander_only: commanderOnlyDraft,
         required_specialization_id: requiredSpecializationDraft === "" ? null : Number(requiredSpecializationDraft),
+        open_to_regiment_leadership: openToLeadershipDraft,
       });
       onChanged();
     } catch (e) {
@@ -244,6 +255,15 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
             ))}
           </select>
         </label>
+        <label className="points-inline-label">
+          <input
+            type="checkbox"
+            checked={openToLeadershipDraft}
+            onChange={(e) => setOpenToLeadershipDraft(e.target.checked)}
+          />
+          Открыто командирам/замам любых формирований
+          <InfoHint text="Подать рапорт этой категории смогут не только бойцы этого формирования, но и командир/заместитель ЛЮБОГО другого формирования — например Штаб-категории «Боевая готовность»/«Защита ОВО», куда отчитываются командиры полков." />
+        </label>
         <button type="button" onClick={handleSaveRestrictions}>
           Сохранить ограничения
         </button>
@@ -273,6 +293,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
   const [newCategoryPoints, setNewCategoryPoints] = useState("");
   const [newCategoryParticipantPoints, setNewCategoryParticipantPoints] = useState("");
   const [newCategoryRequiredSpecializationId, setNewCategoryRequiredSpecializationId] = useState("");
+  const [newCategoryOpenToLeadership, setNewCategoryOpenToLeadership] = useState(false);
   const [newFieldDraft, setNewFieldDraft] = useState("");
   const [newFieldDraftType, setNewFieldDraftType] = useState("text");
   const [newFieldDraftAllowedRegimentIds, setNewFieldDraftAllowedRegimentIds] = useState([]);
@@ -330,12 +351,14 @@ export function CategoryManagerModal({ regiments, onClose }) {
         points: newCategoryPoints === "" ? null : Number(newCategoryPoints),
         participantPoints: newCategoryParticipantPoints === "" ? null : Number(newCategoryParticipantPoints),
         requiredSpecializationId: newCategoryRequiredSpecializationId === "" ? null : Number(newCategoryRequiredSpecializationId),
+        openToRegimentLeadership: newCategoryOpenToLeadership,
       });
       setNewCategoryName("");
       setNewCategoryFields([]);
       setNewCategoryPoints("");
       setNewCategoryParticipantPoints("");
       setNewCategoryRequiredSpecializationId("");
+      setNewCategoryOpenToLeadership(false);
       await load(regimentId);
     } catch (e) {
       setError(e.message);
@@ -473,6 +496,15 @@ export function CategoryManagerModal({ regiments, onClose }) {
                     </option>
                   ))}
                 </select>
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={newCategoryOpenToLeadership}
+                  onChange={(e) => setNewCategoryOpenToLeadership(e.target.checked)}
+                />
+                {" "}Открыто командирам/замам любых формирований
+                <InfoHint text="Подать рапорт этой категории смогут не только бойцы этого формирования, но и командир/заместитель ЛЮБОГО другого формирования." />
               </label>
 
               <button type="submit" className="primary">

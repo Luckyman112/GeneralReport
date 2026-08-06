@@ -99,6 +99,13 @@ class AccessContext:
     def own_regiment_ids(self) -> set[int]:
         return self.commander_regiment_ids | self.soldier_regiment_ids
 
+    @property
+    def is_regiment_leadership(self) -> bool:
+        """Командир/заместитель хотя бы одного формирования (любого) — фронт
+        использует, чтобы показать Штаб-категории с open_to_regiment_leadership
+        даже тем, кто не состоит в Штабе."""
+        return self.is_admin or self.is_high_command or bool(self.commander_regiment_ids)
+
     def is_commander_of(self, regiment_id: int) -> bool:
         return self.is_admin or self.is_high_command or regiment_id in self.commander_regiment_ids
 

@@ -52,6 +52,8 @@ export function Navbar() {
     user?.registration_status !== "approved" && !access?.is_admin && !access?.is_high_command;
   const hasCommandAccess =
     access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0;
+  const hqRegiment = regiments.find((r) => r.name === "Штаб");
+  const isHqMember = Boolean(hqRegiment && (access?.soldier_regiment_ids || []).includes(hqRegiment.id));
 
   // Закрываем мобильное меню при переходе на другой роут и блокируем скролл
   // страницы под ним, пока оно открыто — иначе фон "плавает" за выезжающей панелью.
@@ -111,11 +113,14 @@ export function Navbar() {
               <Link to="/promotions" onClick={closeMenu}>Повышения</Link>
             </div>
 
-            {(access?.can_view_violations || hasCommandAccess) && (
+            {(access?.can_view_violations || hasCommandAccess || isHqMember) && (
               <div className="navbar-links-group">
                 <span className="navbar-links-group-label">Командование</span>
                 {access?.can_view_violations && (
                   <Link to="/violations" onClick={closeMenu}>Нарушители</Link>
+                )}
+                {hqRegiment && (hasCommandAccess || isHqMember) && (
+                  <Link to={`/reports?regiment=${hqRegiment.id}`} onClick={closeMenu}>Штаб</Link>
                 )}
                 {hasCommandAccess && <Link to="/registrations" onClick={closeMenu}>Регистрации</Link>}
                 {hasCommandAccess && <Link to="/transfers" onClick={closeMenu}>Переводы</Link>}

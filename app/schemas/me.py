@@ -17,6 +17,9 @@ class AccessInfo(BaseModel):
     # фронт использует, чтобы сузить список специализаций в форме выдачи
     instructor_disciplines: list[str] = []
     is_universal_instructor: bool = False
+    # командир/заместитель хотя бы одного формирования — открывает Штаб-категории
+    # с open_to_regiment_leadership, даже если сам не состоит в Штабе
+    is_regiment_leadership: bool = False
     commander_regiment_ids: list[int]
     category_manager_regiment_ids: list[int]
     soldier_regiment_ids: list[int]

@@ -56,3 +56,9 @@ class ReportCategory(Base):
     # None означает, что такого ограничения нет, как раньше
     required_specialization_id: Mapped[int | None] = mapped_column(ForeignKey("specializations.id"), nullable=True)
     required_specialization: Mapped["Specialization | None"] = relationship()
+    # Категория открыта для подачи командирам/замам ЛЮБОГО формирования, не
+    # только своего (например Штаб-категории "Боевая готовность"/"Защита ОВО",
+    # куда отчитываются командиры других формирований) — см. is_leadership_report
+    # в app/api/reports.py. Члены СВОЕГО формирования категории по-прежнему
+    # подают как обычно, независимо от этого флага.
+    open_to_regiment_leadership: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

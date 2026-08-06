@@ -30,6 +30,7 @@ class ReportCategoryRead(BaseModel):
     min_rank: RankRead | None = None
     commander_only: bool = False
     required_specialization: SpecializationRead | None = None
+    open_to_regiment_leadership: bool = False
 
 
 class ReportCategoryCreate(BaseModel):
@@ -43,6 +44,7 @@ class ReportCategoryCreate(BaseModel):
     # Подать рапорт может только тот, у кого есть эта специализация (например
     # "Медицинский рапорт" -> базовый класс "Медик") — None = ограничения нет
     required_specialization_id: int | None = None
+    open_to_regiment_leadership: bool = False
 
 
 class ReportCategoryUpdate(BaseModel):
@@ -58,3 +60,4 @@ class ReportCategoryUpdate(BaseModel):
     min_rank_id: int | None = None
     commander_only: bool | None = None
     required_specialization_id: int | None = None
+    open_to_regiment_leadership: bool | None = None

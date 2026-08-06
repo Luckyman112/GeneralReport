@@ -1,0 +1,23 @@
+name: Deploy to production
+
+# Срабатывает на пуш в master и выполняется на самом сервере (self-hosted
+# runner в /opt/actions-runner) — сервер сидит в приватной локальной сети без
+# входящего SSH-доступа снаружи, поэтому облачные раннеры GitHub до него не
+# достучатся; вместо этого раннер сам стучится к GitHub исходящим соединением.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest and rebuild containers
+        working-directory: /opt/collapsar
+        run: |
+          set -e
+          git fetch origin master
+          git reset --hard origin/master
+          docker compose up -d --build
+          docker compose ps
