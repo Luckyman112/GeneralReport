@@ -166,3 +166,48 @@ async def fetch_guild_roles() -> list[dict]:
         raise DiscordAPIError("Не удалось получить список ролей сервера.")
 
     return [{"id": role["id"], "name": role["name"]} for role in response.json()]
+
+
+# Только текстовые каналы (0) и текстовые треды внутри категорий-форумов не
+# нужны — этого достаточно для выбора канала уведомлений об ивентах
+_TEXT_CHANNEL_TYPE = 0
+
+
+async def fetch_guild_text_channels() -> list[dict]:
+    """Текстовые каналы единственного сервера (id, name) — для выбора канала
+    уведомлений об ивентах в Настройках."""
+    url = f"{DISCORD_API_BASE}/guilds/{settings.discord_guild_id}/channels"
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=_bot_headers())
+
+    if response.status_code != 200:
+        logger.error("Discord guild channels lookup failed: %s %s", response.status_code, response.text)
+        raise DiscordAPIError("Не удалось получить список каналов сервера.")
+
+    return [
+        {"id": ch["id"], "name": ch["name"]}
+        for ch in response.json()
+        if ch.get("type") == _TEXT_CHANNEL_TYPE
+    ]
+
+
+async def send_channel_message(channel_id: str, content: str | None = None, *, embed: dict | None = None) -> None:
+    """Отправляет сообщение от имени бота в канал (Bot API, не webhook — см.
+    решение пользователя: уведомление должно выглядеть как сообщение бота).
+    embed — карточка операции (см. app/api/event_room.py); интерактивные кнопки
+    "Записаться"/"Не смогу" сознательно не реализованы в этой итерации (см.
+    решение пользователя — сначала простое сообщение)."""
+    url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages"
+    body: dict = {}
+    if content:
+        body["content"] = content
+    if embed:
+        body["embeds"] = [embed]
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=_bot_headers(), json=body)
+
+    if response.status_code not in (200, 201):
+        logger.error("Discord send channel message failed: %s %s", response.status_code, response.text)
+        raise DiscordAPIError("Не удалось отправить сообщение в Discord-канал.")

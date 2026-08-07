@@ -377,6 +377,9 @@ export function CategoryManagerModal({ regiments, onClose }) {
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal category-manager-modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Закрыть" onClick={onClose}>
+          ×
+        </button>
         <h3>Категории и поля рапортов</h3>
 
         {regiments.length > 1 && (

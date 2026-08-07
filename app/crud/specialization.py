@@ -19,14 +19,15 @@ _BAN_LOAD_OPTIONS = [
 ]
 
 
-async def count_grants_by_instructor(db: AsyncSession) -> list[tuple[int, int]]:
+async def count_grants_by_instructor(db: AsyncSession, *, since=None) -> list[tuple[int, int]]:
     """Возвращает [(granted_by_user_id, count), ...] — сколько специализаций выдал
-    каждый инструктор/админ, для дашборда активности."""
-    result = await db.execute(
-        select(UserSpecialization.granted_by_user_id, func.count(UserSpecialization.id)).group_by(
-            UserSpecialization.granted_by_user_id
-        )
-    )
+    каждый инструктор/админ, для дашборда активности. since — только выдачи не
+    раньше этой даты (за неделю/месяц), None — за всё время."""
+    query = select(UserSpecialization.granted_by_user_id, func.count(UserSpecialization.id))
+    if since is not None:
+        query = query.where(UserSpecialization.granted_at >= since)
+    query = query.group_by(UserSpecialization.granted_by_user_id)
+    result = await db.execute(query)
     return list(result.all())
 
 
@@ -46,6 +47,21 @@ async def get_all(db: AsyncSession) -> list[Specialization]:
 
 async def get_by_id(db: AsyncSession, specialization_id: int) -> Specialization | None:
     return await db.get(Specialization, specialization_id, options=_SPECIALIZATION_LOAD_OPTIONS)
+
+
+async def list_grants_by_category(db: AsyncSession, category: str) -> list[UserSpecialization]:
+    """Все выдачи специализаций дисциплины (медик/пилот/инженер) — основа для
+    кросс-формационного ростера DEP/CU (см. app/api/specializations.py)."""
+    result = await db.execute(
+        select(UserSpecialization)
+        .join(Specialization, UserSpecialization.specialization_id == Specialization.id)
+        .where(Specialization.category == category)
+        .options(
+            selectinload(UserSpecialization.specialization),
+            selectinload(UserSpecialization.user).selectinload(User.rank),
+        )
+    )
+    return list(result.scalars().all())
 
 
 async def create(
@@ -247,10 +263,20 @@ async def get_instructor_role_by_id(db: AsyncSession, instructor_role_id: int) -
 
 
 async def create_instructor_role(
-    db: AsyncSession, *, discord_role_id: str, label: str, discipline: str | None, can_teach_all: bool
+    db: AsyncSession,
+    *,
+    discord_role_id: str,
+    label: str,
+    discipline: str | None,
+    can_teach_all: bool,
+    tier: str = "instructor",
 ) -> InstructorRole:
     row = InstructorRole(
-        discord_role_id=discord_role_id, label=label, discipline=discipline, can_teach_all=can_teach_all
+        discord_role_id=discord_role_id,
+        label=label,
+        discipline=discipline,
+        can_teach_all=can_teach_all,
+        tier=tier,
     )
     db.add(row)
     try:

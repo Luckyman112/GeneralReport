@@ -101,6 +101,9 @@ export function RosterBrowserModal({ onClose }) {
   const modalContent = (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal roster-browser-modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Закрыть" onClick={onClose}>
+          ×
+        </button>
         {!regimentId ? (
           <>
             <h3>Состав — выбор формирования</h3>

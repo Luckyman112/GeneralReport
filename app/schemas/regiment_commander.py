@@ -52,6 +52,11 @@ class GuildMemberRead(BaseModel):
     rank_assigned_at: datetime | None = None
 
 
+class DiscordChannelRead(BaseModel):
+    id: str
+    name: str
+
+
 class MemberProfileUpdate(BaseModel):
     """Единая форма профиля участника (ИДН + звание + позывной + отметка
     неактивности). Поля, отсутствующие в теле запроса, не изменяются (exclude_unset

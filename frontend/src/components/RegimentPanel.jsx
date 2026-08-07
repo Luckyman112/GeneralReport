@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatFullName } from "../utils/formatName";
+import { EmptyState } from "./EmptyState";
 import { InlineSpinner } from "./InlineSpinner";
 import { LinkIcon } from "./icons";
 import { MemberDetailModal } from "./MemberDetailModal";
@@ -162,6 +163,9 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
               </button>
             )}
           </div>
+          {groups.length === 0 && (
+            <EmptyState text={showInactive ? "В формировании никого нет." : "Нет бойцов в строю."} />
+          )}
           {groups.map((group) => (
             <div key={group.title} className="member-list-group fade-in-up">
               <p className="member-list-group-title">{group.title}</p>

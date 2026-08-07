@@ -6,6 +6,7 @@ import { CategoryManagerModal } from "../components/CategoryManagerModal";
 import { CategoryNav } from "../components/CategoryNav";
 import { DetentionReportForm } from "../components/DetentionReportForm";
 import { EmptyState } from "../components/EmptyState";
+import { OverflowMenu } from "../components/OverflowMenu";
 import { PageLoading } from "../components/PageLoading";
 import { RegimentPanel } from "../components/RegimentPanel";
 import { ReportForm } from "../components/ReportForm";
@@ -229,10 +230,18 @@ export function ReportsPage() {
   }
 
   function canReject(report) {
-    if (!canManage(report)) return false;
-    // only someone who can grant specializations can reject a training report
-    if (categoriesById[report.category_id]?.is_training) {
-      return Boolean(access?.is_admin || access?.is_high_command || access?.can_grant_specializations);
+    const category = categoriesById[report.category_id];
+    // promotion/demotion mirror records aren't managed here — same exclusion as
+    // canManage, applies even to the report_reject_role_ids/_user_discord_ids override
+    if (category?.is_promotion || category?.is_demotion) return false;
+    // отдельная привилегия "отклонить любой рапорт" — не связана с командованием
+    // формированием (см. access.can_reject_any_report на бэкенде)
+    if (!canManage(report) && !access?.can_reject_any_report) return false;
+    // only someone who can grant specializations (or the override) can reject a training report
+    if (category?.is_training) {
+      return Boolean(
+        access?.is_admin || access?.is_high_command || access?.can_grant_specializations || access?.can_reject_any_report
+      );
     }
     return true;
   }
@@ -318,7 +327,7 @@ export function ReportsPage() {
         <LeaveRequestsPage />
       ) : (
         <div className="reports-page">
-          <div className="reports-toolbar">
+          <div className="reports-toolbar reports-toolbar-filters">
             <input
               type="text"
               className="reports-search-input"
@@ -349,22 +358,29 @@ export function ReportsPage() {
                 </select>
               </label>
             )}
+          </div>
 
+          <div className="reports-toolbar reports-toolbar-actions">
             {creatableRegiments.length > 0 && !showForm && (
               <button className="primary" onClick={() => setShowForm(true)}>
                 Создать рапорт
               </button>
             )}
 
-            {access?.can_file_detention_report && !showDetentionForm && (
-              <button className="danger-outline" onClick={() => setShowDetentionForm(true)}>
-                Рапорт о задержании
-              </button>
-            )}
-
-            {manageableRegiments.length > 0 && (
-              <button onClick={() => setShowCategoryManager(true)}>Категории и поля</button>
-            )}
+            <OverflowMenu
+              items={[
+                access?.can_file_detention_report &&
+                  !showDetentionForm && {
+                    label: "Рапорт о задержании",
+                    danger: true,
+                    onClick: () => setShowDetentionForm(true),
+                  },
+                manageableRegiments.length > 0 && {
+                  label: "Категории и поля",
+                  onClick: () => setShowCategoryManager(true),
+                },
+              ]}
+            />
           </div>
 
           {error && <p className="error-text">{error}</p>}

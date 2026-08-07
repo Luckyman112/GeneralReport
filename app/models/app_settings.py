@@ -75,3 +75,19 @@ class AppSettings(Base):
 
     # tokens issued before this are rejected, even if still validly signed
     sessions_revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Ивентрум — независимая от INS/DEP/CU ролевая система: Ивентолог подаёт заявку
+    # на ивент, Куратор/Ассистент ивентологии одобряют/отклоняют (см.
+    # AccessContext.is_event_submitter/_assistant/_curator в app/api/deps.py)
+    event_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    event_assistant_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    event_curator_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Discord-канал, куда бот шлёт сообщение об одобренном ивенте (Bot API, не
+    # webhook — см. app/core/discord_client.py::send_channel_message)
+    event_notify_channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # Отдельная привилегия "может отклонить любой рапорт" — не привязана к
+    # командиру/заму формирования или INS/DEP/CU, настраивается ролью и/или
+    # конкретными людьми, как detention_report_role_ids выше
+    report_reject_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    report_reject_user_discord_ids: Mapped[list[str]] = mapped_column(JSON, default=list)

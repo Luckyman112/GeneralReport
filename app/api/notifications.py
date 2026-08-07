@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AccessContext, get_access_context
 from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
+from app.crud import specialization as specialization_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
-from app.schemas.notification import BroadcastCreate, NotificationRead
+from app.schemas.notification import BroadcastCreate, DisciplineBroadcastCreate, NotificationRead
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,44 @@ async def create_broadcast(
         created_at=notification.created_at,
         is_read=False,
     )
+
+
+@router.post("/discipline-broadcast", status_code=201)
+async def create_discipline_broadcast(
+    payload: DisciplineBroadcastCreate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> dict:
+    """Объявление не всем, а только тем, у кого есть специализация этой
+    дисциплины (в любом формировании) — доступно DEP+/куратору ветки."""
+    if not access.is_discipline_deputy(payload.discipline):
+        raise ForbiddenError("Объявление по дисциплине может отправить DEP+/куратор своей ветки или администратор")
+
+    grants = await specialization_crud.list_grants_by_category(db, payload.discipline)
+    recipient_ids = {g.user_id for g in grants}
+    for user_id in recipient_ids:
+        await notification_crud.create_personal_notification(
+            db,
+            target_user_id=user_id,
+            title=payload.title,
+            body=payload.body,
+            created_by=access.user.id,
+        )
+    logger.info(
+        "%s отправил объявление '%s' дисциплине %s (%s получателей)",
+        access.user.username,
+        payload.title,
+        payload.discipline,
+        len(recipient_ids),
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="broadcast_create",
+        details=f"Отправил объявление по дисциплине «{payload.discipline}» «{payload.title}»: {payload.body}",
+    )
+    return {"recipients": len(recipient_ids)}
 
 
 @router.delete("/{notification_id}", status_code=204)

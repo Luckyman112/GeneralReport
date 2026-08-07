@@ -42,6 +42,17 @@ async def submit_registration(
     if access.user.registration_status == "approved":
         raise AppError("Регистрация уже пройдена")
 
+    duplicate = await user_crud.find_by_service_id_or_steam_id(
+        db,
+        service_id=payload.service_id.strip(),
+        steam_id=payload.steam_id.strip(),
+        exclude_discord_id=access.user.discord_id,
+    )
+    if duplicate is not None:
+        if duplicate.service_id == payload.service_id.strip():
+            raise AppError(f"ИДН {payload.service_id.strip()} уже занят другим бойцом — проверьте номер")
+        raise AppError("Этот Steam ID уже привязан к другому бойцу — проверьте правильность ввода")
+
     default_starting_rank = await rank_crud.get_by_code(db, STARTING_RANK_CODE)
     if default_starting_rank is None:
         raise AppError("Стартовое звание (RCT) не настроено — обратитесь к администратору")

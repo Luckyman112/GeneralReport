@@ -273,13 +273,11 @@ async def create_report(
         status = ReportStatus.APPROVED
     else:
         status = ReportStatus.SUBMITTED if payload.submit else ReportStatus.DRAFT
-    # training: one point per specialization, credited to the instructor (author) —
-    # not category.points flat, since the count is only known at filing time
-    if auto_approve and category.is_training:
-        per_spec = category.points if category.points is not None else 1
-        points = per_spec * len(target_fields["training_specialization_ids"])
-    else:
-        points = category.points if (auto_approve and category.points is not None) else None
+    # Баллы за обучение считаются позже, в _apply_approval_side_effects, по
+    # ФАКТИЧЕСКИ выданным специализациям — не здесь по запрошенным, иначе
+    # частичный отказ по лимиту (best-effort цикл там же) переплачивал бы
+    # инструктору за специализации, которые реально не засчитались.
+    points = None
     report = await report_crud.create_report(
         db,
         user_id=access.user.id,
@@ -405,10 +403,10 @@ async def _apply_approval_side_effects(db: AsyncSession, updated, category, acto
     # best-effort per specialization: a limit violation on one shouldn't block the rest
     if category is not None and category.is_training and updated.target_discord_id is not None:
         trainee = await user_crud.get_by_discord_id(db, updated.target_discord_id)
+        granted_names = []
         if trainee is not None:
             from app.api.specializations import _check_can_grant
 
-            granted_names = []
             for specialization_id in updated.training_specialization_ids:
                 try:
                     specialization = await specialization_crud.get_by_id(db, specialization_id)
@@ -439,6 +437,14 @@ async def _apply_approval_side_effects(db: AsyncSession, updated, category, acto
                     body="Вам выдано по итогам обучения: " + ", ".join(granted_names),
                     created_by=actor_user_id,
                 )
+
+        # Баллы инструктору — по числу РЕАЛЬНО выданных специализаций (granted_names),
+        # а не запрошенных: часть могла отсеяться выше по лимиту (best-effort),
+        # или трейни вовсе не найден. Считается одинаково что для авто-одобрения
+        # при подаче, что для ручного одобрения командиром черновика — раньше эти
+        # два пути расходились (см. историю этой функции).
+        per_spec = category.points if category.points is not None else 1
+        updated = await report_crud.set_points(db, updated, points=per_spec * len(granted_names))
 
     if category is not None and category.participant_points:
         if updated.participant_discord_ids:
@@ -477,7 +483,8 @@ async def update_report_status(
         and payload.rejection_reason is None
     )
 
-    if not access.can_appeal_report(report.regiment_id) and not is_self_submit:
+    is_reject_override = payload.status == ReportStatus.REJECTED and access.can_reject_any_report
+    if not access.can_appeal_report(report.regiment_id) and not is_self_submit and not is_reject_override:
         raise ForbiddenError("Изменять статус рапорта может только командир формирования")
 
     category = None
@@ -497,16 +504,19 @@ async def update_report_status(
         category is not None
         and category.is_training
         and payload.status == ReportStatus.REJECTED
-        and not (access.is_admin or access.is_high_command or access.can_grant_specializations)
+        and not (access.is_admin or access.is_high_command or access.can_grant_specializations or access.can_reject_any_report)
     ):
         raise ForbiddenError("Отклонить рапорт об обучении может только инструктор или администратор")
 
     was_approved = report.status == ReportStatus.APPROVED
 
     # Автоначисление балла категории при одобрении — только если рапорту ещё не
-    # выставлен балл вручную, и у его категории задан балл по умолчанию
+    # выставлен балл вручную, и у его категории задан балл по умолчанию.
+    # Обучение — исключение: там балл = баллы_за_спец × число ФАКТИЧЕСКИ
+    # выданных специализаций, считается в _apply_approval_side_effects ниже
+    # (плоское category.points тут его бы просто перезаписало неверным числом).
     if payload.status == ReportStatus.APPROVED and report.points is None and category is not None:
-        if category.points is not None:
+        if category.points is not None and not category.is_training:
             report.points = category.points
 
     updated = await report_crud.update_status(

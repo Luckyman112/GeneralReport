@@ -8,14 +8,16 @@ import { useLiveEvents } from "../hooks/useLiveEvents";
 const POLL_INTERVAL_MS = 120000;
 
 /** Всегда видимый баннер сверху, пока есть хоть одна заявка на повышение,
- * ожидающая решения (список от бэкенда уже отфильтрован — виден только тем, кто
- * реально может её одобрить: заместитель/командир формирования, высшее
- * командование, администратор). */
+ * ожидающая решения — только для тех, кому это должно "само бросаться в глаза":
+ * создатель и командиры/замы формирований. Высшее командование тоже может
+ * одобрять (см. can_decide_promotion на бэкенде), но баннер ему специально не
+ * показываем — сами зайдут в "Повышения", если нужно. Обычный администратор
+ * (не создатель) больше не может одобрять вовсе, поэтому и баннер ему не нужен. */
 export function PromotionBanner() {
   const { token, access } = useAuth();
   const [count, setCount] = useState(0);
 
-  const canSeeAny = access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).length > 0;
+  const canSeeAny = access?.is_founder || (access?.commander_regiment_ids || []).length > 0;
 
   const load = useCallback(() => {
     if (!canSeeAny) return;

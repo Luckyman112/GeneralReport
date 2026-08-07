@@ -68,6 +68,15 @@ export function InstructorRoomPage() {
 
   const isInstructor = Boolean(access?.can_grant_specializations);
   const canViewTrainings = Boolean(access?.can_view_trainings);
+  // Запрет на обучение — привилегия DEP/CU дисциплины (или админа на "всё
+  // обучение"/недисциплинарные специализации), обычный инструктор её больше
+  // не видит, см. app/api/specializations.py::create_specialization_ban
+  const canManageBans = Boolean(access?.is_admin || (access?.deputy_disciplines || []).length > 0);
+  const banSpecializationOptions = useMemo(() => {
+    if (access?.is_admin) return specializations;
+    const own = new Set(access?.deputy_disciplines || []);
+    return specializations.filter((s) => own.has(s.category));
+  }, [specializations, access]);
 
   const accessibleRegimentIds = useMemo(() => {
     if (!access) return [];
@@ -136,10 +145,12 @@ export function InstructorRoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, canViewTrainings, creatableRegiments.length]);
 
+  const [activityPeriod, setActivityPeriod] = useState("all");
+
   useEffect(() => {
     if (!access?.is_admin) return;
-    api.getInstructorActivity(token).then(setInstructorActivity).catch(() => setInstructorActivity([]));
-  }, [token, access?.is_admin]);
+    api.getInstructorActivity(token, activityPeriod).then(setInstructorActivity).catch(() => setInstructorActivity([]));
+  }, [token, access?.is_admin, activityPeriod]);
 
   const maxGrantsCount = useMemo(
     () => instructorActivity.reduce((max, a) => Math.max(max, a.grants_count), 0),
@@ -175,6 +186,16 @@ export function InstructorRoomPage() {
     setShowTrainingForm(false);
     await loadTrainingReports();
   }
+
+  useEffect(() => {
+    // Без бланкетного варианта ("— всё обучение —") у DEP/CU выбранное значение
+    // должно всегда указывать на реальную специализацию их ветки, иначе select
+    // визуально показывает первый option, а состояние остаётся рассинхронизировано
+    if (access?.is_admin) return;
+    if (banSpecializationId && banSpecializationOptions.some((s) => String(s.id) === String(banSpecializationId))) return;
+    setBanSpecializationId(banSpecializationOptions[0] ? String(banSpecializationOptions[0].id) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access?.is_admin, banSpecializationOptions]);
 
   useEffect(() => {
     if (!banRegimentId) {
@@ -335,7 +356,7 @@ export function InstructorRoomPage() {
         </div>
       )}
 
-      {isInstructor && (
+      {canManageBans && (
         <div className="regiment-panel">
           <h3>
             Запрет на обучение
@@ -399,8 +420,8 @@ export function InstructorRoomPage() {
               )}
               <div className="add-category-form">
                 <select value={banSpecializationId} onChange={(e) => setBanSpecializationId(e.target.value)}>
-                  <option value="">— всё обучение —</option>
-                  {specializations.map((s) => (
+                  {access?.is_admin && <option value="">— всё обучение —</option>}
+                  {banSpecializationOptions.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.code} — {s.name}
                     </option>
@@ -442,6 +463,13 @@ export function InstructorRoomPage() {
         <div className="regiment-panel">
           <h3>Активность инструкторов</h3>
           <p className="hint-text">Сколько специализаций выдал каждый инструктор/администратор — для контроля нагрузки.</p>
+          <div className="reports-toolbar reports-toolbar-filters">
+            <select value={activityPeriod} onChange={(e) => setActivityPeriod(e.target.value)}>
+              <option value="all">За всё время</option>
+              <option value="month">За месяц</option>
+              <option value="week">За неделю</option>
+            </select>
+          </div>
           {instructorActivity.length === 0 ? (
             <EmptyState text="Пока никто ничего не выдавал." />
           ) : (

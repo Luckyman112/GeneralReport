@@ -1,5 +1,6 @@
 from app.models.app_settings import AppSettings
 from app.models.audit_log import AuditLog
+from app.models.event import Event, EventMap, EventStatus
 from app.models.leave_request import LeaveRequest
 from app.models.notification import Notification, NotificationRead
 from app.models.points_adjustment import PointsAdjustment
@@ -48,4 +49,7 @@ __all__ = [
     "UserSpecialization",
     "SpecializationBan",
     "InstructorRole",
+    "Event",
+    "EventStatus",
+    "EventMap",
 ]

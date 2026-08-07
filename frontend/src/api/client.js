@@ -79,6 +79,7 @@ async function request(path, { method = "GET", token, body, withTotal = false } 
 }
 
 export const api = {
+  checkHealth: () => request("/health"),
   loginWithDiscord: (code, redirectUri) =>
     request("/auth/discord", { method: "POST", body: { code, redirect_uri: redirectUri } }),
   loginWithPassword: (password, token) => request("/auth/password", { method: "POST", token, body: { password } }),
@@ -223,6 +224,7 @@ export const api = {
       token,
       body: { service_id: serviceId, callsign, steam_id: steamId },
     }),
+  getSteamLoginUrl: (token) => request("/api/steam/login-url", { token }),
   listPendingRegistrations: (token) => request("/api/registrations/pending", { token }),
   approveRegistration: (token, discordId) =>
     request(`/api/registrations/${discordId}/approve`, { method: "POST", token }),
@@ -291,7 +293,8 @@ export const api = {
   getAppSettingsMembers: (token) => request("/api/app-settings/discord-members", { token }),
 
   listSpecializations: (token) => request("/api/specializations", { token }),
-  getInstructorActivity: (token) => request("/api/specializations/instructor-activity", { token }),
+  getInstructorActivity: (token, period = "all") =>
+    request(`/api/specializations/instructor-activity?period=${period}`, { token }),
   getSystemHealth: (token, staleDays = 3) =>
     request(`/api/admin/health?stale_days=${staleDays}`, { token }),
   createSpecialization: (token, { code, name, category, minRankId, requiredRegimentId, parentId }) =>
@@ -324,12 +327,21 @@ export const api = {
     request(`/api/specializations/${specializationId}`, { method: "DELETE", token }),
 
   listInstructorRoles: (token) => request("/api/instructor-roles", { token }),
-  createInstructorRole: (token, { discordRoleId, label, discipline, canTeachAll }) =>
+  createInstructorRole: (token, { discordRoleId, label, discipline, canTeachAll, tier }) =>
     request("/api/instructor-roles", {
       method: "POST",
       token,
-      body: { discord_role_id: discordRoleId, label, discipline: discipline ?? null, can_teach_all: canTeachAll },
+      body: {
+        discord_role_id: discordRoleId,
+        label,
+        discipline: discipline ?? null,
+        can_teach_all: canTeachAll,
+        tier: tier || "instructor",
+      },
     }),
+  getDisciplineRoster: (token, discipline) => request(`/api/specializations/discipline/${discipline}/roster`, { token }),
+  sendDisciplineBroadcast: (token, { title, body, discipline }) =>
+    request("/api/notifications/discipline-broadcast", { method: "POST", token, body: { title, body, discipline } }),
   deleteInstructorRole: (token, id) => request(`/api/instructor-roles/${id}`, { method: "DELETE", token }),
   listMemberSpecializations: (token, discordId) =>
     request(`/api/members/${discordId}/specializations`, { token }),
@@ -372,6 +384,7 @@ export const api = {
   getModuleAccess: (token) => request("/api/module-access", { token }),
   updateModuleAccess: (token, changes) =>
     request("/api/module-access", { method: "PATCH", token, body: changes }),
+  getDiscordChannels: (token) => request("/api/module-access/discord-channels", { token }),
 
   getMaintenanceStatus: () => request("/api/maintenance-status", {}),
   updateMaintenance: (token, { enabled, message }) =>
@@ -413,6 +426,7 @@ export const api = {
     if (filters.dateFrom) params.set("date_from", filters.dateFrom);
     if (filters.dateTo) params.set("date_to", filters.dateTo);
     if (filters.adminOnly) params.set("admin_only", "true");
+    if (filters.discipline) params.set("discipline", filters.discipline);
     params.set("limit", filters.limit || 1000);
     return request(`/api/admin/audit-log?${params.toString()}`, { token });
   },
@@ -614,6 +628,20 @@ export const api = {
     URL.revokeObjectURL(url);
   },
   revokeAllSessions: (token) => request("/api/admin/sessions/revoke-all", { method: "POST", token }),
+
+  listEvents: (token) => request("/api/event-room", { token }),
+  createEvent: (token, { title, payload }) =>
+    request("/api/event-room", { method: "POST", token, body: { title, payload } }),
+  getEvent: (token, eventId) => request(`/api/event-room/${eventId}`, { token }),
+  updateEvent: (token, eventId, { title, payload }) =>
+    request(`/api/event-room/${eventId}`, { method: "PATCH", token, body: { title, payload } }),
+  approveEvent: (token, eventId) => request(`/api/event-room/${eventId}/approve`, { method: "POST", token }),
+  rejectEvent: (token, eventId, reason) =>
+    request(`/api/event-room/${eventId}/reject`, { method: "POST", token, body: { reason } }),
+  getEventMemberCandidates: (token) => request("/api/event-room/member-candidates", { token }),
+  listEventMaps: (token) => request("/api/event-room/maps/all", { token }),
+  createEventMap: (token, name) => request("/api/event-room/maps", { method: "POST", token, body: { name } }),
+  deleteEventMap: (token, mapId) => request(`/api/event-room/maps/${mapId}`, { method: "DELETE", token }),
 };
 
 export { ApiError };

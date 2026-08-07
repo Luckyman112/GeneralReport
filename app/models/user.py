@@ -24,8 +24,11 @@ class User(Base):
     service_id: Mapped[str | None] = mapped_column(String(4), nullable=True)
     callsign: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Steam ID — указывается при регистрации, чтобы командир мог найти игрока в
-    # GMod/Steam (в дополнение к Discord ИДН/нику)
+    # GMod/Steam (в дополнение к Discord ИДН/нику). true, если получен через
+    # реальный вход Steam (OpenID, см. app/core/steam_client.py), а не введён
+    # руками — тогда это SteamID64, иначе может быть старый формат STEAM_X:Y:Z
     steam_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    steam_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # overrides discord avatar in display
     photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)

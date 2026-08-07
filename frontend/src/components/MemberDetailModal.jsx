@@ -351,6 +351,9 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Закрыть" onClick={onClose}>
+          ×
+        </button>
         <button
           type="button"
           className="ghost no-print member-detail-print-button"

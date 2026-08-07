@@ -15,3 +15,4 @@ class AuditLogRead(BaseModel):
     actor: UserBrief
     actor_is_admin: bool = False
     target: UserBrief | None = None
+    discipline: str | None = None

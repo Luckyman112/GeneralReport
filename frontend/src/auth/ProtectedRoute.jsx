@@ -8,6 +8,8 @@ export function ProtectedRoute({
   passwordOnly = false,
   violationsOnly = false,
   reviewerOnly = false,
+  disciplineDeputyOnly = false,
+  eventRoomOnly = false,
 }) {
   const { isAuthenticated, access, loading } = useAuth();
 
@@ -16,6 +18,13 @@ export function ProtectedRoute({
   if (adminOnly && !access?.is_admin) return <Navigate to="/main" replace />;
   if (passwordOnly && !access?.is_password_login) return <Navigate to="/main" replace />;
   if (violationsOnly && !access?.can_view_violations) return <Navigate to="/main" replace />;
+  if (
+    disciplineDeputyOnly &&
+    !access?.is_admin &&
+    (access?.deputy_disciplines || []).length === 0
+  )
+    return <Navigate to="/main" replace />;
+  if (eventRoomOnly && !access?.can_access_event_room) return <Navigate to="/main" replace />;
   if (
     reviewerOnly &&
     !access?.is_admin &&

@@ -35,3 +35,8 @@ class AuditLog(Base):
     # не парся details. None — общесистемные действия (бэкапы, роли, оверрайды).
     target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     target: Mapped["User | None"] = relationship(foreign_keys=[target_user_id])
+
+    # Заполняется для действий по специализациям дисциплины (медик/пилот/инженер)
+    # — позволяет DEP/CU видеть фильтрованный журнал только своей ветки, не всё
+    # подряд (см. app/api/audit_log.py — обычному DEP полный журнал недоступен)
+    discipline: Mapped[str | None] = mapped_column(String(32), nullable=True)

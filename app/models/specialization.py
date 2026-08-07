@@ -25,6 +25,14 @@ CATEGORY_MEDIC = "medic"
 CATEGORY_PILOT = "pilot"
 CATEGORY_ENGINEER = "engineer"
 DISCIPLINE_CATEGORIES = [CATEGORY_MEDIC, CATEGORY_PILOT, CATEGORY_ENGINEER]
+
+# Иерархия внутри дисциплины — тот же принцип, что у командования формирования
+# (командир/зам/боец), только по ветке (медик/пилот/инженер), не по формированию.
+# Права нарастают по ступеням (см. AccessContext.is_discipline_deputy/_curator).
+INSTRUCTOR_TIER_INSTRUCTOR = "instructor"
+INSTRUCTOR_TIER_DEPUTY = "deputy"
+INSTRUCTOR_TIER_CURATOR = "curator"
+INSTRUCTOR_TIERS = [INSTRUCTOR_TIER_INSTRUCTOR, INSTRUCTOR_TIER_DEPUTY, INSTRUCTOR_TIER_CURATOR]
 SPECIALIZATION_CATEGORIES = [
     CATEGORY_CLASS,
     CATEGORY_GEAR,
@@ -117,7 +125,12 @@ class InstructorRole(Base):
     только медицинские подспециализации) или can_teach_all=True (видно вообще
     всё — например роль "ARC | INS"). discipline=None и can_teach_all=False
     одновременно не имеет смысла, но допускается на уровне БД — проверяется в
-    API. Одна Discord-роль -> одна запись (уникальность на discord_role_id)."""
+    API. Одна Discord-роль -> одна запись (уникальность на discord_role_id).
+
+    tier — иерархия внутри дисциплины (INSTRUCTOR_TIERS): обычный инструктор
+    только выдаёт/снимает специализации; DEP/CU дополнительно получают
+    расширенные права по своей ветке (см. AccessContext.is_discipline_deputy/
+    _curator и все места, где это проверяется)."""
 
     __tablename__ = "instructor_roles"
 
@@ -127,3 +140,6 @@ class InstructorRole(Base):
     label: Mapped[str] = mapped_column(String(255))
     discipline: Mapped[str | None] = mapped_column(String(32), nullable=True)
     can_teach_all: Mapped[bool] = mapped_column(default=False, server_default="false")
+    tier: Mapped[str] = mapped_column(
+        String(16), default=INSTRUCTOR_TIER_INSTRUCTOR, server_default=INSTRUCTOR_TIER_INSTRUCTOR
+    )

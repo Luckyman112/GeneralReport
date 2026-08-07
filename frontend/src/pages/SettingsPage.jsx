@@ -11,17 +11,29 @@ import { InfoHint } from "../components/Tooltip";
 function ModuleAccessSettings() {
   const { token, regiments } = useAuth();
   const [roles, setRoles] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [members, setMembers] = useState([]);
   const [access, setAccess] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [addRejectId, setAddRejectId] = useState("");
 
   useEffect(() => {
-    Promise.all([api.getDiscordRoles(token), api.getModuleAccess(token)]).then(([rolesData, accessData]) => {
+    Promise.all([
+      api.getDiscordRoles(token),
+      api.getModuleAccess(token),
+      api.getDiscordChannels(token),
+      api.getViewAsCandidates(token),
+    ]).then(([rolesData, accessData, channelsData, membersData]) => {
       setRoles(rolesData);
       setAccess(accessData);
+      setChannels(channelsData);
+      setMembers(membersData);
     });
   }, [token]);
+
+  const membersById = Object.fromEntries(members.map((m) => [m.discord_id, m]));
 
   function toggleRegiment(field, id) {
     setAccess((prev) => ({
@@ -32,6 +44,26 @@ function ModuleAccessSettings() {
 
   function setRoleField(field, ids) {
     setAccess((prev) => ({ ...prev, [field]: ids }));
+  }
+
+  function setSingleField(field, value) {
+    setAccess((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleAddReject() {
+    if (!addRejectId || access.report_reject_user_discord_ids.includes(addRejectId)) return;
+    setAccess((prev) => ({
+      ...prev,
+      report_reject_user_discord_ids: [...prev.report_reject_user_discord_ids, addRejectId],
+    }));
+    setAddRejectId("");
+  }
+
+  function handleRemoveReject(discordId) {
+    setAccess((prev) => ({
+      ...prev,
+      report_reject_user_discord_ids: prev.report_reject_user_discord_ids.filter((id) => id !== discordId),
+    }));
   }
 
   async function handleSave() {
@@ -174,6 +206,96 @@ function ModuleAccessSettings() {
         />
       </label>
 
+      <label>
+        Кто может ОТКЛОНЯТЬ любой рапорт — по Discord-роли:
+        <InfoHint text="Отдельная привилегия, не связанная с командованием формированием — например, куратор специализации, который должен уметь отклонить рапорт об обучении в любом формировании." />
+        <MultiSelectDropdown
+          items={roles}
+          selectedIds={access.report_reject_role_ids}
+          onChange={(ids) => setRoleField("report_reject_role_ids", ids)}
+        />
+      </label>
+      <label>
+        ...или конкретные люди:
+        <span className="picker-row">
+          <MemberSearchPicker members={members} selectedId={addRejectId} onSelect={setAddRejectId} />
+          <button type="button" onClick={handleAddReject} disabled={!addRejectId}>
+            Добавить
+          </button>
+        </span>
+      </label>
+      {access.report_reject_user_discord_ids.length > 0 && (
+        <ul className="chip-list">
+          {access.report_reject_user_discord_ids.map((discordId) => (
+            <li key={discordId} className="chip">
+              {membersById[discordId]?.username || discordId}
+              <button type="button" onClick={() => handleRemoveReject(discordId)}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h4>Ивентрум</h4>
+      <p className="hint-text">
+        Независимая от инструкторской ролевая система: Ивентолог подаёт заявку на ивент, Ассистент/Куратор
+        ивентологии одобряют — при одобрении бот отправляет сообщение в выбранный канал.
+      </p>
+      <label>
+        Discord-роль «Ивентолог» (подаёт заявки):
+        <select value={access.event_role_id || ""} onChange={(e) => setSingleField("event_role_id", e.target.value)}>
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Discord-роль «Ассистент ивентологии» (одобряет):
+        <select
+          value={access.event_assistant_role_id || ""}
+          onChange={(e) => setSingleField("event_assistant_role_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Discord-роль «Куратор ивентологии» (одобряет):
+        <select
+          value={access.event_curator_role_id || ""}
+          onChange={(e) => setSingleField("event_curator_role_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Канал уведомлений об одобренных ивентах:
+        <select
+          value={access.event_notify_channel_id || ""}
+          onChange={(e) => setSingleField("event_notify_channel_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {channels.map((c) => (
+            <option key={c.id} value={c.id}>
+              #{c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <div className="report-form-actions">
         <button className="primary" onClick={handleSave} disabled={saving}>
           Сохранить настройки доступа
@@ -192,6 +314,15 @@ const INSTRUCTOR_DISCIPLINE_LABELS = {
   engineer: "Инженерия",
 };
 
+// instructor — рядовой (учит своей дисциплине или всему), deputy — DEP (плюс
+// каталог/бан/категории/ростер своей ветки), curator — CU (один на ветку,
+// плюс кросс-формационный обзор) — см. app/models/specialization.py::INSTRUCTOR_TIERS
+const INSTRUCTOR_TIER_LABELS = {
+  instructor: "Инструктор",
+  deputy: "Заместитель (DEP)",
+  curator: "Куратор (CU)",
+};
+
 // Discord-роль -> какие специализации разрешено выдавать: конкретная дисциплина
 // (медик/пилот/инженер, видит только свои подспециализации) или "учит всему"
 // (напр. роль "ARC | INS") — в отличие от старой единой роли "Инструктор",
@@ -203,6 +334,7 @@ function InstructorRolesSettings() {
   const [newRoleId, setNewRoleId] = useState("");
   const [newDiscipline, setNewDiscipline] = useState("medic");
   const [newCanTeachAll, setNewCanTeachAll] = useState(false);
+  const [newTier, setNewTier] = useState("instructor");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -231,9 +363,11 @@ function InstructorRolesSettings() {
         label: rolesById[newRoleId]?.name || newRoleId,
         discipline: newCanTeachAll ? null : newDiscipline,
         canTeachAll: newCanTeachAll,
+        tier: newCanTeachAll ? "instructor" : newTier,
       });
       setInstructorRoles((prev) => [...prev, created]);
       setNewRoleId("");
+      setNewTier("instructor");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -270,6 +404,7 @@ function InstructorRolesSettings() {
           {instructorRoles.map((r) => (
             <li key={r.id} className="chip">
               {r.label} — {r.can_teach_all ? "учит всему" : INSTRUCTOR_DISCIPLINE_LABELS[r.discipline] || r.discipline}
+              {r.tier !== "instructor" && ` (${INSTRUCTOR_TIER_LABELS[r.tier] || r.tier})`}
               <button type="button" onClick={() => handleDelete(r.id)} disabled={saving}>
                 ×
               </button>
@@ -305,6 +440,14 @@ function InstructorRolesSettings() {
             </option>
           ))}
           <option value="all">Учит всему</option>
+        </select>
+
+        <select value={newTier} onChange={(e) => setNewTier(e.target.value)} disabled={newCanTeachAll} title="Уровень">
+          {Object.entries(INSTRUCTOR_TIER_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
 
         <button type="button" onClick={handleAdd} disabled={!newRoleId || saving}>

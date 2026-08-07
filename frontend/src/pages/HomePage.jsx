@@ -24,7 +24,7 @@ function ProgressBar({ current, required, label }) {
     <div className="promo-progress">
       <div className="promo-progress-label">
         <span>{label}</span>
-        <span>
+        <span className="mono-num">
           {current} / {required}
         </span>
       </div>

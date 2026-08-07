@@ -69,6 +69,9 @@ export function MandatoryRequirementModal({ ranks, existingCategoryNames, initia
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Закрыть" onClick={onClose}>
+          ×
+        </button>
         <h3>{isEdit ? "Изменить обязательное требование" : "Новое обязательное требование"}</h3>
         <p className="hint-text">Действует сразу для ВСЕХ формирований.</p>
 

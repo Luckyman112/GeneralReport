@@ -21,6 +21,39 @@ async def get_by_discord_id(db: AsyncSession, discord_id: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def get_by_steam_id(db: AsyncSession, steam_id: str) -> User | None:
+    result = await db.execute(select(User).where(User.steam_id == steam_id))
+    return result.scalars().first()
+
+
+async def set_verified_steam_id(db: AsyncSession, *, user_id: int, steam_id: str) -> User | None:
+    """Записывает Steam ID, полученный через реальный вход (OpenID) — в отличие
+    от update_profile, тут не нужен весь набор полей регистрации, только Steam."""
+    user = await get_by_id(db, user_id)
+    if user is None:
+        return None
+    user.steam_id = steam_id
+    user.steam_verified = True
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def find_by_service_id_or_steam_id(
+    db: AsyncSession, *, service_id: str, steam_id: str, exclude_discord_id: str
+) -> User | None:
+    """Ищет ДРУГОГО (не exclude_discord_id) бойца с таким же ИДН или Steam ID —
+    при регистрации оба поля вводятся вручную, опечатка легко может случайно
+    совпасть с чужой записью (см. app/api/registration.py)."""
+    result = await db.execute(
+        select(User).where(
+            User.discord_id != exclude_discord_id,
+            (User.service_id == service_id) | (User.steam_id == steam_id),
+        )
+    )
+    return result.scalars().first()
+
+
 async def upsert_user(
     db: AsyncSession,
     *,

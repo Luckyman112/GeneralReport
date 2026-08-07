@@ -122,6 +122,9 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Закрыть" onClick={onClose}>
+          ×
+        </button>
         <h3>Настройка формирования</h3>
 
         <label>

@@ -34,6 +34,9 @@ export function BroadcastModal({ onClose }) {
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Закрыть" onClick={onClose}>
+          ×
+        </button>
         <h3>Объявление всем</h3>
         <form onSubmit={handleSend}>
           <label>

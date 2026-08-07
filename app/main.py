@@ -16,6 +16,7 @@ from app.api.auth import router as auth_router
 from app.api.backups import router as backups_router
 from app.api.backups import sessions_router as sessions_router
 from app.api.characters import router as characters_router
+from app.api.event_room import router as event_room_router
 from app.api.events import router as events_router
 from app.api.health import router as health_router
 from app.api.leave_requests import router as leave_requests_router
@@ -32,6 +33,7 @@ from app.api.reprimands import router as reprimands_router
 from app.api.reports import router as reports_router
 from app.api.specializations import router as specializations_router
 from app.api.stats import router as stats_router
+from app.api.steam import router as steam_router
 from app.api.transfer_requests import router as transfer_requests_router
 from app.api.violations import router as violations_router
 from app.config import settings
@@ -98,6 +100,8 @@ app.include_router(leave_requests_router, prefix="/api")
 app.include_router(audit_log_router, prefix="/api")
 app.include_router(maintenance_router, prefix="/api")
 app.include_router(specializations_router, prefix="/api")
+app.include_router(steam_router, prefix="/api")
+app.include_router(event_room_router, prefix="/api")
 
 
 @app.get("/health", tags=["health"])

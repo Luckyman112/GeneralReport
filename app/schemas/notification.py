@@ -20,3 +20,9 @@ class NotificationRead(BaseModel):
 class BroadcastCreate(BaseModel):
     title: str = Field(min_length=1)
     body: str = Field(min_length=1)
+
+
+class DisciplineBroadcastCreate(BaseModel):
+    title: str = Field(min_length=1)
+    body: str = Field(min_length=1)
+    discipline: Literal["medic", "pilot", "engineer"]

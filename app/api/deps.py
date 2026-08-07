@@ -48,6 +48,11 @@ class AccessContext:
     is_admin: bool
     # password login, separate from real discord-based is_admin
     is_password_login: bool
+    # true only for founder_role_id/founder_user_discord_ids/password-login — the
+    # subset of is_admin that keeps promotion-approval rights (see
+    # can_decide_promotion); a plain admin_role_id/admin_user_discord_ids admin is
+    # is_admin=True but is_founder=False
+    is_founder: bool = False
     # unaffected by view-as simulation, so frontend can offer exit
     is_real_admin: bool = False
     # computed once, before entering any view-as branch below
@@ -61,6 +66,12 @@ class AccessContext:
     # включая обычные (не-дисциплинарные) категории специализаций
     instructor_disciplines: set[str] = field(default_factory=set)
     is_universal_instructor: bool = False
+    # Иерархия внутри дисциплины (см. INSTRUCTOR_TIERS) — заместитель/куратор
+    # ветки получают права сверх обычного инструктора (см. is_discipline_deputy/
+    # _curator ниже). Множества дисциплин, не одно значение — человек теоретически
+    # может быть DEP в одной ветке и просто INS в другой.
+    deputy_disciplines: set[str] = field(default_factory=set)
+    curator_disciplines: set[str] = field(default_factory=set)
     role_ids: set[str] = field(default_factory=set)
     commander_regiment_ids: set[int] = field(default_factory=set)
     # subset of commander_regiment_ids where role is specifically "commander"
@@ -79,8 +90,41 @@ class AccessContext:
     # extends can_appeal_report beyond commander/deputy/mentor
     report_appeal_regiment_ids: set[int] = field(default_factory=set)
     report_appeal_role_ids: set[str] = field(default_factory=set)
+    # Отдельная привилегия "отклонить любой рапорт" — не завязана на командование
+    # формированием, см. can_reject_any_report
+    report_reject_role_ids: set[str] = field(default_factory=set)
+    report_reject_user_discord_ids: set[str] = field(default_factory=set)
+    # Ивентрум — независимая от INS/DEP/CU ролевая система, см.
+    # app/models/app_settings.py::event_role_id/event_assistant_role_id/event_curator_role_id
+    event_role_id: str | None = None
+    event_assistant_role_id: str | None = None
+    event_curator_role_id: str | None = None
     # None = password login open to anyone who knows the password
     password_login_owner_discord_id: str | None = None
+
+    @property
+    def is_event_submitter(self) -> bool:
+        """Только роль Ивентолога — без обхода даже для администратора, это
+        сознательно закрытый список подающих заявки (см. решение пользователя)."""
+        return bool(self.event_role_id and self.event_role_id in self.role_ids)
+
+    @property
+    def is_event_assistant(self) -> bool:
+        return bool(self.event_assistant_role_id and self.event_assistant_role_id in self.role_ids)
+
+    @property
+    def is_event_curator(self) -> bool:
+        return bool(self.event_curator_role_id and self.event_curator_role_id in self.role_ids)
+
+    @property
+    def can_decide_event(self) -> bool:
+        # админ — предохранительный клапан на случай проблем с ролями, как везде
+        # в проекте; куратор и ассистент равноправны в решении по заявке
+        return self.is_admin or self.is_event_assistant or self.is_event_curator
+
+    @property
+    def can_access_event_room(self) -> bool:
+        return self.is_event_submitter or self.can_decide_event
 
     @property
     def can_escalate_password_login(self) -> bool:
@@ -109,11 +153,26 @@ class AccessContext:
     def is_commander_of(self, regiment_id: int) -> bool:
         return self.is_admin or self.is_high_command or regiment_id in self.commander_regiment_ids
 
+    def can_decide_promotion(self, regiment_id: int) -> bool:
+        """Одобрить/отклонить заявку на повышение — у же не(!) обычному
+        admin_role_id/admin_user_discord_ids администратору, а только создателю
+        (is_founder), высшему командованию или командиру/заму формирования."""
+        return self.is_founder or self.is_high_command or regiment_id in self.commander_regiment_ids
+
     def can_appeal_report(self, regiment_id: int) -> bool:
         return (
             self.is_commander_of(regiment_id)
             or bool(self.role_ids & self.report_appeal_role_ids)
             or regiment_id in self.report_appeal_regiment_ids
+        )
+
+    @property
+    def can_reject_any_report(self) -> bool:
+        """Отдельная привилегия поверх обычного командования формированием —
+        настраивается ролью и/или конкретными людьми (см. app/api/module_access.py),
+        не связана с тем, кто формально командует формированием рапорта."""
+        return bool(self.role_ids & self.report_reject_role_ids) or self.user.discord_id in (
+            self.report_reject_user_discord_ids
         )
 
     def is_full_commander_of(self, regiment_id: int) -> bool:
@@ -180,6 +239,18 @@ class AccessContext:
 
         return specialization.category not in DISCIPLINE_CATEGORIES
 
+    def is_discipline_deputy(self, discipline: str) -> bool:
+        """DEP+ по конкретной ветке (медик/пилот/инженер) — расширенные права
+        поверх обычного инструктора: каталог своей ветки, категории рапортов
+        дисциплины, запрет на обучение (см. вызовы ниже по коду)."""
+        return self.is_admin or discipline in self.deputy_disciplines or discipline in self.curator_disciplines
+
+    def is_discipline_curator(self, discipline: str) -> bool:
+        """CU по конкретной ветке — единственный на весь сервер (по договорённости
+        внутри команды, не enforced в БД), сверх DEP получает кросс-формационный
+        обзор своей ветки и правку самой лестницы специализаций."""
+        return self.is_admin or discipline in self.curator_disciplines
+
     @property
     def can_view_trainings(self) -> bool:
         return (
@@ -218,12 +289,15 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
     # shared by normal login and "view as real person" (see get_access_context)
     role_ids = set(user.roles)
 
-    is_admin = bool(
+    is_founder = bool(
         user.discord_id == PASSWORD_LOGIN_DISCORD_ID
-        or (app_config.admin_role_id in role_ids)
-        or user.discord_id in (app_config.admin_user_discord_ids or [])
         or (app_config.founder_role_id and app_config.founder_role_id in role_ids)
         or user.discord_id in (app_config.founder_user_discord_ids or [])
+    )
+    is_admin = bool(
+        is_founder
+        or (app_config.admin_role_id in role_ids)
+        or user.discord_id in (app_config.admin_user_discord_ids or [])
     )
     is_high_command = bool(app_config.high_command_role_id) and app_config.high_command_role_id in role_ids
 
@@ -233,6 +307,10 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
     is_instructor = bool(matched_instructor_roles)
     is_universal_instructor = any(r.can_teach_all for r in matched_instructor_roles)
     instructor_disciplines = {r.discipline for r in matched_instructor_roles if r.discipline}
+    deputy_disciplines = {
+        r.discipline for r in matched_instructor_roles if r.discipline and r.tier in ("deputy", "curator")
+    }
+    curator_disciplines = {r.discipline for r in matched_instructor_roles if r.discipline and r.tier == "curator"}
 
     # explicit per-regiment assignment, so having a generic commander/deputy role
     # doesn't grant command in every regiment the user's roles touch
@@ -264,10 +342,13 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
 
     return {
         "is_admin": is_admin,
+        "is_founder": is_founder,
         "is_high_command": is_high_command,
         "is_instructor": is_instructor,
         "instructor_disciplines": instructor_disciplines,
         "is_universal_instructor": is_universal_instructor,
+        "deputy_disciplines": deputy_disciplines,
+        "curator_disciplines": curator_disciplines,
         "role_ids": role_ids,
         "commander_regiment_ids": commander_regiment_ids,
         "category_manager_regiment_ids": category_manager_regiment_ids,
@@ -288,12 +369,15 @@ def _build_access_context(
         user=user,
         is_admin=fields["is_admin"],
         is_password_login=is_password_login,
+        is_founder=fields["is_founder"],
         is_real_admin=is_real_admin,
         can_use_view_as=can_use_view_as,
         is_high_command=fields["is_high_command"],
         is_instructor=fields["is_instructor"],
         instructor_disciplines=fields["instructor_disciplines"],
         is_universal_instructor=fields["is_universal_instructor"],
+        deputy_disciplines=fields["deputy_disciplines"],
+        curator_disciplines=fields["curator_disciplines"],
         role_ids=fields["role_ids"],
         commander_regiment_ids=fields["commander_regiment_ids"],
         category_manager_regiment_ids=fields["category_manager_regiment_ids"],
@@ -308,6 +392,11 @@ def _build_access_context(
         training_viewer_role_ids=set(app_config.training_viewer_role_ids),
         report_appeal_regiment_ids=set(app_config.report_appeal_regiment_ids),
         report_appeal_role_ids=set(app_config.report_appeal_role_ids),
+        report_reject_role_ids=set(app_config.report_reject_role_ids),
+        report_reject_user_discord_ids=set(app_config.report_reject_user_discord_ids),
+        event_role_id=app_config.event_role_id,
+        event_assistant_role_id=app_config.event_assistant_role_id,
+        event_curator_role_id=app_config.event_curator_role_id,
         password_login_owner_discord_id=settings.password_login_owner_discord_id
         or app_config.password_login_authorized_discord_id,
     )

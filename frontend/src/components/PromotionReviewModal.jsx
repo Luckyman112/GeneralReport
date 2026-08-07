@@ -31,6 +31,9 @@ export function PromotionReviewModal({ requestId, onClose }) {
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Закрыть" onClick={onClose}>
+          ×
+        </button>
         <h3>Обзор повышения</h3>
 
         {error && <p className="error-text">{error}</p>}

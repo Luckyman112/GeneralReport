@@ -7,6 +7,7 @@ from app.schemas.user import UserRead
 
 class AccessInfo(BaseModel):
     is_admin: bool
+    is_founder: bool = False
     is_password_login: bool
     is_real_admin: bool = False
     can_use_view_as: bool = False
@@ -17,6 +18,10 @@ class AccessInfo(BaseModel):
     # фронт использует, чтобы сузить список специализаций в форме выдачи
     instructor_disciplines: list[str] = []
     is_universal_instructor: bool = False
+    # DEP+/CU дисциплины (см. InstructorRole.tier) — фронт открывает по ним
+    # расширенные разделы (каталог своей ветки, кросс-формационный ростер и т.д.)
+    deputy_disciplines: list[str] = []
+    curator_disciplines: list[str] = []
     # командир/заместитель хотя бы одного формирования — открывает Штаб-категории
     # с open_to_regiment_leadership, даже если сам не состоит в Штабе
     is_regiment_leadership: bool = False
@@ -25,6 +30,8 @@ class AccessInfo(BaseModel):
     soldier_regiment_ids: list[int]
     # extends can_appeal_report beyond commander_regiment_ids
     report_appeal_regiment_ids: list[int] = []
+    # отдельная привилегия "отклонить любой рапорт" — не связана с командованием
+    can_reject_any_report: bool = False
     can_write_violations: bool
     can_view_violations: bool
     can_send_broadcast: bool
@@ -32,6 +39,12 @@ class AccessInfo(BaseModel):
     can_manage_categories: bool
     can_escalate_password_login: bool
     can_view_trainings: bool
+    # Ивентрум — независимая ролевая система (Ивентолог/Ассистент/Куратор)
+    is_event_submitter: bool = False
+    is_event_assistant: bool = False
+    is_event_curator: bool = False
+    can_decide_event: bool = False
+    can_access_event_room: bool = False
     active_transfer: TransferRequestRead | None = None
     characters: list[CharacterRead] = []
 

@@ -21,11 +21,13 @@ from app.crud import regiment_commander as regiment_commander_crud
 from app.crud import report as report_crud
 from app.crud import report_category as report_category_crud
 from app.crud import report_participant as report_participant_crud
+from app.crud import specialization as specialization_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.models.character import Character
 from app.models.report import ReportStatus
+from app.models.specialization import DISCIPLINE_CATEGORIES
 from app.models.user import User
 
 _PHOTO_UPLOAD_ROOT = Path(__file__).resolve().parent.parent.parent / "uploads" / "members"
@@ -187,6 +189,22 @@ async def list_categories(
     return [ReportCategoryRead.model_validate(c) for c in categories]
 
 
+async def _can_manage_discipline_category(
+    db: AsyncSession, access: AccessContext, required_specialization_id: int | None
+) -> bool:
+    """DEP+/куратор дисциплины может заводить/менять СВОИ категории (например
+    "Пост", "Оказание помощи") в любом формировании — привязка к дисциплине
+    идёт через required_specialization_id, не через regiment_id. Категория без
+    привязки (required_specialization_id=None) — не их дело, только
+    высшее командование/админ (can_manage_categories)."""
+    if required_specialization_id is None:
+        return False
+    specialization = await specialization_crud.get_by_id(db, required_specialization_id)
+    if specialization is None or specialization.category not in DISCIPLINE_CATEGORIES:
+        return False
+    return access.is_discipline_deputy(specialization.category)
+
+
 @router.post("/{regiment_id}/categories", response_model=ReportCategoryRead, status_code=201)
 async def create_category(
     regiment_id: int,
@@ -194,9 +212,14 @@ async def create_category(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> ReportCategoryRead:
-    """Добавить категорию рапорта — только высшее командование или администратор."""
-    if not access.can_manage_categories(regiment_id):
-        raise ForbiddenError("Добавлять категории может только высшее командование или администратор")
+    """Добавить категорию рапорта — высшее командование/администратор, либо
+    DEP+/куратор дисциплины для СВОЕЙ категории (required_specialization_id)."""
+    if not access.can_manage_categories(regiment_id) and not await _can_manage_discipline_category(
+        db, access, payload.required_specialization_id
+    ):
+        raise ForbiddenError(
+            "Добавлять категории может высшее командование/администратор, либо DEP+/куратор своей дисциплины"
+        )
     await _get_regiment_or_404(db, regiment_id)
 
     category = await report_category_crud.create(
@@ -233,16 +256,24 @@ async def update_category(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> ReportCategoryRead:
-    """Переименовать категорию и/или изменить список полей рапорта — только высшее
-    командование или администратор."""
-    if not access.can_manage_categories(regiment_id):
-        raise ForbiddenError("Изменять категории может только высшее командование или администратор")
-
+    """Переименовать категорию и/или изменить список полей рапорта — высшее
+    командование/администратор, либо DEP+/куратор дисциплины для своей категории."""
     category = await report_category_crud.get_by_id(db, category_id)
     if category is None or category.regiment_id != regiment_id:
         raise NotFoundError("Категория не найдена")
 
+    if not access.can_manage_categories(regiment_id) and not await _can_manage_discipline_category(
+        db, access, category.required_specialization_id
+    ):
+        raise ForbiddenError(
+            "Изменять категории может высшее командование/администратор, либо DEP+/куратор своей дисциплины"
+        )
+
     changes = payload.model_dump(exclude_unset=True)
+    if "required_specialization_id" in changes and not access.can_manage_categories(regiment_id):
+        # DEP/CU не может перевесить категорию на чужую дисциплину или снять привязку
+        if not await _can_manage_discipline_category(db, access, changes["required_specialization_id"]):
+            raise ForbiddenError("Нельзя перенести категорию в дисциплину, которой вы не курируете")
     # is_detention системный, вручную не редактируется (категория задержания заводится
     # автоматически при создании формирования)
     changes.pop("is_detention", None)
@@ -264,15 +295,19 @@ async def delete_category(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> None:
-    """Удалить категорию рапорта — только высшее командование или администратор."""
-    if not access.can_manage_categories(regiment_id):
-        raise ForbiddenError("Удалять категории может только высшее командование или администратор")
-
+    """Удалить категорию рапорта — высшее командование/администратор, либо
+    DEP+/куратор дисциплины для своей категории."""
     category = await report_category_crud.get_by_id(db, category_id)
     if category is None or category.regiment_id != regiment_id:
         raise NotFoundError("Категория не найдена")
     if category.is_detention or category.is_promotion or category.is_demotion or category.is_training:
         raise ForbiddenError("Это системная категория, её нельзя удалить")
+    if not access.can_manage_categories(regiment_id) and not await _can_manage_discipline_category(
+        db, access, category.required_specialization_id
+    ):
+        raise ForbiddenError(
+            "Удалять категории может высшее командование/администратор, либо DEP+/куратор своей дисциплины"
+        )
 
     await report_category_crud.delete(db, category)
     await audit_log_crud.log(

@@ -2,21 +2,25 @@
 инструкторами (отдельная Discord-роль, см. Settings) и временные запреты на
 обучение — с проверкой лимитов по составу (см. RankTier.*_limit)."""
 import logging
+from datetime import datetime, timedelta, timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
 from app.crud import rank as rank_crud
+from app.crud import regiment as regiment_crud
 from app.crud import specialization as specialization_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
-from app.models.specialization import UNLIMITED_TRAINING_CODE, Specialization
+from app.models.specialization import DISCIPLINE_CATEGORIES, UNLIMITED_TRAINING_CODE, Specialization
 from app.models.user import User
 from app.schemas.specialization import (
+    DisciplineRosterEntry,
     GrantSpecializationRequest,
     InstructorActivityRead,
     InstructorRoleCreate,
@@ -103,6 +107,15 @@ async def _check_can_grant(db: AsyncSession, target: User, specialization: Speci
         raise AppError(f"Лимит по составу «{tier.name}» исчерпан: не более {limit} {label}")
 
 
+def _can_manage_catalog_category(access: AccessContext, category: str) -> bool:
+    """Полный доступ к каталогу — только админ. DEP/CU дисциплины (медик/пилот/
+    инженер) могут заводить/менять ступени ТОЛЬКО своей ветки — остальные
+    категории (class/gear/обычная специализация и т.д.) их не касаются."""
+    if access.is_admin:
+        return True
+    return category in DISCIPLINE_CATEGORIES and access.is_discipline_deputy(category)
+
+
 @router.get("/specializations", response_model=list[SpecializationRead])
 async def list_specializations(db: AsyncSession = Depends(get_db)) -> list[SpecializationRead]:
     """Каталог виден всем авторизованным — нужен, чтобы показать список в личном
@@ -113,15 +126,22 @@ async def list_specializations(db: AsyncSession = Depends(get_db)) -> list[Speci
 
 @router.get("/specializations/instructor-activity", response_model=list[InstructorActivityRead])
 async def get_instructor_activity(
+    period: Literal["all", "month", "week"] = Query(default="all"),
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> list[InstructorActivityRead]:
     """Сколько специализаций выдал каждый инструктор/админ — для контроля
-    нагрузки, только администратор."""
+    нагрузки, только администратор. period — за всё время/месяц/неделю."""
     if not access.is_admin:
         raise ForbiddenError("Дашборд активности инструкторов доступен только администратору")
 
-    counts = await specialization_crud.count_grants_by_instructor(db)
+    since = None
+    if period == "month":
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+    elif period == "week":
+        since = datetime.now(timezone.utc) - timedelta(days=7)
+
+    counts = await specialization_crud.count_grants_by_instructor(db, since=since)
     users = {u.id: u for u in await user_crud.get_by_ids(db, [uid for uid, _ in counts])}
     return [
         InstructorActivityRead(instructor=UserBrief.model_validate(users[uid]), grants_count=count)
@@ -130,14 +150,48 @@ async def get_instructor_activity(
     ]
 
 
+@router.get("/specializations/discipline/{discipline}/roster", response_model=list[DisciplineRosterEntry])
+async def get_discipline_roster(
+    discipline: str,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[DisciplineRosterEntry]:
+    """Кросс-формационный ростер: все бойцы с любой специализацией этой ветки,
+    во всех формированиях сразу — доступно DEP+/куратору ветки или админу."""
+    if discipline not in DISCIPLINE_CATEGORIES:
+        raise NotFoundError("Неизвестная дисциплина")
+    if not access.is_discipline_deputy(discipline):
+        raise ForbiddenError("Кросс-формационный ростер доступен DEP+/куратору своей дисциплины или администратору")
+
+    grants = await specialization_crud.list_grants_by_category(db, discipline)
+    regiments = await regiment_crud.get_all(db)
+
+    entries = []
+    for grant in grants:
+        role_ids = set(grant.user.roles)
+        regiment_names = [r.name for r in regiments if r.discord_role_id in role_ids]
+        entries.append(
+            DisciplineRosterEntry(
+                user=UserBrief.model_validate(grant.user),
+                specialization=SpecializationRead.model_validate(grant.specialization),
+                granted_at=grant.granted_at,
+                regiment_names=regiment_names,
+            )
+        )
+    entries.sort(key=lambda e: e.user.username.lower())
+    return entries
+
+
 @router.post("/specializations", response_model=SpecializationRead, status_code=201)
 async def create_specialization(
     payload: SpecializationCreate,
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> SpecializationRead:
-    if not access.is_admin:
-        raise ForbiddenError("Только администратор может редактировать каталог специализаций")
+    if not _can_manage_catalog_category(access, payload.category):
+        raise ForbiddenError(
+            "Редактировать каталог специализаций может администратор, либо DEP+/куратор своей дисциплины"
+        )
     specialization = await specialization_crud.create(
         db,
         code=payload.code.strip().upper(),
@@ -158,11 +212,16 @@ async def update_specialization(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> SpecializationRead:
-    if not access.is_admin:
-        raise ForbiddenError("Только администратор может редактировать каталог специализаций")
     specialization = await specialization_crud.get_by_id(db, specialization_id)
     if specialization is None:
         raise NotFoundError("Специализация не найдена")
+    if not _can_manage_catalog_category(access, specialization.category):
+        raise ForbiddenError(
+            "Редактировать каталог специализаций может администратор, либо DEP+/куратор своей дисциплины"
+        )
+    new_category = payload.category if payload.category is not None else specialization.category
+    if not _can_manage_catalog_category(access, new_category):
+        raise ForbiddenError("Нельзя перенести специализацию в дисциплину, которой вы не курируете")
 
     changes = payload.model_dump(exclude_unset=True)
     if "code" in changes:
@@ -180,11 +239,13 @@ async def delete_specialization(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> None:
-    if not access.is_admin:
-        raise ForbiddenError("Только администратор может редактировать каталог специализаций")
     specialization = await specialization_crud.get_by_id(db, specialization_id)
     if specialization is None:
         raise NotFoundError("Специализация не найдена")
+    if not _can_manage_catalog_category(access, specialization.category):
+        raise ForbiddenError(
+            "Редактировать каталог специализаций может администратор, либо DEP+/куратор своей дисциплины"
+        )
     await specialization_crud.delete(db, specialization)
     logger.info("%s удалил специализацию %s из каталога", access.user.username, specialization.code)
 
@@ -237,6 +298,7 @@ async def grant_specialization(
         action="specialization_grant",
         details=f"Выдал специализацию {specialization.code} — {specialization.name}",
         target_user_id=target.id,
+        discipline=specialization.category if specialization.category in DISCIPLINE_CATEGORIES else None,
     )
     await notification_crud.create_personal_notification(
         db,
@@ -273,6 +335,7 @@ async def revoke_specialization(
         action="specialization_revoke",
         details=f"Снял специализацию {specialization.code if specialization else '#' + str(grant_row.specialization_id)}",
         target_user_id=target.id,
+        discipline=specialization.category if specialization and specialization.category in DISCIPLINE_CATEGORIES else None,
     )
 
 
@@ -314,16 +377,27 @@ async def create_specialization_ban(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> SpecializationBanRead:
-    if not access.can_grant_specializations:
-        raise ForbiddenError("Запрет на обучение может выставить только инструктор или администратор")
-
-    target = await user_crud.get_by_discord_id(db, discord_id)
-    if target is None:
-        raise NotFoundError("Боец не найден")
+    specialization = None
     if payload.specialization_id is not None:
         specialization = await specialization_crud.get_by_id(db, payload.specialization_id)
         if specialization is None:
             raise NotFoundError("Специализация не найдена")
+
+    # Серьёзное решение — рядовому инструктору недоступно. По конкретной
+    # дисциплинарной специализации может DEP+/куратор этой ветки; запрет "на
+    # всё обучение" (specialization_id не указан) или не-дисциплинарная
+    # специализация — только администратор.
+    allowed = access.is_admin or (
+        specialization is not None
+        and specialization.category in DISCIPLINE_CATEGORIES
+        and access.is_discipline_deputy(specialization.category)
+    )
+    if not allowed:
+        raise ForbiddenError("Запрет на обучение может выставить DEP+/куратор своей дисциплины или администратор")
+
+    target = await user_crud.get_by_discord_id(db, discord_id)
+    if target is None:
+        raise NotFoundError("Боец не найден")
 
     ban = await specialization_crud.create_ban(
         db,
@@ -342,6 +416,7 @@ async def create_specialization_ban(
         action="specialization_ban_create",
         details=f"Запрет на обучение до {until_label}" + (f" — {payload.reason}" if payload.reason else ""),
         target_user_id=target.id,
+        discipline=specialization.category if specialization is not None and specialization.category in DISCIPLINE_CATEGORIES else None,
     )
     return SpecializationBanRead.model_validate(ban)
 
@@ -353,13 +428,21 @@ async def delete_specialization_ban(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> None:
-    if not access.can_grant_specializations:
-        raise ForbiddenError("Снять запрет на обучение может только инструктор или администратор")
-
     ban = await specialization_crud.get_ban_by_id(db, ban_id)
     target = await user_crud.get_by_discord_id(db, discord_id)
     if ban is None or target is None or ban.user_id != target.id:
         raise NotFoundError("Запись не найдена")
+
+    specialization = (
+        await specialization_crud.get_by_id(db, ban.specialization_id) if ban.specialization_id is not None else None
+    )
+    allowed = access.is_admin or (
+        specialization is not None
+        and specialization.category in DISCIPLINE_CATEGORIES
+        and access.is_discipline_deputy(specialization.category)
+    )
+    if not allowed:
+        raise ForbiddenError("Снять запрет на обучение может DEP+/куратор своей дисциплины или администратор")
 
     await specialization_crud.delete_ban(db, ban)
     logger.info("%s снял запрет на обучение у бойца %s раньше срока", access.user.username, discord_id)
@@ -392,18 +475,23 @@ async def create_instructor_role(
     if payload.can_teach_all and payload.discipline is not None:
         raise AppError("«Учит всему» и конкретная дисциплина одновременно не имеют смысла")
 
+    if payload.tier != "instructor" and payload.can_teach_all:
+        raise AppError("«Учит всему» — только обычный инструктор (DEP/CU всегда привязаны к конкретной дисциплине)")
+
     row = await specialization_crud.create_instructor_role(
         db,
         discord_role_id=payload.discord_role_id.strip(),
         label=payload.label.strip(),
         discipline=payload.discipline,
         can_teach_all=payload.can_teach_all,
+        tier=payload.tier,
     )
     logger.info(
-        "%s добавил роль инструктора «%s» (%s)",
+        "%s добавил роль инструктора «%s» (%s, %s)",
         access.user.username,
         row.label,
         "учит всему" if row.can_teach_all else row.discipline,
+        row.tier,
     )
     await audit_log_crud.log(
         db,

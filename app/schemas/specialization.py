@@ -68,6 +68,18 @@ class GrantSpecializationRequest(BaseModel):
     specialization_id: int
 
 
+class DisciplineRosterEntry(BaseModel):
+    """Строка кросс-формационного ростера дисциплины — боец + его специализация
+    этой ветки + формирование(-я), где он состоит (по Discord-ролям)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    user: UserBrief
+    specialization: SpecializationRead
+    granted_at: datetime
+    regiment_names: list[str] = []
+
+
 class SpecializationBanRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -103,6 +115,9 @@ class InstructorActivityRead(BaseModel):
 InstructorDiscipline = Literal["medic", "pilot", "engineer"]
 
 
+InstructorTier = Literal["instructor", "deputy", "curator"]
+
+
 class InstructorRoleRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,6 +126,7 @@ class InstructorRoleRead(BaseModel):
     label: str
     discipline: InstructorDiscipline | None
     can_teach_all: bool
+    tier: InstructorTier = "instructor"
 
 
 class InstructorRoleCreate(BaseModel):
@@ -119,3 +135,6 @@ class InstructorRoleCreate(BaseModel):
     # ровно одно из двух: либо конкретная дисциплина, либо "может учить всему"
     discipline: InstructorDiscipline | None = None
     can_teach_all: bool = False
+    # instructor (обычный) / deputy (DEP) / curator (CU) — иерархия внутри
+    # дисциплины, см. INSTRUCTOR_TIERS
+    tier: InstructorTier = "instructor"

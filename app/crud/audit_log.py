@@ -21,6 +21,7 @@ async def log(
     details: str,
     target_user_id: int | None = None,
     actor_is_admin: bool = False,
+    discipline: str | None = None,
 ) -> None:
     db.add(
         AuditLog(
@@ -29,6 +30,7 @@ async def log(
             details=details,
             target_user_id=target_user_id,
             actor_is_admin=actor_is_admin,
+            discipline=discipline,
         )
     )
     await db.commit()
@@ -55,16 +57,22 @@ async def list_recent(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     admin_only: bool = False,
+    discipline: str | None = None,
+    actions: list[str] | None = None,
 ) -> list[AuditLog]:
     query = select(AuditLog).options(*_LOAD_OPTIONS)
     if action:
         query = query.where(AuditLog.action.ilike(f"%{action}%"))
+    if actions:
+        query = query.where(AuditLog.action.in_(actions))
     if date_from is not None:
         query = query.where(AuditLog.created_at >= date_from)
     if date_to is not None:
         query = query.where(AuditLog.created_at <= date_to)
     if admin_only:
         query = query.where(AuditLog.actor_is_admin.is_(True))
+    if discipline is not None:
+        query = query.where(AuditLog.discipline == discipline)
     query = query.order_by(AuditLog.created_at.desc()).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())

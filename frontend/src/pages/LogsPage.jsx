@@ -106,21 +106,41 @@ function actionLabel(action) {
   return ACTION_LABELS[action] || action;
 }
 
+const DISCIPLINE_LABELS = {
+  medic: "Медицина",
+  pilot: "Пилотирование",
+  engineer: "Инженерия",
+};
+
 export function LogsPage() {
-  const { token } = useAuth();
+  const { token, access } = useAuth();
+  const isAdmin = Boolean(access?.is_admin);
+  const ownDisciplines = access?.deputy_disciplines || [];
   const [entries, setEntries] = useState([]);
   const [actionFilter, setActionFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [adminOnly, setAdminOnly] = useState(false);
+  const [discipline, setDiscipline] = useState(ownDisciplines[0] || "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    if (!isAdmin && !discipline && ownDisciplines[0]) setDiscipline(ownDisciplines[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownDisciplines]);
+
   function load() {
+    if (!isAdmin && !discipline) return;
     setLoading(true);
     setError(null);
     api
-      .listAuditLog(token, { action: actionFilter, dateFrom, dateTo, adminOnly, limit: 500 })
+      .listAuditLog(
+        token,
+        isAdmin
+          ? { action: actionFilter, dateFrom, dateTo, adminOnly, limit: 500 }
+          : { dateFrom, dateTo, discipline, limit: 500 }
+      )
       .then(setEntries)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -147,29 +167,44 @@ export function LogsPage() {
     <div className="page-container logs-page">
       <h2>Журнал действий</h2>
       <p className="hint-text">
-        Все значимые административные и командирские решения — кто, что и когда сделал. Рутинные действия рядового
-        состава (подача своих рапортов, чтение) сюда не попадают.
+        {isAdmin
+          ? "Все значимые административные и командирские решения — кто, что и когда сделал. Рутинные действия рядового состава (подача своих рапортов, чтение) сюда не попадают."
+          : "Только действия по специализациям вашей дисциплины (выдача, снятие, запрет на обучение)."}
       </p>
 
       <div className="reports-toolbar">
-        <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}>
-          <option value="">Все действия</option>
-          {ACTION_GROUPS.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {Object.entries(group.actions).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
+        {isAdmin ? (
+          <>
+            <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}>
+              <option value="">Все действия</option>
+              {ACTION_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {Object.entries(group.actions).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={adminOnly} onChange={(e) => setAdminOnly(e.target.checked)} />
+              Только администраторы
+            </label>
+          </>
+        ) : (
+          ownDisciplines.length > 1 && (
+            <select value={discipline} onChange={(e) => setDiscipline(e.target.value)}>
+              {ownDisciplines.map((d) => (
+                <option key={d} value={d}>
+                  {DISCIPLINE_LABELS[d] || d}
                 </option>
               ))}
-            </optgroup>
-          ))}
-        </select>
+            </select>
+          )
+        )}
         <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="С даты" />
         <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} title="По дату" />
-        <label className="checkbox-label">
-          <input type="checkbox" checked={adminOnly} onChange={(e) => setAdminOnly(e.target.checked)} />
-          Только администраторы
-        </label>
         <button type="button" className="primary" onClick={load} disabled={loading}>
           {loading ? "Загрузка…" : "Применить"}
         </button>

@@ -17,6 +17,7 @@ class UserRead(BaseModel):
     service_id: str | None
     callsign: str | None
     steam_id: str | None
+    steam_verified: bool = False
     created_at: datetime
 
 

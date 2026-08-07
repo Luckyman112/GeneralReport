@@ -150,10 +150,11 @@ async def list_promotion_requests(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> list[PromotionRequestRead]:
-    """Заявки, ожидающие решения. Администратор/высшее командование видят все,
+    """Заявки, ожидающие решения. Создатель/высшее командование видят все,
     обычный командир/заместитель — только по своим формированиям, у остальных
-    список всегда пуст (не для них)."""
-    if access.is_admin or access.is_high_command:
+    список всегда пуст (не для них) — обычный администратор (не создатель) больше
+    не входит в число тех, кто решает по заявкам, см. can_decide_promotion."""
+    if access.is_founder or access.is_high_command:
         requests = await promotion_crud.list_pending(db, regiment_ids=None)
     elif access.commander_regiment_ids:
         requests = await promotion_crud.list_pending(db, regiment_ids=access.commander_regiment_ids)
@@ -171,8 +172,8 @@ async def approve_promotion_request(
     request = await promotion_crud.get_request_by_id(db, request_id)
     if request is None:
         raise NotFoundError("Заявка не найдена")
-    if not access.is_commander_of(request.regiment_id):
-        raise ForbiddenError("Одобрить заявку может только командир формирования")
+    if not access.can_decide_promotion(request.regiment_id):
+        raise ForbiddenError("Одобрить заявку может только командир формирования, высшее командование или создатель")
 
     updated = await promotion_crud.decide(db, request, approve=True, decided_by=access.user.id)
     logger.info("%s одобрил заявку на повышение %s", access.user.username, request_id)
@@ -195,8 +196,8 @@ async def reject_promotion_request(
     request = await promotion_crud.get_request_by_id(db, request_id)
     if request is None:
         raise NotFoundError("Заявка не найдена")
-    if not access.is_commander_of(request.regiment_id):
-        raise ForbiddenError("Отклонить заявку может только командир формирования")
+    if not access.can_decide_promotion(request.regiment_id):
+        raise ForbiddenError("Отклонить заявку может только командир формирования, высшее командование или создатель")
 
     updated = await promotion_crud.decide(db, request, approve=False, decided_by=access.user.id)
     logger.info("%s отклонил заявку на повышение %s", access.user.username, request_id)
