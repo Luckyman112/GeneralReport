@@ -48,7 +48,7 @@ function RosterAllowedRegiments({ allRegiments, currentRegimentId, selectedIds, 
   );
 }
 
-function CategoryRow({ category, tiers, allRegiments, specializations, onChanged, onDeleted }) {
+function CategoryRow({ category, tiers, allRegiments, specializations, squads, onChanged, onDeleted }) {
   const { token } = useAuth();
   const [newField, setNewField] = useState("");
   const [newFieldType, setNewFieldType] = useState("text");
@@ -62,6 +62,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
     category.required_specialization?.id ?? ""
   );
   const [openToLeadershipDraft, setOpenToLeadershipDraft] = useState(category.open_to_regiment_leadership ?? false);
+  const [requiredSquadDraft, setRequiredSquadDraft] = useState(category.required_squad?.id ?? "");
   const [error, setError] = useState(null);
 
   async function handleAddField(e) {
@@ -116,6 +117,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
         commander_only: commanderOnlyDraft,
         required_specialization_id: requiredSpecializationDraft === "" ? null : Number(requiredSpecializationDraft),
         open_to_regiment_leadership: openToLeadershipDraft,
+        required_squad_id: requiredSquadDraft === "" ? null : Number(requiredSquadDraft),
       });
       onChanged();
     } catch (e) {
@@ -140,6 +142,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
           {category.is_promotion && <span className="detention-badge">повышение (системная)</span>}
           {category.is_demotion && <span className="detention-badge">понижение (системная)</span>}
           {category.is_training && <span className="detention-badge">обучение (системная)</span>}
+          {category.required_squad && <span className="hint-text"> — отряд «{category.required_squad.name}»</span>}
         </strong>
         {!isSystemCategory && (
           <button className="ghost" onClick={() => onDeleted(category.id)}>
@@ -281,6 +284,20 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
           Открыто командирам/замам любых формирований
           <InfoHint text="Подать рапорт этой категории смогут не только бойцы этого формирования, но и командир/заместитель ЛЮБОГО другого формирования — например Штаб-категории «Боевая готовность»/«Защита ОВО», куда отчитываются командиры полков." />
         </label>
+        {squads.length > 0 && (
+          <label className="points-inline-label">
+            Только участники отряда
+            <select value={requiredSquadDraft} onChange={(e) => setRequiredSquadDraft(e.target.value)}>
+              <option value="">не ограничено</option>
+              {squads.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <InfoHint text="Категория будет видна в общей форме подачи рапорта только участникам этого отряда (любого уровня) — например «Рапорт о разведке» для отряда «Разведка»." />
+          </label>
+        )}
         <button type="button" onClick={handleSaveRestrictions}>
           Сохранить ограничения
         </button>
@@ -305,12 +322,14 @@ export function CategoryManagerModal({ regiments, onClose }) {
   const [categories, setCategories] = useState([]);
   const [tiers, setTiers] = useState([]);
   const [specializations, setSpecializations] = useState([]);
+  const [squads, setSquads] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryFields, setNewCategoryFields] = useState([]);
   const [newCategoryPoints, setNewCategoryPoints] = useState("");
   const [newCategoryParticipantPoints, setNewCategoryParticipantPoints] = useState("");
   const [newCategoryRequiredSpecializationId, setNewCategoryRequiredSpecializationId] = useState("");
   const [newCategoryOpenToLeadership, setNewCategoryOpenToLeadership] = useState(false);
+  const [newCategoryRequiredSquadId, setNewCategoryRequiredSquadId] = useState("");
   const [newFieldDraft, setNewFieldDraft] = useState("");
   const [newFieldDraftType, setNewFieldDraftType] = useState("text");
   const [newFieldDraftAllowedRegimentIds, setNewFieldDraftAllowedRegimentIds] = useState([]);
@@ -345,6 +364,14 @@ export function CategoryManagerModal({ regiments, onClose }) {
     api.listSpecializations(token).then(setSpecializations).catch(() => setSpecializations([]));
   }, [token]);
 
+  useEffect(() => {
+    if (!regimentId) return;
+    api
+      .listSquads(token, regimentId)
+      .then(setSquads)
+      .catch(() => setSquads([]));
+  }, [token, regimentId]);
+
   function handleAddFieldDraft() {
     if (!newFieldDraft.trim()) return;
     const field = { name: newFieldDraft.trim(), type: newFieldDraftType };
@@ -374,6 +401,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
         participantPoints: newCategoryParticipantPoints === "" ? null : Number(newCategoryParticipantPoints),
         requiredSpecializationId: newCategoryRequiredSpecializationId === "" ? null : Number(newCategoryRequiredSpecializationId),
         openToRegimentLeadership: newCategoryOpenToLeadership,
+        requiredSquadId: newCategoryRequiredSquadId === "" ? null : Number(newCategoryRequiredSquadId),
       });
       setNewCategoryName("");
       setNewCategoryFields([]);
@@ -381,6 +409,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
       setNewCategoryParticipantPoints("");
       setNewCategoryRequiredSpecializationId("");
       setNewCategoryOpenToLeadership(false);
+      setNewCategoryRequiredSquadId("");
       await load(regimentId);
     } catch (e) {
       setError(e.message);
@@ -431,6 +460,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
                   tiers={tiers}
                   allRegiments={allRegiments}
                   specializations={specializations}
+                  squads={squads}
                   onChanged={() => load(regimentId)}
                   onDeleted={handleDeleteCategory}
                 />
@@ -542,6 +572,22 @@ export function CategoryManagerModal({ regiments, onClose }) {
                 {" "}Открыто командирам/замам любых формирований
                 <InfoHint text="Подать рапорт этой категории смогут не только бойцы этого формирования, но и командир/заместитель ЛЮБОГО другого формирования." />
               </label>
+              {squads.length > 0 && (
+                <label>
+                  Только участники отряда (необязательно)
+                  <select
+                    value={newCategoryRequiredSquadId}
+                    onChange={(e) => setNewCategoryRequiredSquadId(e.target.value)}
+                  >
+                    <option value="">не ограничено</option>
+                    {squads.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               <button type="submit" className="primary">
                 Создать категорию

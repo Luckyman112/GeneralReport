@@ -25,7 +25,7 @@ function categoryDiscipline(category) {
 }
 
 export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
-  const { token, user, activeCharacter } = useAuth();
+  const { token, user, activeCharacter, access } = useAuth();
   const preferredRegimentId = activeCharacter?.regiment.id;
   const defaultRegimentId = regiments.some((r) => r.id === preferredRegimentId)
     ? preferredRegimentId
@@ -58,12 +58,17 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
         // Задержание/обучение оформляются отдельными формами (кнопка "Рапорт о
         // задержании" и Инструкторская), повышение создаётся автоматически —
         // вручную выбрать их в обычной форме нельзя
+        const squadIds = new Set(access?.squad_ids || []);
         const selectable = data.filter((c) => {
           if (c.is_detention || c.is_promotion || c.is_demotion || c.is_training) return false;
           if (discipline) return categoryDiscipline(c) === discipline;
           // общая форма — категории дисциплин сюда не попадают, подача только
           // со страниц Специализации (Медицина/Инженерия и т.п.)
-          return categoryDiscipline(c) === null;
+          if (categoryDiscipline(c) !== null) return false;
+          // отрядные категории (например "Рапорт о разведке") видны только
+          // участникам этого отряда — см. решение пользователя
+          if (c.required_squad && !squadIds.has(c.required_squad.id)) return false;
+          return true;
         });
         setCategories(selectable);
         setCategoryId(selectable[0]?.id ?? "");

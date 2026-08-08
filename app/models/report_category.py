@@ -8,6 +8,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.rank import Rank
     from app.models.specialization import Specialization
+    from app.models.squad import Squad
 
 
 class ReportCategory(Base):
@@ -62,3 +63,8 @@ class ReportCategory(Base):
     # в app/api/reports.py. Члены СВОЕГО формирования категории по-прежнему
     # подают как обычно, независимо от этого флага.
     open_to_regiment_leadership: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Подавать рапорт этой категории может только участник этого отряда (например
+    # "Рапорт о разведке" -> отряд "Разведка") — None означает, что такого
+    # ограничения нет. Отряд всегда из того же формирования, что и категория.
+    required_squad_id: Mapped[int | None] = mapped_column(ForeignKey("squads.id"), nullable=True)
+    required_squad: Mapped["Squad | None"] = relationship()

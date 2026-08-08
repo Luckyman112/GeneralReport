@@ -19,6 +19,7 @@ from app.crud import report_category as report_category_crud
 from app.crud import report_image as report_image_crud
 from app.crud import report_participant as report_participant_crud
 from app.crud import specialization as specialization_crud
+from app.crud import squad as squad_crud
 from app.crud import stats as stats_crud
 from app.crud import user as user_crud
 from app.crud import violation as violation_crud
@@ -70,6 +71,14 @@ async def _check_category_filing_restrictions(db: AsyncSession, access: AccessCo
         if not has_it:
             spec_label = category.required_specialization.name if category.required_specialization else "нужная специализация"
             raise ForbiddenError(f"Подавать рапорт категории «{category.name}» может только боец со специализацией «{spec_label}»")
+
+    if category.required_squad_id is not None:
+        membership = await squad_crud.get_membership(
+            db, squad_id=category.required_squad_id, discord_id=access.user.discord_id
+        )
+        if membership is None:
+            squad_label = category.required_squad.name if category.required_squad else "нужный отряд"
+            raise ForbiddenError(f"Подавать рапорт категории «{category.name}» может только участник отряда «{squad_label}»")
 
 
 def _attach_training_specializations(read: ReportRead, report, specs_by_id: dict) -> None:

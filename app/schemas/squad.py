@@ -1,6 +1,16 @@
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
+class SquadBrief(BaseModel):
+    """Лёгкая ссылка на отряд — для привязки категории рапорта (см.
+    ReportCategory.required_squad_id), без состава."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
 class SquadMemberRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

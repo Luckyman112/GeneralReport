@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.schemas.rank import RankRead
 from app.schemas.specialization import SpecializationRead
+from app.schemas.squad import SquadBrief
 
 
 class ReportCategoryField(BaseModel):
@@ -35,6 +36,7 @@ class ReportCategoryRead(BaseModel):
     commander_only: bool = False
     required_specialization: SpecializationRead | None = None
     open_to_regiment_leadership: bool = False
+    required_squad: SquadBrief | None = None
 
 
 class ReportCategoryCreate(BaseModel):
@@ -49,6 +51,9 @@ class ReportCategoryCreate(BaseModel):
     # "Медицинский рапорт" -> базовый класс "Медик") — None = ограничения нет
     required_specialization_id: int | None = None
     open_to_regiment_leadership: bool = False
+    # Подавать рапорт может только участник этого отряда (например "Рапорт о
+    # разведке" -> отряд "Разведка") — None = ограничения нет
+    required_squad_id: int | None = None
 
 
 class ReportCategoryUpdate(BaseModel):
@@ -65,3 +70,4 @@ class ReportCategoryUpdate(BaseModel):
     commander_only: bool | None = None
     required_specialization_id: int | None = None
     open_to_regiment_leadership: bool | None = None
+    required_squad_id: int | None = None

@@ -294,6 +294,14 @@ async def _can_manage_discipline_category(
     return access.is_discipline_deputy(specialization.category)
 
 
+async def _validate_required_squad(db: AsyncSession, regiment_id: int, required_squad_id: int | None) -> None:
+    if required_squad_id is None:
+        return
+    squad = await squad_crud.get_by_id(db, required_squad_id)
+    if squad is None or squad.regiment_id != regiment_id:
+        raise AppError("Отряд не найден в этом формировании")
+
+
 @router.post("/{regiment_id}/categories", response_model=ReportCategoryRead, status_code=201)
 async def create_category(
     regiment_id: int,
@@ -310,6 +318,7 @@ async def create_category(
             "Добавлять категории может высшее командование/администратор, либо DEP+/куратор своей дисциплины"
         )
     await _get_regiment_or_404(db, regiment_id)
+    await _validate_required_squad(db, regiment_id, payload.required_squad_id)
 
     category = await report_category_crud.create(
         db,
@@ -325,6 +334,7 @@ async def create_category(
         commander_only=payload.commander_only,
         required_specialization_id=payload.required_specialization_id,
         open_to_regiment_leadership=payload.open_to_regiment_leadership,
+        required_squad_id=payload.required_squad_id,
     )
     logger.info("%s добавил категорию '%s' формированию %s", access.user.username, category.name, regiment_id)
     await audit_log_crud.log(
@@ -363,6 +373,8 @@ async def update_category(
         # DEP/CU не может перевесить категорию на чужую дисциплину или снять привязку
         if not await _can_manage_discipline_category(db, access, changes["required_specialization_id"]):
             raise ForbiddenError("Нельзя перенести категорию в дисциплину, которой вы не курируете")
+    if "required_squad_id" in changes:
+        await _validate_required_squad(db, regiment_id, changes["required_squad_id"])
     # is_detention системный, вручную не редактируется (категория задержания заводится
     # автоматически при создании формирования)
     changes.pop("is_detention", None)

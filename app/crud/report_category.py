@@ -4,7 +4,11 @@ from sqlalchemy.orm import selectinload
 
 from app.models.report_category import ReportCategory
 
-_LOAD_OPTIONS = [selectinload(ReportCategory.min_rank), selectinload(ReportCategory.required_specialization)]
+_LOAD_OPTIONS = [
+    selectinload(ReportCategory.min_rank),
+    selectinload(ReportCategory.required_specialization),
+    selectinload(ReportCategory.required_squad),
+]
 
 
 async def get_by_regiment(db: AsyncSession, regiment_id: int) -> list[ReportCategory]:
@@ -86,6 +90,7 @@ async def create(
     commander_only: bool = False,
     required_specialization_id: int | None = None,
     open_to_regiment_leadership: bool = False,
+    required_squad_id: int | None = None,
 ) -> ReportCategory:
     category = ReportCategory(
         regiment_id=regiment_id,
@@ -98,6 +103,7 @@ async def create(
         commander_only=commander_only,
         required_specialization_id=required_specialization_id,
         open_to_regiment_leadership=open_to_regiment_leadership,
+        required_squad_id=required_squad_id,
     )
     db.add(category)
     await db.commit()

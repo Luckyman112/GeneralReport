@@ -37,7 +37,13 @@ async def update_tier_labels(db: AsyncSession, squad: Squad, *, tier_labels: lis
 async def delete(db: AsyncSession, squad: Squad) -> None:
     await db.execute(SquadMembership.__table__.delete().where(SquadMembership.squad_id == squad.id))
     await db.delete(squad)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise AppError(
+            "Этот отряд привязан к категории рапорта («Только участники отряда») — сначала снимите привязку"
+        )
 
 
 async def list_members(db: AsyncSession, *, squad_id: int) -> list[SquadMembership]:
@@ -73,6 +79,14 @@ async def update_member_tier(db: AsyncSession, membership: SquadMembership, *, t
     await db.commit()
     await db.refresh(membership)
     return membership
+
+
+async def list_squad_ids_for_discord_id(db: AsyncSession, *, discord_id: str) -> list[int]:
+    """Все отряды (в любых формированиях), где состоит этот человек — для
+    AccessContext.squad_ids, гейтит подачу отрядных категорий рапорта (см.
+    ReportCategory.required_squad_id)."""
+    result = await db.execute(select(SquadMembership.squad_id).where(SquadMembership.discord_id == discord_id))
+    return list(result.scalars().all())
 
 
 async def get_membership(db: AsyncSession, *, squad_id: int, discord_id: str) -> SquadMembership | None:

@@ -13,6 +13,7 @@ from app.crud import app_settings as app_settings_crud
 from app.crud import regiment as regiment_crud
 from app.crud import regiment_commander as regiment_commander_crud
 from app.crud import specialization as specialization_crud
+from app.crud import squad as squad_crud
 from app.models.specialization import DISCIPLINE_CATEGORIES
 from app.crud import user as user_crud
 from app.database import get_db
@@ -78,6 +79,9 @@ class AccessContext:
     # преподаёт ветку, необязательно ей обучен сам, хотя обычно совпадает).
     # Для доступа к разделам Специализации (см. can_access_discipline)
     specialization_disciplines: set[str] = field(default_factory=set)
+    # Отряды (в любых формированиях), где человек состоит — гейтит подачу
+    # отрядных категорий рапорта (см. ReportCategory.required_squad_id)
+    squad_ids: set[int] = field(default_factory=set)
     role_ids: set[str] = field(default_factory=set)
     commander_regiment_ids: set[int] = field(default_factory=set)
     # subset of commander_regiment_ids where role is specifically "commander"
@@ -344,6 +348,7 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
         for g in own_specialization_grants
         if g.specialization.category in DISCIPLINE_CATEGORIES
     }
+    squad_ids = set(await squad_crud.list_squad_ids_for_discord_id(db, discord_id=user.discord_id))
 
     # explicit per-regiment assignment, so having a generic commander/deputy role
     # doesn't grant command in every regiment the user's roles touch
@@ -383,6 +388,7 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
         "deputy_disciplines": deputy_disciplines,
         "curator_disciplines": curator_disciplines,
         "specialization_disciplines": specialization_disciplines,
+        "squad_ids": squad_ids,
         "role_ids": role_ids,
         "commander_regiment_ids": commander_regiment_ids,
         "category_manager_regiment_ids": category_manager_regiment_ids,
@@ -413,6 +419,7 @@ def _build_access_context(
         deputy_disciplines=fields["deputy_disciplines"],
         curator_disciplines=fields["curator_disciplines"],
         specialization_disciplines=fields["specialization_disciplines"],
+        squad_ids=fields["squad_ids"],
         role_ids=fields["role_ids"],
         commander_regiment_ids=fields["commander_regiment_ids"],
         category_manager_regiment_ids=fields["category_manager_regiment_ids"],

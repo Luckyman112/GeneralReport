@@ -192,7 +192,7 @@ export const api = {
   createCategory: (
     token,
     regimentId,
-    { name, fields, points, participantPoints, requiredSpecializationId, openToRegimentLeadership }
+    { name, fields, points, participantPoints, requiredSpecializationId, openToRegimentLeadership, requiredSquadId }
   ) =>
     request(`/api/regiments/${regimentId}/categories`, {
       method: "POST",
@@ -204,6 +204,7 @@ export const api = {
         participant_points: participantPoints ?? null,
         required_specialization_id: requiredSpecializationId ?? null,
         open_to_regiment_leadership: openToRegimentLeadership ?? false,
+        required_squad_id: requiredSquadId ?? null,
       },
     }),
   // Передаём только реально переданные поля (без null-заполнителей) — бэкенд

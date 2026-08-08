@@ -26,6 +26,9 @@ class AccessInfo(BaseModel):
     # ветку) — доступ к разделам Специализации (Медицина/Инженерия), см.
     # AccessContext.can_access_discipline
     specialization_disciplines: list[str] = []
+    # Отряды (в любых формированиях), где состоит человек — определяет, какие
+    # отрядные категории рапорта видны в общей форме (см. ReportForm.jsx)
+    squad_ids: list[int] = []
     # командир/заместитель хотя бы одного формирования — открывает Штаб-категории
     # с open_to_regiment_leadership, даже если сам не состоит в Штабе
     is_regiment_leadership: bool = False
