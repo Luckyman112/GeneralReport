@@ -382,6 +382,12 @@ export const api = {
   deleteViolation: (token, violationId) =>
     request(`/api/violations/${violationId}`, { method: "DELETE", token }),
 
+  listWanted: (token) => request("/api/wanted", { token }),
+  createWanted: (token, payload) => request("/api/wanted", { method: "POST", token, body: payload }),
+  resolveWanted: (token, entryId, resolution) =>
+    request(`/api/wanted/${entryId}/resolve`, { method: "POST", token, body: { resolution } }),
+  deleteWanted: (token, entryId) => request(`/api/wanted/${entryId}`, { method: "DELETE", token }),
+
   getModuleAccess: (token) => request("/api/module-access", { token }),
   updateModuleAccess: (token, changes) =>
     request("/api/module-access", { method: "PATCH", token, body: changes }),

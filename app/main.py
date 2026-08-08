@@ -36,6 +36,7 @@ from app.api.stats import router as stats_router
 from app.api.steam import router as steam_router
 from app.api.transfer_requests import router as transfer_requests_router
 from app.api.violations import router as violations_router
+from app.api.wanted import router as wanted_router
 from app.config import settings
 from app.core import backup_scheduler
 from app.core.rate_limit import RateLimitMiddleware
@@ -83,6 +84,7 @@ app.include_router(me_router, prefix="/api")
 app.include_router(app_settings_router, prefix="/api")
 app.include_router(ranks_router, prefix="/api")
 app.include_router(violations_router, prefix="/api")
+app.include_router(wanted_router, prefix="/api")
 app.include_router(transfer_requests_router, prefix="/api")
 app.include_router(health_router, prefix="/api")
 app.include_router(characters_router, prefix="/api")

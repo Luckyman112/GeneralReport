@@ -35,6 +35,7 @@ const RegimentsAdminPage = lazy(() =>
 const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const LogsPage = lazy(() => import("./pages/LogsPage").then((m) => ({ default: m.LogsPage })));
 const ViolationsPage = lazy(() => import("./pages/ViolationsPage").then((m) => ({ default: m.ViolationsPage })));
+const WantedPage = lazy(() => import("./pages/WantedPage").then((m) => ({ default: m.WantedPage })));
 const InstructorRoomPage = lazy(() =>
   import("./pages/InstructorRoomPage").then((m) => ({ default: m.InstructorRoomPage }))
 );
@@ -214,6 +215,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute violationsOnly>
               <ViolationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/wanted"
+          element={
+            <ProtectedRoute>
+              <WantedPage />
             </ProtectedRoute>
           }
         />

@@ -31,6 +31,7 @@ export function Sidebar({ open, onClose }) {
               <span className="sidebar-links-group-label">Служба</span>
               <Link to="/main" onClick={onClose}>Главное</Link>
               <Link to="/reports" onClick={onClose}>Рапорты</Link>
+              <Link to="/wanted" onClick={onClose}>Розыск</Link>
               <button
                 type="button"
                 className="ghost sidebar-link-button"

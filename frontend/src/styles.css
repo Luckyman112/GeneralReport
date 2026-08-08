@@ -2585,6 +2585,32 @@ label {
   margin-left: 0.3rem;
 }
 
+/* Архив розыска — снятые с розыска записи, перечёркнутые + красная причина
+ * снятия (см. решение пользователя) */
+.wanted-archived-row .report-content,
+.wanted-archived-row .report-row-header .report-regiment {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.wanted-resolution-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  padding: 0.1rem 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.wanted-resolve-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 input[type="file"] {
   display: block;
   font-family: var(--font-body);

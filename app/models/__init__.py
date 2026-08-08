@@ -21,6 +21,7 @@ from app.models.reprimand import Reprimand
 from app.models.specialization import InstructorRole, Specialization, SpecializationBan, UserSpecialization
 from app.models.user import User
 from app.models.violation import Violation
+from app.models.wanted import WantedEntry
 
 __all__ = [
     "User",
@@ -52,4 +53,5 @@ __all__ = [
     "Event",
     "EventStatus",
     "EventMap",
+    "WantedEntry",
 ]
