@@ -48,3 +48,16 @@ class EventMapRead(BaseModel):
 
 class EventMapCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+
+
+class EventRosterEntry(BaseModel):
+    """Строка ростера Ивентрума — участник с ролью Ивентолог/Ассистент/Куратор
+    и его статистика по заявкам (см. решение пользователя)."""
+
+    discord_id: str
+    username: str
+    avatar_url: str | None = None
+    role: str  # "ивентолог" | "ассистент" | "куратор"
+    submitted_count: int
+    approved_count: int
+    rejected_count: int

@@ -4,9 +4,12 @@ Discord-канал (см. app/core/discord_client.py::send_channel_message).
 Отдельная от Report сущность/UI — набор полей задаётся на фронте, не
 конструктором в БД (см. Event.payload), см. решение пользователя."""
 import logging
+import uuid
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
@@ -17,13 +20,29 @@ from app.crud import app_settings as app_settings_crud
 from app.crud import event as event_crud
 from app.crud import regiment as regiment_crud
 from app.database import get_db
-from app.exceptions import ForbiddenError, NotFoundError
-from app.schemas.event import EventCreate, EventMapCreate, EventMapRead, EventRead, EventRejectRequest, EventUpdate
+from app.exceptions import AppError, ForbiddenError, NotFoundError
+from app.schemas.event import (
+    EventCreate,
+    EventMapCreate,
+    EventMapRead,
+    EventRead,
+    EventRejectRequest,
+    EventRosterEntry,
+    EventUpdate,
+)
 from app.schemas.regiment_commander import GuildMemberRead
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/event-room", tags=["event-room"])
+
+# "летят те, кем командует тот" — командующего часто узнают только по ходу
+# брифинга, не до подачи заявки (см. решение пользователя)
+_COMMANDER_TBD = "Определится на брифинге"
+
+_UPLOAD_ROOT = Path(__file__).resolve().parent.parent.parent / "uploads" / "events"
+_ALLOWED_IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+_MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 МБ, как у картинок рапортов
 
 
 @router.get("", response_model=list[EventRead])
@@ -72,6 +91,103 @@ async def get_member_candidates(
     ]
 
 
+@router.get("/roster", response_model=list[EventRosterEntry])
+async def get_roster(
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[EventRosterEntry]:
+    """Состав Ивентрума (Ивентолог/Ассистент/Куратор) с их статистикой по
+    заявкам — сколько подал/одобрено/отклонено (см. решение пользователя)."""
+    if not access.can_access_event_room:
+        raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
+
+    app_config = await app_settings_crud.get(db)
+    role_labels = {
+        app_config.event_curator_role_id: "куратор",
+        app_config.event_assistant_role_id: "ассистент",
+        app_config.event_role_id: "ивентолог",
+    }
+    role_labels.pop(None, None)
+    if not role_labels:
+        return []
+
+    members = await discord_client.fetch_guild_members()
+    all_events = await event_crud.list_all(db)
+    counts: dict[str, dict[str, int]] = {}
+    for ev in all_events:
+        discord_id = ev.submitted_by.discord_id
+        bucket = counts.setdefault(discord_id, {"submitted": 0, "approved": 0, "rejected": 0})
+        bucket["submitted"] += 1
+        if ev.status == "approved":
+            bucket["approved"] += 1
+        elif ev.status == "rejected":
+            bucket["rejected"] += 1
+
+    entries: list[EventRosterEntry] = []
+    for member in members:
+        member_role_ids = set(member.get("roles") or [])
+        # куратор > ассистент > ивентолог — если роли совмещены, показываем старшую
+        role = next((label for role_id, label in role_labels.items() if role_id in member_role_ids), None)
+        if role is None:
+            continue
+        stats = counts.get(member["discord_id"], {"submitted": 0, "approved": 0, "rejected": 0})
+        entries.append(
+            EventRosterEntry(
+                discord_id=member["discord_id"],
+                username=member["username"],
+                avatar_url=member.get("avatar_url"),
+                role=role,
+                submitted_count=stats["submitted"],
+                approved_count=stats["approved"],
+                rejected_count=stats["rejected"],
+            )
+        )
+
+    role_order = {"куратор": 0, "ассистент": 1, "ивентолог": 2}
+    entries.sort(key=lambda e: (role_order.get(e.role, 9), -e.submitted_count, e.username))
+    return entries
+
+
+@router.post("/upload-map-image")
+async def upload_map_image(
+    file: UploadFile = File(...),
+    access: AccessContext = Depends(get_access_context),
+) -> dict:
+    """Своя картинка карты вместо/вместе с названием из каталога (см. решение
+    пользователя) — независима от конкретной заявки, ссылка на файл кладётся
+    в payload.map_image_url при подаче/правке заявки."""
+    if not access.can_access_event_room:
+        raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
+
+    ext = _ALLOWED_IMAGE_TYPES.get(file.content_type)
+    if ext is None:
+        raise AppError("Разрешены только изображения: JPEG, PNG, WEBP")
+
+    content = await file.read()
+    if len(content) > _MAX_IMAGE_SIZE:
+        raise AppError("Файл слишком большой (максимум 5 МБ)")
+
+    _UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4()}{ext}"
+    (_UPLOAD_ROOT / filename).write_bytes(content)
+    return {"url": f"/uploads/events/{filename}"}
+
+
+@router.post("/preview")
+async def preview_event_card(
+    payload: EventCreate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> Response:
+    """Как будет выглядеть карточка-досье — без сохранения заявки, до отправки
+    на одобрение (см. решение пользователя)."""
+    if not access.is_event_submitter:
+        raise ForbiddenError("Подавать заявки на ивент может только Ивентолог, Ассистент/Куратор ивентологии или создатель")
+
+    image_bytes = await _render_event_image(db, event_id=0, title=payload.title.strip() or "Без названия", payload=payload.payload)
+    return StreamingResponse(iter([image_bytes]), media_type="image/png")
+
+
 @router.get("/{event_id}", response_model=EventRead)
 async def get_event(
     event_id: int,
@@ -93,18 +209,41 @@ async def update_event(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> EventRead:
-    """Правка, пока заявка pending — многое (например, командующего операции)
-    узнают только по мере брифинга, уже после подачи заявки (см. решение
-    пользователя)."""
+    """Правка заявки — доступна и пока она ожидает решения, и уже после
+    одобрения (многое, например командующего операции, узнают только по мере
+    брифинга — см. решение пользователя). Отклонённую заявку менять нельзя —
+    решение по ней уже окончательно. Если заявка уже была одобрена, дозаполнение
+    отправляет в Discord НОВОЕ сообщение с обновлённой карточкой (см. решение
+    пользователя), а не редактирует старое."""
     row = await event_crud.get_by_id(db, event_id)
     if row is None:
         raise NotFoundError("Заявка не найдена")
-    if row.status != "pending":
-        raise ForbiddenError("Менять можно только заявку, ожидающую решения")
+    if row.status == "rejected":
+        raise ForbiddenError("Отклонённую заявку менять нельзя")
     if row.submitted_by_user_id != access.user.id and not access.can_decide_event:
         raise ForbiddenError("Редактировать заявку может только её автор или Ассистент/Куратор ивентологии")
 
-    updated = await event_crud.update_pending(db, row, title=payload.title.strip(), payload=payload.payload)
+    was_approved = row.status == "approved"
+    updated = await event_crud.update_content(db, row, title=payload.title.strip(), payload=payload.payload)
+
+    if was_approved:
+        app_config = await app_settings_crud.get(db)
+        if app_config.event_notify_channel_id:
+            try:
+                embed = await _build_event_embed(db, updated)
+                embed["title"] = f"🔄 {embed['title']} — обновление"
+                image_bytes = await _render_event_image(
+                    db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
+                )
+                await discord_client.send_channel_message_with_file(
+                    app_config.event_notify_channel_id,
+                    embed=embed,
+                    file_bytes=image_bytes,
+                    filename=f"operation-{updated.id}-update.png",
+                )
+            except Exception:
+                logger.exception("Не удалось отправить обновление ивента «%s» в Discord", updated.title)
+
     event_bus.publish("event_room")
     return EventRead.model_validate(updated)
 
@@ -122,11 +261,16 @@ def _format_datetime(value: str | None) -> str | None:
 def _format_audience(value: dict | None, regiments_by_id: dict, *, plain: bool, members_by_id: dict) -> str | None:
     """Участники/приписной состав — либо роль формирования, либо список людей
     (см. решение пользователя про поля формы ивента). plain=True — для
-    картинки-досье (там нет живых Discord-упоминаний, нужны обычные имена)."""
+    картинки-досье (там нет живых Discord-упоминаний, нужны обычные имена).
+    custom_name — нишевое формирование, которого нет в каталоге CRM, вписанное
+    вручную (см. решение пользователя)."""
     if not value:
         return None
     mode = value.get("mode")
     if mode == "role":
+        custom_name = (value.get("custom_name") or "").strip()
+        if custom_name:
+            return custom_name
         regiment_id = value.get("regiment_id")
         regiment = regiments_by_id.get(regiment_id)
         return regiment.name if regiment else None
@@ -155,8 +299,8 @@ async def _build_event_embed(db: AsyncSession, row) -> dict:
 
     add_field("🕐 Начало брифинга", _format_datetime(payload.get("briefing_start")))
     add_field("👤 Проводящий", f"<@{row.submitted_by.discord_id}>")
-    if payload.get("commander_discord_id"):
-        add_field("⭐ Командующий", f"<@{payload['commander_discord_id']}>")
+    commander_id = payload.get("commander_discord_id")
+    add_field("⭐ Командующий", f"<@{commander_id}>" if commander_id else _COMMANDER_TBD)
 
     map_name = None
     map_id = payload.get("map_id")
@@ -173,8 +317,18 @@ async def _build_event_embed(db: AsyncSession, row) -> dict:
     }
 
 
-async def _render_event_image(db: AsyncSession, row) -> bytes:
-    payload = row.payload or {}
+def _read_map_image(payload: dict) -> bytes | None:
+    url = payload.get("map_image_url")
+    if not url:
+        return None
+    path = _UPLOAD_ROOT / Path(url).name
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+async def _render_event_image(db: AsyncSession, *, event_id: int, title: str, payload: dict) -> bytes:
     regiments = await regiment_crud.get_all(db)
     regiments_by_id = {r.id: r for r in regiments}
     members = await discord_client.fetch_guild_members()
@@ -196,14 +350,15 @@ async def _render_event_image(db: AsyncSession, row) -> bytes:
         map_name = map_row.name if map_row else None
 
     return render_operation_dossier(
-        event_id=row.id,
-        title=row.title,
+        event_id=event_id,
+        title=title,
         summary=payload.get("summary"),
         objective=payload.get("objective"),
-        task=payload.get("task"),
+        tasks=payload.get("tasks"),
         threat=payload.get("threat"),
         participants_label=participants_label,
         map_name=map_name,
+        map_image=_read_map_image(payload),
     )
 
 
@@ -227,7 +382,9 @@ async def approve_event(
     if app_config.event_notify_channel_id:
         try:
             embed = await _build_event_embed(db, updated)
-            image_bytes = await _render_event_image(db, updated)
+            image_bytes = await _render_event_image(
+                db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
+            )
             await discord_client.send_channel_message_with_file(
                 app_config.event_notify_channel_id,
                 embed=embed,

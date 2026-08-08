@@ -642,6 +642,30 @@ export const api = {
   listEventMaps: (token) => request("/api/event-room/maps/all", { token }),
   createEventMap: (token, name) => request("/api/event-room/maps", { method: "POST", token, body: { name } }),
   deleteEventMap: (token, mapId) => request(`/api/event-room/maps/${mapId}`, { method: "DELETE", token }),
+  getEventRoster: (token) => request("/api/event-room/roster", { token }),
+  uploadEventMapImage: (token, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request("/api/event-room/upload-map-image", { method: "POST", token, body: formData });
+  },
+  // не через request() — ответ бинарный (PNG), а не JSON, см. app/api/event_room.py::preview_event_card
+  previewEventCard: async (token, body) => {
+    const response = await fetch(`${API_BASE_URL}/api/event-room/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      let detail = null;
+      try {
+        detail = (await response.json()).detail;
+      } catch {
+        // тело ответа не JSON
+      }
+      throw new ApiError(response.status, detail);
+    }
+    return response.blob();
+  },
 };
 
 export { ApiError };

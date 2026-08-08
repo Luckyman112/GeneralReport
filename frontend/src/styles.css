@@ -2048,6 +2048,90 @@ label {
   margin-bottom: 0.3rem;
 }
 
+.datetime-picker {
+  position: relative;
+}
+
+.datetime-picker-toggle {
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+}
+
+.datetime-picker-flyout {
+  position: absolute;
+  top: 105%;
+  left: 0;
+  z-index: 10;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  animation: flyout-in 0.15s ease both;
+  width: 280px;
+}
+
+.datetime-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.datetime-picker-header button {
+  padding: 0.15rem 0.6rem;
+}
+
+.datetime-picker-weekdays,
+.datetime-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.2rem;
+  text-align: center;
+}
+
+.datetime-picker-weekdays span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.datetime-picker-day {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.3rem 0;
+  color: var(--text);
+}
+
+.datetime-picker-day:hover {
+  border-color: var(--accent);
+}
+
+.datetime-picker-day-selected {
+  background: var(--accent);
+  color: #fff;
+}
+
+.datetime-picker-time {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.datetime-picker-time select {
+  width: auto;
+}
+
+.datetime-picker-actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
 .member-search-option {
   display: flex;
   align-items: center;

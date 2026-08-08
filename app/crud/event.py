@@ -39,10 +39,10 @@ async def create(db: AsyncSession, *, title: str, payload: dict, submitted_by_us
     return await db.get(Event, row.id, options=_LOAD_OPTIONS, populate_existing=True)
 
 
-async def update_pending(db: AsyncSession, event: Event, *, title: str, payload: dict) -> Event:
-    """Правка заявки, пока она pending — доступно автору и куратору/ассистенту
-    (см. app/api/event_room.py) — многое (например, командующего) узнают только
-    по мере брифинга, после подачи."""
+async def update_content(db: AsyncSession, event: Event, *, title: str, payload: dict) -> Event:
+    """Правка заявки — доступна автору и Ассистенту/Куратору, как пока заявка
+    ожидает решения, так и уже после одобрения (см. app/api/event_room.py) —
+    многое (например, командующего) узнают только по мере брифинга."""
     event.title = title
     event.payload = payload
     await db.commit()

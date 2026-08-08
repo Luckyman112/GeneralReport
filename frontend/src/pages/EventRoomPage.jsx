@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { DateTimePicker } from "../components/DateTimePicker";
 import { EmptyState } from "../components/EmptyState";
 import { InlineSpinner } from "../components/InlineSpinner";
 import { MemberSearchPicker } from "../components/MemberSearchPicker";
@@ -12,8 +13,14 @@ const STATUS_LABELS = {
   rejected: "Отклонено",
 };
 
+const ROLE_LABELS = {
+  куратор: "Куратор",
+  ассистент: "Ассистент",
+  ивентолог: "Ивентолог",
+};
+
 function emptyAudience() {
-  return { mode: "role", regiment_id: null, discord_ids: [] };
+  return { mode: "role", regiment_id: null, custom_name: "", discord_ids: [] };
 }
 
 function emptyForm() {
@@ -21,13 +28,14 @@ function emptyForm() {
     title: "",
     summary: "",
     objective: "",
-    task: "",
+    tasks: [""],
     threat: "",
     briefing_start: "",
     participants: emptyAudience(),
     attached: emptyAudience(),
     commander_discord_id: "",
     map_id: "",
+    map_image_url: "",
   };
 }
 
@@ -35,13 +43,24 @@ function formToPayload(form) {
   return {
     summary: form.summary.trim() || null,
     objective: form.objective.trim() || null,
-    task: form.task.trim() || null,
+    tasks: form.tasks.map((t) => t.trim()).filter(Boolean),
     threat: form.threat.trim() || null,
     briefing_start: form.briefing_start || null,
-    participants: form.participants.mode === "role" ? form.participants : { ...form.participants, regiment_id: null },
-    attached: form.attached.discord_ids.length || form.attached.regiment_id ? form.attached : null,
+    participants:
+      form.participants.mode === "role"
+        ? { mode: "role", regiment_id: form.participants.custom_name ? null : form.participants.regiment_id, custom_name: form.participants.custom_name || null }
+        : { mode: "people", discord_ids: form.participants.discord_ids },
+    attached:
+      form.attached.mode === "role"
+        ? form.attached.regiment_id || form.attached.custom_name
+          ? { mode: "role", regiment_id: form.attached.custom_name ? null : form.attached.regiment_id, custom_name: form.attached.custom_name || null }
+          : null
+        : form.attached.discord_ids.length
+          ? { mode: "people", discord_ids: form.attached.discord_ids }
+          : null,
     commander_discord_id: form.commander_discord_id || null,
     map_id: form.map_id ? Number(form.map_id) : null,
+    map_image_url: form.map_image_url || null,
   };
 }
 
@@ -51,19 +70,20 @@ function payloadToForm(event) {
     title: event.title,
     summary: p.summary || "",
     objective: p.objective || "",
-    task: p.task || "",
+    tasks: p.tasks && p.tasks.length ? p.tasks : [""],
     threat: p.threat || "",
     briefing_start: p.briefing_start || "",
-    participants: p.participants || emptyAudience(),
-    attached: p.attached || emptyAudience(),
+    participants: { ...emptyAudience(), ...(p.participants || {}) },
+    attached: { ...emptyAudience(), ...(p.attached || {}) },
     commander_discord_id: p.commander_discord_id || "",
     map_id: p.map_id ? String(p.map_id) : "",
+    map_image_url: p.map_image_url || "",
   };
 }
 
-/** Роль формирования либо конкретные люди — переиспользуется для "Участвующий
- * отряд/состав" и "Приписной состав" (см. решение пользователя про поля формы
- * ивента). */
+/** Роль формирования (либо своё название, если формирование нишевое и его нет
+ * в каталоге CRM — см. решение пользователя) либо конкретные люди —
+ * переиспользуется для "Участвующий отряд/состав" и "Приписной состав". */
 function AudienceField({ label, value, onChange, regiments, members }) {
   function setMode(mode) {
     onChange({ ...value, mode });
@@ -77,6 +97,8 @@ function AudienceField({ label, value, onChange, regiments, members }) {
   function removePerson(discordId) {
     onChange({ ...value, discord_ids: value.discord_ids.filter((id) => id !== discordId) });
   }
+
+  const isCustom = value.regiment_id === "__custom__";
 
   return (
     <div className="add-category-form">
@@ -92,17 +114,34 @@ function AudienceField({ label, value, onChange, regiments, members }) {
         </label>
       </div>
       {value.mode === "role" ? (
-        <select
-          value={value.regiment_id || ""}
-          onChange={(e) => onChange({ ...value, regiment_id: e.target.value ? Number(e.target.value) : null })}
-        >
-          <option value="">— формирование —</option>
-          {regiments.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </select>
+        <>
+          <select
+            value={isCustom ? "__custom__" : value.regiment_id || ""}
+            onChange={(e) => {
+              if (e.target.value === "__custom__") {
+                onChange({ ...value, regiment_id: "__custom__", custom_name: value.custom_name || " " });
+              } else {
+                onChange({ ...value, regiment_id: e.target.value ? Number(e.target.value) : null, custom_name: "" });
+              }
+            }}
+          >
+            <option value="">— формирование —</option>
+            {regiments.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+            <option value="__custom__">— другое (вписать) —</option>
+          </select>
+          {isCustom && (
+            <input
+              type="text"
+              placeholder="Название формирования"
+              value={value.custom_name.trim()}
+              onChange={(e) => onChange({ ...value, custom_name: e.target.value })}
+            />
+          )}
+        </>
       ) : (
         <>
           <MemberSearchPicker members={members} selectedId="" onSelect={addPerson} />
@@ -127,10 +166,81 @@ function AudienceField({ label, value, onChange, regiments, members }) {
   );
 }
 
+function TasksField({ tasks, onChange }) {
+  function setTask(idx, value) {
+    onChange(tasks.map((t, i) => (i === idx ? value : t)));
+  }
+  function addTask() {
+    onChange([...tasks, ""]);
+  }
+  function removeTask(idx) {
+    onChange(tasks.length > 1 ? tasks.filter((_, i) => i !== idx) : [""]);
+  }
+
+  return (
+    <label>
+      Задачи
+      {tasks.map((t, idx) => (
+        <span className="picker-row" key={idx}>
+          <input type="text" value={t} onChange={(e) => setTask(idx, e.target.value)} />
+          <button type="button" className="ghost" onClick={() => removeTask(idx)} disabled={tasks.length === 1 && !t}>
+            ×
+          </button>
+        </span>
+      ))}
+      <button type="button" className="ghost" onClick={addTask}>
+        + Ещё задача
+      </button>
+    </label>
+  );
+}
+
+function MapImageField({ value, onChange }) {
+  const { token } = useAuth();
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const { url } = await api.uploadEventMapImage(token, file);
+      onChange(url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  return (
+    <label>
+      Своё изображение карты (необязательно)
+      {value ? (
+        <span className="picker-row">
+          <img src={value} alt="Карта" style={{ maxHeight: 80, borderRadius: 6 }} />
+          <button type="button" className="ghost" onClick={() => onChange("")}>
+            Убрать
+          </button>
+        </span>
+      ) : (
+        <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFile} disabled={uploading} />
+      )}
+      {error && <p className="error-text">{error}</p>}
+    </label>
+  );
+}
+
 function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, submitLabel }) {
+  const { token } = useAuth();
   const [form, setForm] = useState(initial);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const isValid = form.title.trim().length > 0;
 
@@ -147,6 +257,25 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
       setSubmitting(false);
     }
   }
+
+  async function handlePreview() {
+    setPreviewLoading(true);
+    setError(null);
+    try {
+      const blob = await api.previewEventCard(token, {
+        title: form.title.trim() || "Без названия",
+        payload: formToPayload(form),
+      });
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
 
   return (
     <form className="regiment-panel fade-in-up" onSubmit={handleSubmit}>
@@ -170,20 +299,18 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
           onChange={(e) => setForm((f) => ({ ...f, objective: e.target.value }))}
         />
       </label>
-      <label>
-        Задача
-        <input type="text" value={form.task} onChange={(e) => setForm((f) => ({ ...f, task: e.target.value }))} />
-      </label>
+
+      <TasksField tasks={form.tasks} onChange={(tasks) => setForm((f) => ({ ...f, tasks }))} />
+
       <label>
         Угрозы и вражеские силы
         <input type="text" value={form.threat} onChange={(e) => setForm((f) => ({ ...f, threat: e.target.value }))} />
       </label>
       <label>
         Начало брифинга
-        <input
-          type="datetime-local"
+        <DateTimePicker
           value={form.briefing_start}
-          onChange={(e) => setForm((f) => ({ ...f, briefing_start: e.target.value }))}
+          onChange={(v) => setForm((f) => ({ ...f, briefing_start: v }))}
         />
       </label>
 
@@ -204,7 +331,7 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
 
       <label>
         Командующий операции
-        <InfoHintInline text="Часто узнаётся только по ходу брифинга — можно оставить пустым сейчас и дозаполнить, пока заявка ожидает решения." />
+        <span className="hint-text"> Часто узнаётся только по ходу брифинга — можно оставить пустым и дозаполнить позже, даже после одобрения.</span>
         <MemberSearchPicker
           members={members}
           selectedId={form.commander_discord_id}
@@ -224,7 +351,21 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
         </select>
       </label>
 
+      <MapImageField value={form.map_image_url} onChange={(url) => setForm((f) => ({ ...f, map_image_url: url }))} />
+
       {error && <p className="error-text">{error}</p>}
+
+      <div className="picker-row">
+        <button type="button" className="ghost" onClick={handlePreview} disabled={previewLoading}>
+          {previewLoading ? "Рендерим…" : "Предпросмотр карточки"}
+        </button>
+      </div>
+      {previewUrl && (
+        <div className="regiment-panel">
+          <img src={previewUrl} alt="Предпросмотр карточки" style={{ maxWidth: "100%", borderRadius: 8 }} />
+        </div>
+      )}
+
       <div className="modal-actions">
         <button className="primary" type="submit" disabled={!isValid || submitting}>
           {submitting ? "Сохранение…" : submitLabel}
@@ -237,10 +378,6 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
       </div>
     </form>
   );
-}
-
-function InfoHintInline({ text }) {
-  return <span className="hint-text"> {text}</span>;
 }
 
 function RejectInline({ onReject }) {
@@ -273,11 +410,55 @@ function RejectInline({ onReject }) {
   );
 }
 
-/** Ивентрум — независимая от Рапортов/Инструкторской сущность: Ивентолог подаёт
- * заявку на ивент, Ассистент/Куратор ивентологии одобряют (при одобрении бот
- * шлёт карточку операции в Discord). Многие поля (например, командующего)
- * часто узнают только по ходу брифинга — заявку можно редактировать, пока она
- * ожидает решения (см. решение пользователя). */
+function RosterPanel() {
+  const { token } = useAuth();
+  const [roster, setRoster] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getEventRoster(token).then(setRoster).catch(() => setRoster([])).finally(() => setLoading(false));
+  }, [token]);
+
+  if (loading) return <InlineSpinner />;
+
+  return (
+    <div className="regiment-panel">
+      <h3>Состав Ивентрума</h3>
+      {roster.length === 0 ? (
+        <EmptyState text="Роли Ивентрума ещё не настроены или никто их не занимает." />
+      ) : (
+        <table className="roster-table">
+          <thead>
+            <tr>
+              <th>Участник</th>
+              <th>Роль</th>
+              <th>Подано</th>
+              <th>Одобрено</th>
+              <th>Отклонено</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roster.map((r) => (
+              <tr key={r.discord_id}>
+                <td>{r.username}</td>
+                <td>{ROLE_LABELS[r.role] || r.role}</td>
+                <td>{r.submitted_count}</td>
+                <td>{r.approved_count}</td>
+                <td>{r.rejected_count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+/** Ивентрум — независимая от Рапортов/Инструкторской сущность: Ивентолог (а
+ * также Ассистент/Куратор/создатель) подаёт заявку на ивент, Ассистент/Куратор
+ * ивентологии одобряют (при одобрении бот шлёт карточку операции в Discord).
+ * Многие поля (например, командующего) часто узнают только по ходу брифинга —
+ * заявку можно редактировать и до, и после одобрения (см. решение пользователя). */
 export function EventRoomPage() {
   const { token, access, regiments } = useAuth();
   const [events, setEvents] = useState([]);
@@ -353,8 +534,8 @@ export function EventRoomPage() {
     <div className="page-container">
       <h2>Ивентрум</h2>
       <p className="hint-text">
-        Заявки на ивенты от Ивентологов — одобряет Ассистент/Куратор ивентологии, при одобрении бот отправляет
-        карточку операции в Discord.
+        Заявки на ивенты — одобряет Ассистент/Куратор ивентологии, при одобрении бот отправляет карточку операции в
+        Discord. Заявку можно дозаполнять и после одобрения — тогда в канал уйдёт обновлённая карточка.
       </p>
 
       {error && <p className="error-text">{error}</p>}
@@ -459,10 +640,10 @@ export function EventRoomPage() {
                 {ev.status === "rejected" && ev.rejection_reason && (
                   <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
                 )}
-                {ev.status === "pending" && !canDecide && (
+                {(ev.status === "pending" || ev.status === "approved") && (
                   <div className="report-row-actions">
                     <button type="button" onClick={() => setEditingId(ev.id)}>
-                      Редактировать
+                      {ev.status === "approved" ? "Дозаполнить" : "Редактировать"}
                     </button>
                   </div>
                 )}
@@ -471,6 +652,8 @@ export function EventRoomPage() {
           </div>
         )}
       </div>
+
+      {canDecide && <RosterPanel />}
     </div>
   );
 }
