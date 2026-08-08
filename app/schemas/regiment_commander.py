@@ -62,16 +62,30 @@ class DiscordChannelRead(BaseModel):
 
 
 class HqPersonRead(BaseModel):
+    """Тот же набор полей, что у UserBrief (для formatFullName на фронте — ИДН |
+    звание | позывной, как везде, см. решение пользователя) — своя схема, а не
+    прямой алиас UserBrief, потому что человек может не иметь записи в БД
+    (ни разу не логинился) — тогда только discord_id/username из Discord."""
+
     discord_id: str
     username: str
+    nickname_override: str | None = None
+    service_id: str | None = None
+    callsign: str | None = None
+    rank: RankRead | None = None
     avatar_url: str | None = None
+
+
+class HqCommanderRead(BaseModel):
+    role_type: Literal["commander", "deputy", "mentor"]
+    person: HqPersonRead
 
 
 class HqFormationLeadershipRead(BaseModel):
     regiment_id: int
     regiment_name: str
     regiment_color: str | None = None
-    commanders: list[RegimentCommanderRead]
+    commanders: list[HqCommanderRead]
 
 
 class HqLeadershipRead(BaseModel):

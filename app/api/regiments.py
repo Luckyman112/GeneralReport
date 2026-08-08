@@ -39,6 +39,7 @@ from app.schemas.rank import RankRead
 from app.schemas.regiment import DiscordRoleOption, RegimentCreate, RegimentRead, RegimentUpdate
 from app.schemas.regiment_commander import (
     GuildMemberRead,
+    HqCommanderRead,
     HqFormationLeadershipRead,
     HqLeadershipRead,
     HqPersonRead,
@@ -81,11 +82,15 @@ def _check_rank_matches_regiment(rank, regiment) -> None:
 
 @router.get("", response_model=list[RegimentRead])
 async def list_regiments(
+    include_archived: bool = False,
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> list[RegimentRead]:
-    """Список формирований — виден всем авторизованным пользователям (нужен для формы рапорта)."""
-    regiments = await regiment_crud.get_all(db)
+    """Список формирований — виден всем авторизованным пользователям (нужен для формы
+    рапорта). Замороженные (is_archived) по умолчанию скрыты — не удалены, просто не
+    участвуют в активном использовании (см. решение пользователя). include_archived
+    показывает и их — только для администратора (страница управления формированиями)."""
+    regiments = await regiment_crud.get_all(db, include_archived=include_archived and access.is_admin)
     return [RegimentRead.model_validate(r) for r in regiments]
 
 
@@ -106,11 +111,40 @@ async def get_hq_leadership(
         commanders_by_regiment.setdefault(c.regiment_id, []).append(c)
 
     app_config = await app_settings_crud.get(db)
+    members = await discord_client.fetch_guild_members()
+    members_by_discord_id = {m["discord_id"]: m for m in members}
+    # реальный профиль (ИДН/звание/позывной) для formatFullName на фронте — тот
+    # же формат, что и везде (см. решение пользователя), а не сырой Discord-ник
+    users_by_discord_id = {
+        u.discord_id: u
+        for u in await user_crud.get_by_discord_ids(
+            db, list({*members_by_discord_id.keys(), *(c.discord_id for c in all_commanders)})
+        )
+    }
+
+    def _build_person(discord_id: str, fallback_username: str) -> HqPersonRead:
+        user = users_by_discord_id.get(discord_id)
+        member = members_by_discord_id.get(discord_id)
+        if user is not None:
+            return HqPersonRead(
+                discord_id=discord_id,
+                username=user.username,
+                nickname_override=user.nickname_override,
+                service_id=user.service_id,
+                callsign=user.callsign,
+                rank=RankRead.model_validate(user.rank) if user.rank else None,
+                avatar_url=member["avatar_url"] if member else user.avatar_url,
+            )
+        return HqPersonRead(
+            discord_id=discord_id,
+            username=member["username"] if member else fallback_username,
+            avatar_url=member["avatar_url"] if member else None,
+        )
+
     high_command: list[HqPersonRead] = []
     if app_config.high_command_role_id:
-        members = await discord_client.fetch_guild_members()
         high_command = [
-            HqPersonRead(discord_id=m["discord_id"], username=m["username"], avatar_url=m["avatar_url"])
+            _build_person(m["discord_id"], m["username"])
             for m in members
             if app_config.high_command_role_id in m["roles"]
         ]
@@ -121,7 +155,7 @@ async def get_hq_leadership(
             regiment_name=r.name,
             regiment_color=r.color,
             commanders=[
-                RegimentCommanderRead.model_validate(c)
+                HqCommanderRead(role_type=c.role_type, person=_build_person(c.discord_id, c.username))
                 for c in commanders_by_regiment.get(r.id, [])
             ],
         )

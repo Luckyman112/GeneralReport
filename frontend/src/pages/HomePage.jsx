@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { DonutChart } from "../components/DonutChart";
@@ -9,6 +10,13 @@ import { TransferRequestForm } from "../components/TransferRequestForm";
 import { TrendChart } from "../components/TrendChart";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
+import { formatFullName } from "../utils/formatName";
+
+// Системное имя категории "Понижение" — те же авто-заводимые системные записи,
+// что и "Повышение" (см. DEMOTION_CATEGORY_NAME в app/crud/regiment.py), не
+// настоящий рапорт бойца — в общую активность формирования их не считаем
+// (см. решение пользователя, аналогично исключению повышений из статистики)
+const DEMOTION_CATEGORY_NAME = "Понижение";
 
 const PERIODS = [
   { value: "all", label: "Всё время" },
@@ -275,7 +283,8 @@ function RegimentStats({ regimentId, regimentName }) {
 
   async function handlePersonClick(seg) {
     const reports = await api.getMemberReports(token, regimentId, seg.discord_id);
-    setDrillDown({ title: `Рапорты: ${seg.label}`, reports });
+    const filtered = reports.filter((r) => r.category_name !== DEMOTION_CATEGORY_NAME);
+    setDrillDown({ title: `Рапорты: ${seg.label}`, reports: filtered });
   }
 
   async function handleCategoryClick(seg) {
@@ -324,8 +333,13 @@ function RegimentStats({ regimentId, regimentName }) {
               {drillDown.reports.map((r) => (
                 <li key={r.id}>
                   <StatusBadge status={r.status} />
+                  {r.category_name && <span className="category-points-badge">{r.category_name}</span>}
                   <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
+                  <p className="hint-text">Докладывает: {formatFullName(r.author)}</p>
                   <p className="member-report-content">{r.content}</p>
+                  <Link className="ghost" to={r.category_id ? `/reports?category=${r.category_id}` : "/reports"}>
+                    Открыть в Рапортах →
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -358,7 +372,8 @@ function FormationComparison() {
 
   async function handleRegimentClick(seg) {
     const reports = await api.listReports(token, { regimentId: seg.id });
-    setDrillDown({ title: `Рапорты: ${seg.label}`, reports });
+    const filtered = reports.filter((r) => r.category_name !== DEMOTION_CATEGORY_NAME);
+    setDrillDown({ title: `Рапорты: ${seg.label}`, reports: filtered });
   }
 
   return (
@@ -397,8 +412,13 @@ function FormationComparison() {
               {drillDown.reports.map((r) => (
                 <li key={r.id}>
                   <StatusBadge status={r.status} />
+                  {r.category_name && <span className="category-points-badge">{r.category_name}</span>}
                   <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
+                  <p className="hint-text">Докладывает: {formatFullName(r.author)}</p>
                   <p className="member-report-content">{r.content}</p>
+                  <Link className="ghost" to={r.category_id ? `/reports?category=${r.category_id}` : "/reports"}>
+                    Открыть в Рапортах →
+                  </Link>
                 </li>
               ))}
             </ul>

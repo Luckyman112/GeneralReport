@@ -10,8 +10,11 @@ DEMOTION_CATEGORY_NAME = "Понижение"
 TRAINING_CATEGORY_NAME = "Обучение на специализации"
 
 
-async def get_all(db: AsyncSession) -> list[Regiment]:
-    result = await db.execute(select(Regiment))
+async def get_all(db: AsyncSession, *, include_archived: bool = False) -> list[Regiment]:
+    query = select(Regiment)
+    if not include_archived:
+        query = query.where(Regiment.is_archived.is_(False))
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 

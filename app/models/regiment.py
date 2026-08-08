@@ -25,3 +25,9 @@ class Regiment(Base):
     is_jedi_order: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # None = стартовое звание по умолчанию (Рекрут), см. app/api/registration.py
     starting_rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id", ondelete="SET NULL"), nullable=True)
+    # "Заморожено" — не удаляя (категории/звания/история рапортов остаются),
+    # просто выключено из активного использования: не в пикерах, не даёт
+    # ролей/доступа (см. app/crud/regiment.py::get_all, по умолчанию исключает).
+    # Можно разморозить в любой момент, не пересоздавая формирование заново
+    # (см. решение пользователя)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

@@ -20,7 +20,7 @@ export function RegimentsAdminPage() {
 
   const loadAll = useCallback(async () => {
     const [regimentsData, rolesData, tiersData] = await Promise.all([
-      api.listRegiments(token),
+      api.listRegiments(token, { includeArchived: true }),
       api.getDiscordRoles(token),
       api.getRanks(token),
     ]);
@@ -55,6 +55,15 @@ export function RegimentsAdminPage() {
       setError(err.message);
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleToggleArchive(regiment) {
+    try {
+      await api.archiveRegiment(token, regiment.id, !regiment.is_archived);
+      await loadAll();
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -101,12 +110,16 @@ export function RegimentsAdminPage() {
 
       <div className="regiment-list">
         {regiments.map((r) => (
-          <div key={r.id} className="regiment-card">
+          <div key={r.id} className={`regiment-card${r.is_archived ? " regiment-card-archived" : ""}`}>
             <span className="regiment-card-name">
               <span className="color-swatch" style={{ background: r.color || "var(--surface-2)" }} />
               <strong>{r.name}</strong>
+              {r.is_archived && <span className="member-inactive-badge">заморожено</span>}
             </span>
             <button onClick={() => setEditingRegiment(r)}>Настроить</button>
+            <button className="ghost" onClick={() => handleToggleArchive(r)}>
+              {r.is_archived ? "Разморозить" : "Заморозить"}
+            </button>
           </div>
         ))}
       </div>

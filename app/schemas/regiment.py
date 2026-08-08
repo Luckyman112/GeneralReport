@@ -15,6 +15,7 @@ class RegimentRead(BaseModel):
     discord_channel_url: str | None = None
     is_jedi_order: bool = False
     starting_rank_id: int | None = None
+    is_archived: bool = False
 
 
 class RegimentCreate(BaseModel):
@@ -37,6 +38,7 @@ class RegimentUpdate(BaseModel):
     discord_channel_url: str | None = None
     is_jedi_order: bool | None = None
     starting_rank_id: int | None = None
+    is_archived: bool | None = None
 
 
 class DiscordRoleOption(BaseModel):

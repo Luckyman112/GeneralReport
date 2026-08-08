@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { formatFullName } from "../utils/formatName";
 import { InlineSpinner } from "./InlineSpinner";
 
 const ROLE_LABELS = {
@@ -34,7 +35,7 @@ export function HqLeadershipPanel() {
       ) : (
         <ul className="hq-leadership-list">
           {data.high_command.map((p) => (
-            <li key={p.discord_id}>{p.username}</li>
+            <li key={p.discord_id}>{formatFullName(p)}</li>
           ))}
         </ul>
       )}
@@ -47,8 +48,9 @@ export function HqLeadershipPanel() {
           ) : (
             <ul className="hq-leadership-list">
               {f.commanders.map((c) => (
-                <li key={c.discord_id}>
-                  {c.username} <span className="hint-text">({ROLE_LABELS[c.role_type] || c.role_type})</span>
+                <li key={c.person.discord_id}>
+                  {formatFullName(c.person)}{" "}
+                  <span className="hint-text">({ROLE_LABELS[c.role_type] || c.role_type})</span>
                 </li>
               ))}
             </ul>

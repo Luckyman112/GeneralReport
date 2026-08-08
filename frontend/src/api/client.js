@@ -155,7 +155,10 @@ export const api = {
   deleteReportImage: (token, reportId, imageId) =>
     request(`/api/reports/${reportId}/images/${imageId}`, { method: "DELETE", token }),
 
-  listRegiments: (token) => request("/api/regiments", { token }),
+  listRegiments: (token, { includeArchived } = {}) =>
+    request(`/api/regiments${includeArchived ? "?include_archived=true" : ""}`, { token }),
+  archiveRegiment: (token, regimentId, isArchived) =>
+    request(`/api/regiments/${regimentId}`, { method: "PATCH", token, body: { is_archived: isArchived } }),
   getHqLeadership: (token) => request("/api/regiments/hq-leadership", { token }),
   getDiscordRoles: (token) => request("/api/regiments/discord-roles", { token }),
   createRegiment: (token, { name, discordRoleId, color, discordChannelUrl, isJediOrder }) =>

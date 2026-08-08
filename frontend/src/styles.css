@@ -3420,6 +3420,13 @@ input[type="file"]::-webkit-file-upload-button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* Заморожено (is_archived) — не удалено, просто выключено из активного
+ * использования (см. решение пользователя) */
+.regiment-card-archived {
+  opacity: 0.55;
 }
 
 .regiment-panel {
