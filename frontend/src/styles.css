@@ -1385,12 +1385,12 @@ label {
   text-align: center;
   gap: 0.75rem;
   background-image:
-    radial-gradient(1px 1px at 12% 22%, rgba(255, 255, 255, 0.6), transparent),
-    radial-gradient(1px 1px at 78% 14%, rgba(255, 255, 255, 0.5), transparent),
-    radial-gradient(1px 1px at 34% 68%, rgba(255, 255, 255, 0.45), transparent),
-    radial-gradient(1px 1px at 62% 82%, rgba(255, 255, 255, 0.5), transparent),
-    radial-gradient(1px 1px at 90% 55%, rgba(255, 255, 255, 0.4), transparent),
-    radial-gradient(ellipse at center, var(--accent-glow), transparent 70%);
+    radial-gradient(ellipse at center, var(--accent-glow), transparent 70%),
+    linear-gradient(rgba(2, 6, 10, 0.72), rgba(2, 6, 10, 0.85)),
+    url("./assets/depositphotos_97060674-stock-photo-abstract-scene-of-overcoming-the.jpg");
+  background-size: cover, cover, cover;
+  background-position: center, center, center;
+  background-repeat: no-repeat, no-repeat, no-repeat;
   background-color: var(--bg);
 }
 
