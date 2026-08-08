@@ -167,6 +167,7 @@ export function RosterBrowserModal({ onClose }) {
                       <th>Дата вступления</th>
                       <th>Дата повышения</th>
                       <th>Должность</th>
+                      <th>Отряд</th>
                       <th>Специализации</th>
                       <th>STEAM:ID</th>
                       <th>Discord ID</th>
@@ -183,6 +184,15 @@ export function RosterBrowserModal({ onClose }) {
                         <td>{m.joined_at ? formatMskDate(m.joined_at) : "—"}</td>
                         <td>{m.rank_assigned_at ? formatMskDate(m.rank_assigned_at) : "—"}</td>
                         <td>{positionByDiscordId.get(m.discord_id) || "Рядовой"}</td>
+                        <td>
+                          {(m.squads || []).length > 0
+                            ? m.squads.map((s) => (
+                                <span key={s.squad_name} className="squad-badge">
+                                  {s.squad_name} · {s.tier_label}
+                                </span>
+                              ))
+                            : "—"}
+                        </td>
                         <td>
                           {(specializationsByDiscordId[m.discord_id] || [])
                             .map((s) => s.specialization?.code)

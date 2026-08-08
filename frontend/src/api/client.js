@@ -245,6 +245,32 @@ export const api = {
   removeCommander: (token, regimentId, discordId) =>
     request(`/api/regiments/${regimentId}/commanders/${discordId}`, { method: "DELETE", token }),
 
+  listSquads: (token, regimentId) => request(`/api/regiments/${regimentId}/squads`, { token }),
+  createSquad: (token, regimentId, name) =>
+    request(`/api/regiments/${regimentId}/squads`, { method: "POST", token, body: { name } }),
+  updateSquadTierLabels: (token, regimentId, squadId, tierLabels) =>
+    request(`/api/regiments/${regimentId}/squads/${squadId}`, {
+      method: "PATCH",
+      token,
+      body: { tier_labels: tierLabels },
+    }),
+  deleteSquad: (token, regimentId, squadId) =>
+    request(`/api/regiments/${regimentId}/squads/${squadId}`, { method: "DELETE", token }),
+  addSquadMember: (token, regimentId, squadId, { discordId, username, tier }) =>
+    request(`/api/regiments/${regimentId}/squads/${squadId}/members`, {
+      method: "POST",
+      token,
+      body: { discord_id: discordId, username, tier },
+    }),
+  updateSquadMemberTier: (token, regimentId, squadId, discordId, tier) =>
+    request(`/api/regiments/${regimentId}/squads/${squadId}/members/${discordId}`, {
+      method: "PATCH",
+      token,
+      body: { tier },
+    }),
+  removeSquadMember: (token, regimentId, squadId, discordId) =>
+    request(`/api/regiments/${regimentId}/squads/${squadId}/members/${discordId}`, { method: "DELETE", token }),
+
   getMembers: (token, regimentId) => request(`/api/regiments/${regimentId}/members`, { token }),
   getMemberReports: (token, regimentId, discordId) =>
     request(`/api/regiments/${regimentId}/members/${discordId}/reports`, { token }),

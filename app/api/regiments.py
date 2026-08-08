@@ -22,12 +22,14 @@ from app.crud import report as report_crud
 from app.crud import report_category as report_category_crud
 from app.crud import report_participant as report_participant_crud
 from app.crud import specialization as specialization_crud
+from app.crud import squad as squad_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.models.character import Character
 from app.models.report import ReportStatus
 from app.models.specialization import DISCIPLINE_CATEGORIES
+from app.models.squad import DEFAULT_SQUAD_TIER_LABELS
 from app.models.user import User
 
 _PHOTO_UPLOAD_ROOT = Path(__file__).resolve().parent.parent.parent / "uploads" / "members"
@@ -47,10 +49,18 @@ from app.schemas.regiment_commander import (
     PointsAdjustmentBody,
     RegimentCommanderCreate,
     RegimentCommanderRead,
+    SquadBadge,
     TenureOverrideUpdate,
 )
 from app.schemas.report import ReportRead
 from app.schemas.report_category import ReportCategoryCreate, ReportCategoryRead, ReportCategoryUpdate
+from app.schemas.squad import (
+    SquadCreate,
+    SquadMemberCreate,
+    SquadMemberTierUpdate,
+    SquadRead,
+    SquadTierLabelsUpdate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -552,10 +562,157 @@ async def remove_commander(
     )
 
 
+# --- Отряды (подгруппы внутри формирования, только ярлык в составе, см. решение
+# пользователя — никаких прав сверх обычного бойца статус в отряде не даёт) ---
+
+
+def _can_manage_squads(access: AccessContext, regiment_id: int) -> bool:
+    return access.is_admin or regiment_id in access.category_manager_regiment_ids
+
+
+@router.get("/{regiment_id}/squads", response_model=list[SquadRead])
+async def list_squads(
+    regiment_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[SquadRead]:
+    _require_regiment_access(access, regiment_id)
+    await _get_regiment_or_404(db, regiment_id)
+    squads = await squad_crud.list_by_regiment(db, regiment_id=regiment_id)
+    result = []
+    for s in squads:
+        members = await squad_crud.list_members(db, squad_id=s.id)
+        result.append(SquadRead(id=s.id, regiment_id=s.regiment_id, name=s.name, tier_labels=s.tier_labels, members=members))
+    return result
+
+
+@router.post("/{regiment_id}/squads", response_model=SquadRead, status_code=201)
+async def create_squad(
+    regiment_id: int,
+    payload: SquadCreate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> SquadRead:
+    if not _can_manage_squads(access, regiment_id):
+        raise ForbiddenError("Заводить отряды может командир формирования или администратор")
+    await _get_regiment_or_404(db, regiment_id)
+    squad = await squad_crud.create(db, regiment_id=regiment_id, name=payload.name.strip())
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="squad_create",
+        details=f"Завёл отряд «{squad.name}» в формировании #{regiment_id}",
+    )
+    return SquadRead(id=squad.id, regiment_id=squad.regiment_id, name=squad.name, tier_labels=squad.tier_labels, members=[])
+
+
+@router.patch("/{regiment_id}/squads/{squad_id}", response_model=SquadRead)
+async def update_squad_tier_labels(
+    regiment_id: int,
+    squad_id: int,
+    payload: SquadTierLabelsUpdate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> SquadRead:
+    if not _can_manage_squads(access, regiment_id):
+        raise ForbiddenError("Настраивать отряды может командир формирования или администратор")
+    squad = await squad_crud.get_by_id(db, squad_id)
+    if squad is None or squad.regiment_id != regiment_id:
+        raise NotFoundError("Отряд не найден")
+    squad = await squad_crud.update_tier_labels(db, squad, tier_labels=[t.strip() or DEFAULT_SQUAD_TIER_LABELS[i] for i, t in enumerate(payload.tier_labels)])
+    members = await squad_crud.list_members(db, squad_id=squad.id)
+    return SquadRead(id=squad.id, regiment_id=squad.regiment_id, name=squad.name, tier_labels=squad.tier_labels, members=members)
+
+
+@router.delete("/{regiment_id}/squads/{squad_id}", status_code=204)
+async def delete_squad(
+    regiment_id: int,
+    squad_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> None:
+    if not _can_manage_squads(access, regiment_id):
+        raise ForbiddenError("Удалять отряды может командир формирования или администратор")
+    squad = await squad_crud.get_by_id(db, squad_id)
+    if squad is None or squad.regiment_id != regiment_id:
+        raise NotFoundError("Отряд не найден")
+    await squad_crud.delete(db, squad)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="squad_delete",
+        details=f"Удалил отряд «{squad.name}» из формирования #{regiment_id}",
+    )
+
+
+@router.post("/{regiment_id}/squads/{squad_id}/members", status_code=201)
+async def add_squad_member(
+    regiment_id: int,
+    squad_id: int,
+    payload: SquadMemberCreate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> dict:
+    if not _can_manage_squads(access, regiment_id):
+        raise ForbiddenError("Управлять составом отряда может командир формирования или администратор")
+    squad = await squad_crud.get_by_id(db, squad_id)
+    if squad is None or squad.regiment_id != regiment_id:
+        raise NotFoundError("Отряд не найден")
+    await squad_crud.add_member(db, squad_id=squad_id, discord_id=payload.discord_id, username=payload.username, tier=payload.tier)
+    return {"ok": True}
+
+
+@router.patch("/{regiment_id}/squads/{squad_id}/members/{discord_id}", status_code=200)
+async def update_squad_member_tier(
+    regiment_id: int,
+    squad_id: int,
+    discord_id: str,
+    payload: SquadMemberTierUpdate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> dict:
+    if not _can_manage_squads(access, regiment_id):
+        raise ForbiddenError("Управлять составом отряда может командир формирования или администратор")
+    squad = await squad_crud.get_by_id(db, squad_id)
+    if squad is None or squad.regiment_id != regiment_id:
+        raise NotFoundError("Отряд не найден")
+    membership = await squad_crud.get_membership(db, squad_id=squad_id, discord_id=discord_id)
+    if membership is None:
+        raise NotFoundError("Этот человек не состоит в отряде")
+    await squad_crud.update_member_tier(db, membership, tier=payload.tier)
+    return {"ok": True}
+
+
+@router.delete("/{regiment_id}/squads/{squad_id}/members/{discord_id}", status_code=204)
+async def remove_squad_member(
+    regiment_id: int,
+    squad_id: int,
+    discord_id: str,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> None:
+    if not _can_manage_squads(access, regiment_id):
+        raise ForbiddenError("Управлять составом отряда может командир формирования или администратор")
+    squad = await squad_crud.get_by_id(db, squad_id)
+    if squad is None or squad.regiment_id != regiment_id:
+        raise NotFoundError("Отряд не найден")
+    membership = await squad_crud.get_membership(db, squad_id=squad_id, discord_id=discord_id)
+    if membership is None:
+        raise NotFoundError("Этот человек не состоит в отряде")
+    await squad_crud.remove_member(db, membership)
+
+
 # --- Состав формирования (ростер) ---------------------------------------------------
 
 
-def _build_guild_member(member: dict, user: User | None, character: Character | None = None) -> GuildMemberRead:
+def _build_guild_member(
+    member: dict,
+    user: User | None,
+    character: Character | None = None,
+    squads: list[SquadBadge] | None = None,
+) -> GuildMemberRead:
     # character overrides profile fields if user has one in this regiment
     days_in_rank = None
     rank_assigned_at = character.rank_assigned_at if character else (user.rank_assigned_at if user else None)
@@ -576,6 +733,7 @@ def _build_guild_member(member: dict, user: User | None, character: Character | 
             days_in_rank=days_in_rank,
             is_inactive=character.is_inactive,
             rank_assigned_at=rank_assigned_at,
+            squads=squads or [],
         )
 
     return GuildMemberRead(
@@ -596,6 +754,7 @@ def _build_guild_member(member: dict, user: User | None, character: Character | 
         joined_at=user.created_at if user else None,
         rank_assigned_at=rank_assigned_at,
         registration_status=user.registration_status if user else None,
+        squads=squads or [],
     )
 
 
@@ -640,9 +799,19 @@ async def get_members(
         for u in await user_crud.get_by_discord_ids(db, [m["discord_id"] for m in roster])
     }
 
+    squad_badges_by_discord_id: dict[str, list[SquadBadge]] = {}
+    for membership, squad in await squad_crud.list_memberships_for_regiment(db, regiment_id=regiment_id):
+        label = squad.tier_labels[membership.tier] if membership.tier < len(squad.tier_labels) else squad.name
+        squad_badges_by_discord_id.setdefault(membership.discord_id, []).append(
+            SquadBadge(squad_name=squad.name, tier_label=label)
+        )
+
     return [
         _build_guild_member(
-            m, users_by_discord_id.get(m["discord_id"]), characters_by_discord_id.get(m["discord_id"])
+            m,
+            users_by_discord_id.get(m["discord_id"]),
+            characters_by_discord_id.get(m["discord_id"]),
+            squad_badges_by_discord_id.get(m["discord_id"]),
         )
         for m in roster
     ]

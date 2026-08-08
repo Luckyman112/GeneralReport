@@ -20,6 +20,13 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  const [squads, setSquads] = useState([]);
+  const [allMembers, setAllMembers] = useState([]);
+  const [newSquadName, setNewSquadName] = useState("");
+  const [expandedSquadId, setExpandedSquadId] = useState(null);
+  const [tierLabelDrafts, setTierLabelDrafts] = useState({});
+  const [selectedMemberBySquad, setSelectedMemberBySquad] = useState({});
+
   const availableCandidates = useMemo(() => {
     const source = selectedRoleType === "mentor" ? mentorCandidates : candidates;
     return source.filter((c) => !commanders.some((cmd) => cmd.discord_id === c.discord_id));
@@ -48,8 +55,22 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
     }
   }
 
+  async function loadSquads() {
+    try {
+      const [squadsData, membersData] = await Promise.all([
+        api.listSquads(token, regiment.id),
+        api.getMembers(token, regiment.id),
+      ]);
+      setSquads(squadsData);
+      setAllMembers(membersData);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   useEffect(() => {
     loadCommanders();
+    loadSquads();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -114,6 +135,85 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
     try {
       await api.removeCommander(token, regiment.id, discordId);
       await loadCommanders();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  function memberName(discordId) {
+    const m = allMembers.find((x) => x.discord_id === discordId);
+    return m ? m.username : discordId;
+  }
+
+  async function handleCreateSquad() {
+    const name = newSquadName.trim();
+    if (!name) return;
+    try {
+      await api.createSquad(token, regiment.id, name);
+      setNewSquadName("");
+      await loadSquads();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleDeleteSquad(squadId) {
+    try {
+      await api.deleteSquad(token, regiment.id, squadId);
+      if (expandedSquadId === squadId) setExpandedSquadId(null);
+      await loadSquads();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleSaveTierLabels(squadId) {
+    const squad = squads.find((s) => s.id === squadId);
+    const draft = tierLabelDrafts[squadId];
+    if (!squad || !draft) return;
+    try {
+      await api.updateSquadTierLabels(token, regiment.id, squadId, draft);
+      setTierLabelDrafts((prev) => {
+        const next = { ...prev };
+        delete next[squadId];
+        return next;
+      });
+      await loadSquads();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleAddSquadMember(squadId) {
+    const discordId = selectedMemberBySquad[squadId];
+    const member = allMembers.find((m) => m.discord_id === discordId);
+    if (!member) return;
+    try {
+      await api.addSquadMember(token, regiment.id, squadId, {
+        discordId: member.discord_id,
+        username: member.username,
+        tier: 0,
+      });
+      setSelectedMemberBySquad((prev) => ({ ...prev, [squadId]: "" }));
+      await loadSquads();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleUpdateSquadMemberTier(squadId, discordId, tier) {
+    try {
+      await api.updateSquadMemberTier(token, regiment.id, squadId, discordId, tier);
+      await loadSquads();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleRemoveSquadMember(squadId, discordId) {
+    try {
+      await api.removeSquadMember(token, regiment.id, squadId, discordId);
+      await loadSquads();
     } catch (e) {
       setError(e.message);
     }
@@ -214,6 +314,121 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
             </button>
           </div>
         )}
+
+        <h4>
+          Отряды
+          <InfoHint text="Подгруппы внутри формирования (например, отряд разведки или кинологов) — только ярлык и мини-иерархия в составе, никаких отдельных прав не даёт." />
+        </h4>
+        <ul className="category-list">
+          {squads.map((squad) => {
+            const draft = tierLabelDrafts[squad.id] ?? squad.tier_labels;
+            const availableForSquad = allMembers.filter(
+              (m) => !squad.members.some((sm) => sm.discord_id === m.discord_id)
+            );
+            return (
+              <li key={squad.id} className="squad-block">
+                <div className="squad-header">
+                  <strong>{squad.name}</strong>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => setExpandedSquadId(expandedSquadId === squad.id ? null : squad.id)}
+                  >
+                    {expandedSquadId === squad.id ? "Свернуть" : "Состав"} ({squad.members.length})
+                  </button>
+                  <button type="button" className="ghost" onClick={() => handleDeleteSquad(squad.id)}>
+                    Удалить
+                  </button>
+                </div>
+
+                {expandedSquadId === squad.id && (
+                  <div className="squad-detail">
+                    <p className="hint-text">Подписи титулов (боец / старший / заместитель / командир):</p>
+                    <div className="squad-tier-labels">
+                      {draft.map((label, i) => (
+                        <input
+                          key={i}
+                          value={label}
+                          onChange={(e) => {
+                            const next = [...draft];
+                            next[i] = e.target.value;
+                            setTierLabelDrafts((prev) => ({ ...prev, [squad.id]: next }));
+                          }}
+                        />
+                      ))}
+                      <button type="button" onClick={() => handleSaveTierLabels(squad.id)}>
+                        Сохранить подписи
+                      </button>
+                    </div>
+
+                    <ul className="category-list">
+                      {squad.members.map((m) => (
+                        <li key={m.discord_id}>
+                          {memberName(m.discord_id)}{" "}
+                          <select
+                            value={m.tier}
+                            onChange={(e) =>
+                              handleUpdateSquadMemberTier(squad.id, m.discord_id, Number(e.target.value))
+                            }
+                          >
+                            {squad.tier_labels.map((label, i) => (
+                              <option key={i} value={i}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="ghost"
+                            onClick={() => handleRemoveSquadMember(squad.id, m.discord_id)}
+                          >
+                            Снять
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+
+                    {availableForSquad.length > 0 && (
+                      <div className="add-category-form">
+                        <select
+                          value={selectedMemberBySquad[squad.id] || ""}
+                          onChange={(e) =>
+                            setSelectedMemberBySquad((prev) => ({ ...prev, [squad.id]: e.target.value }))
+                          }
+                        >
+                          <option value="">— выбрать участника —</option>
+                          {availableForSquad.map((m) => (
+                            <option key={m.discord_id} value={m.discord_id}>
+                              {m.username}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!selectedMemberBySquad[squad.id]}
+                          onClick={() => handleAddSquadMember(squad.id)}
+                        >
+                          Добавить
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        <div className="add-category-form">
+          <input
+            type="text"
+            placeholder="Название отряда"
+            value={newSquadName}
+            onChange={(e) => setNewSquadName(e.target.value)}
+          />
+          <button type="button" disabled={!newSquadName.trim()} onClick={handleCreateSquad}>
+            Создать отряд
+          </button>
+        </div>
 
         {error && <p className="error-text">{error}</p>}
 

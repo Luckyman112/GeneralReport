@@ -390,6 +390,15 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
             <p className="hint-text">
               Последний вход: {member.last_login_at ? `${formatMskDate(member.last_login_at)} МСК` : "не входил"}
             </p>
+            {(member.squads || []).length > 0 && (
+              <p className="hint-text">
+                {member.squads.map((s) => (
+                  <span key={s.squad_name} className="squad-badge">
+                    {s.squad_name} · {s.tier_label}
+                  </span>
+                ))}
+              </p>
+            )}
           </div>
         </div>
         {canEdit && (

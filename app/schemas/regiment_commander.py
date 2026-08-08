@@ -21,6 +21,11 @@ class RegimentCommanderCreate(BaseModel):
     role_type: Literal["commander", "deputy", "mentor"] = "commander"
 
 
+class SquadBadge(BaseModel):
+    squad_name: str
+    tier_label: str
+
+
 class GuildMemberRead(BaseModel):
     discord_id: str
     username: str
@@ -54,6 +59,8 @@ class GuildMemberRead(BaseModel):
     # заходил, но не прошёл регистрацию/был отклонён (см. решение пользователя —
     # такие участники должны быть заметны прямо в составе формирования)
     registration_status: str | None = None
+    # Отряды — только ярлык в составе, см. app/models/squad.py
+    squads: list[SquadBadge] = []
 
 
 class DiscordChannelRead(BaseModel):

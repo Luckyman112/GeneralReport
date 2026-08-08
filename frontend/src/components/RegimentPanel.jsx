@@ -226,6 +226,11 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
                             {(m.registration_status === "pending" || m.registration_status == null) && (
                               <span className="member-unregistered-badge">не зарегистрирован</span>
                             )}
+                            {(m.squads || []).map((s) => (
+                              <span key={s.squad_name} className="squad-badge">
+                                {s.squad_name} · {s.tier_label}
+                              </span>
+                            ))}
                           </span>
                         </td>
                         <td className="mono-num">{m.days_in_rank ?? "—"}</td>

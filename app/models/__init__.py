@@ -19,6 +19,7 @@ from app.models.report_image import ReportImage
 from app.models.report_participant import ReportParticipant
 from app.models.reprimand import Reprimand
 from app.models.specialization import InstructorRole, Specialization, SpecializationBan, UserSpecialization
+from app.models.squad import Squad, SquadMembership
 from app.models.user import User
 from app.models.violation import Violation
 from app.models.wanted import WantedEntry
@@ -54,4 +55,6 @@ __all__ = [
     "EventStatus",
     "EventMap",
     "WantedEntry",
+    "Squad",
+    "SquadMembership",
 ]
