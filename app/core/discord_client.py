@@ -169,9 +169,13 @@ async def fetch_guild_roles() -> list[dict]:
     return [{"id": role["id"], "name": role["name"]} for role in response.json()]
 
 
-# Только текстовые каналы (0) и текстовые треды внутри категорий-форумов не
-# нужны — этого достаточно для выбора канала уведомлений об ивентах
+# Обычные текстовые (0) и каналы объявлений/News (5) — второй тип изначально
+# не учитывался, из-за чего канал "объявления" (обычно именно Announcement,
+# не обычный текстовый) не попадал в список выбора в Настройках, хотя бот
+# умеет слать в него сообщения так же, как в обычный текстовый (см. решение
+# пользователя — бот "не видел" такой канал)
 _TEXT_CHANNEL_TYPE = 0
+_ANNOUNCEMENT_CHANNEL_TYPE = 5
 
 
 async def fetch_guild_text_channels() -> list[dict]:
@@ -189,7 +193,7 @@ async def fetch_guild_text_channels() -> list[dict]:
     return [
         {"id": ch["id"], "name": ch["name"]}
         for ch in response.json()
-        if ch.get("type") == _TEXT_CHANNEL_TYPE
+        if ch.get("type") in (_TEXT_CHANNEL_TYPE, _ANNOUNCEMENT_CHANNEL_TYPE)
     ]
 
 
