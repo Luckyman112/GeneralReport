@@ -20,6 +20,7 @@ RECRUIT_TRAINING_FIELDS = [
     {"name": "Рекрут", "type": "roster", "allowed_regiment_ids": [], "allow_manual": True},
     {"name": "Заметки", "type": "text", "allowed_regiment_ids": []},
 ]
+RECRUIT_TRAINING_POINTS = 4
 
 # Базовый набор обычных (не системных) категорий рапортов — заводится каждому
 # новому формированию сразу при создании (см. решение пользователя), в
@@ -35,8 +36,8 @@ BASE_CATEGORY_SET = [
             {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
             {"name": "Заметки", "type": "text", "allowed_regiment_ids": []},
         ],
-        "points": 1,
-        "participant_points": 1,
+        "points": 5,
+        "participant_points": 4,
     },
     {
         "name": "Пост",
@@ -48,7 +49,7 @@ BASE_CATEGORY_SET = [
             {"name": "Заметки", "type": "text", "allowed_regiment_ids": []},
         ],
         "points": 1,
-        "participant_points": 1,
+        "participant_points": 2,
     },
     {
         "name": "Патруль",
@@ -58,7 +59,7 @@ BASE_CATEGORY_SET = [
             {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
         ],
         "points": 1,
-        "participant_points": 1,
+        "participant_points": 2,
     },
     {
         "name": "Боевой вылет",
@@ -68,8 +69,8 @@ BASE_CATEGORY_SET = [
             {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
             {"name": "Результат", "type": "text", "allowed_regiment_ids": []},
         ],
-        "points": 1,
-        "participant_points": 1,
+        "points": 10,
+        "participant_points": 8,
     },
     {
         "name": "Защита ОВО",
@@ -79,8 +80,8 @@ BASE_CATEGORY_SET = [
             {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
             {"name": "Результат", "type": "text", "allowed_regiment_ids": []},
         ],
-        "points": 1,
-        "participant_points": 1,
+        "points": 8,
+        "participant_points": 6,
     },
 ]
 
@@ -175,6 +176,7 @@ async def _ensure_recruit_training_category(db: AsyncSession, regiment: Regiment
             regiment_id=regiment.id,
             name=RECRUIT_TRAINING_CATEGORY_NAME,
             fields=RECRUIT_TRAINING_FIELDS,
+            points=RECRUIT_TRAINING_POINTS,
             mirrors_to_category_id=mirrors_to_category_id,
         )
     )
