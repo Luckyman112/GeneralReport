@@ -40,6 +40,9 @@ const InstructorRoomPage = lazy(() =>
   import("./pages/InstructorRoomPage").then((m) => ({ default: m.InstructorRoomPage }))
 );
 const DisciplinePage = lazy(() => import("./pages/DisciplinePage").then((m) => ({ default: m.DisciplinePage })));
+const DisciplineRosterPage = lazy(() =>
+  import("./pages/DisciplineRosterPage").then((m) => ({ default: m.DisciplineRosterPage }))
+);
 const EventRoomPage = lazy(() => import("./pages/EventRoomPage").then((m) => ({ default: m.EventRoomPage })));
 
 function Layout({ children }) {
@@ -199,6 +202,22 @@ function AppRoutes() {
           element={
             <ProtectedRoute disciplineDeputyOnly>
               <DisciplinePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/specializations/medic"
+          element={
+            <ProtectedRoute>
+              <DisciplineRosterPage discipline="medic" title="Медицина" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/specializations/engineer"
+          element={
+            <ProtectedRoute>
+              <DisciplineRosterPage discipline="engineer" title="Инженерия" />
             </ProtectedRoute>
           }
         />

@@ -61,6 +61,29 @@ class DiscordChannelRead(BaseModel):
     name: str
 
 
+class HqPersonRead(BaseModel):
+    discord_id: str
+    username: str
+    avatar_url: str | None = None
+
+
+class HqFormationLeadershipRead(BaseModel):
+    regiment_id: int
+    regiment_name: str
+    regiment_color: str | None = None
+    commanders: list[RegimentCommanderRead]
+
+
+class HqLeadershipRead(BaseModel):
+    """Статичный список командования всех формирований для страницы Штаба (см.
+    решение пользователя) — высшее командование отдельным блоком сверху, ниже
+    формирования каждое со своими командиром/замами (регистрируются в
+    Формирования -> Настроить; см. RegimentCommander)."""
+
+    high_command: list[HqPersonRead]
+    formations: list[HqFormationLeadershipRead]
+
+
 class MemberProfileUpdate(BaseModel):
     """Единая форма профиля участника (ИДН + звание + позывной + отметка
     неактивности). Поля, отсутствующие в теле запроса, не изменяются (exclude_unset

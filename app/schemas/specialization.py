@@ -78,6 +78,11 @@ class DisciplineRosterEntry(BaseModel):
     specialization: SpecializationRead
     granted_at: datetime
     regiment_names: list[str] = []
+    # Инструкторский тир бойца В ЭТОЙ дисциплине (curator/deputy/instructor),
+    # None — просто держит специализацию, без инструкторской роли (см. решение
+    # пользователя — ростер показывает иерархию: куратор/зам/инструктор сверху,
+    # остальные ниже)
+    tier: str | None = None
 
 
 class SpecializationBanRead(BaseModel):

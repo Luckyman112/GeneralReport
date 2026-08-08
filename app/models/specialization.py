@@ -33,6 +33,13 @@ INSTRUCTOR_TIER_INSTRUCTOR = "instructor"
 INSTRUCTOR_TIER_DEPUTY = "deputy"
 INSTRUCTOR_TIER_CURATOR = "curator"
 INSTRUCTOR_TIERS = [INSTRUCTOR_TIER_INSTRUCTOR, INSTRUCTOR_TIER_DEPUTY, INSTRUCTOR_TIER_CURATOR]
+# Для сортировки ростера дисциплины сверху вниз: куратор -> зам -> инструктор ->
+# просто держит специализацию (см. app/api/specializations.py::get_discipline_roster)
+INSTRUCTOR_TIER_RANK = {
+    INSTRUCTOR_TIER_CURATOR: 0,
+    INSTRUCTOR_TIER_DEPUTY: 1,
+    INSTRUCTOR_TIER_INSTRUCTOR: 2,
+}
 SPECIALIZATION_CATEGORIES = [
     CATEGORY_CLASS,
     CATEGORY_GEAR,

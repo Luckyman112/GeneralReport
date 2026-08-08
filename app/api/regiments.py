@@ -39,6 +39,9 @@ from app.schemas.rank import RankRead
 from app.schemas.regiment import DiscordRoleOption, RegimentCreate, RegimentRead, RegimentUpdate
 from app.schemas.regiment_commander import (
     GuildMemberRead,
+    HqFormationLeadershipRead,
+    HqLeadershipRead,
+    HqPersonRead,
     MemberProfileUpdate,
     PointsAdjustmentBody,
     RegimentCommanderCreate,
@@ -84,6 +87,48 @@ async def list_regiments(
     """Список формирований — виден всем авторизованным пользователям (нужен для формы рапорта)."""
     regiments = await regiment_crud.get_all(db)
     return [RegimentRead.model_validate(r) for r in regiments]
+
+
+@router.get("/hq-leadership", response_model=HqLeadershipRead)
+async def get_hq_leadership(
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> HqLeadershipRead:
+    """Статичный список командования всех формирований для страницы Штаба — виден
+    любому авторизованному бойцу (см. решение пользователя), высшее командование
+    отдельным блоком сверху. Командиров/замов формирования регистрируют в
+    Формирования -> Настроить (см. RegimentCommander) — если список пуст/почти
+    пуст, значит их пока не назначили."""
+    regiments = await regiment_crud.get_all(db)
+    all_commanders = await regiment_commander_crud.get_all(db)
+    commanders_by_regiment: dict[int, list] = {}
+    for c in all_commanders:
+        commanders_by_regiment.setdefault(c.regiment_id, []).append(c)
+
+    app_config = await app_settings_crud.get(db)
+    high_command: list[HqPersonRead] = []
+    if app_config.high_command_role_id:
+        members = await discord_client.fetch_guild_members()
+        high_command = [
+            HqPersonRead(discord_id=m["discord_id"], username=m["username"], avatar_url=m["avatar_url"])
+            for m in members
+            if app_config.high_command_role_id in m["roles"]
+        ]
+
+    formations = [
+        HqFormationLeadershipRead(
+            regiment_id=r.id,
+            regiment_name=r.name,
+            regiment_color=r.color,
+            commanders=[
+                RegimentCommanderRead.model_validate(c)
+                for c in commanders_by_regiment.get(r.id, [])
+            ],
+        )
+        for r in regiments
+    ]
+
+    return HqLeadershipRead(high_command=high_command, formations=formations)
 
 
 @router.get("/discord-roles", response_model=list[DiscordRoleOption])

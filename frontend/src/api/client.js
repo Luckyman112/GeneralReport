@@ -156,6 +156,7 @@ export const api = {
     request(`/api/reports/${reportId}/images/${imageId}`, { method: "DELETE", token }),
 
   listRegiments: (token) => request("/api/regiments", { token }),
+  getHqLeadership: (token) => request("/api/regiments/hq-leadership", { token }),
   getDiscordRoles: (token) => request("/api/regiments/discord-roles", { token }),
   createRegiment: (token, { name, discordRoleId, color, discordChannelUrl, isJediOrder }) =>
     request("/api/regiments", {

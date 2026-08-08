@@ -42,7 +42,6 @@ export function Sidebar({ open, onClose }) {
               >
                 Состав
               </button>
-              <Link to="/instructor-room" onClick={onClose}>Инструкторская</Link>
               <Link to="/promotions" onClick={onClose}>Повышения</Link>
             </div>
 
@@ -59,6 +58,13 @@ export function Sidebar({ open, onClose }) {
                 {isDisciplineDeputy && !access?.is_admin && <Link to="/logs" onClick={onClose}>Журнал</Link>}
               </div>
             )}
+
+            <div className="sidebar-links-group">
+              <span className="sidebar-links-group-label">Специализации</span>
+              <Link to="/instructor-room" onClick={onClose}>Инструкторская</Link>
+              <Link to="/specializations/medic" onClick={onClose}>Медицина</Link>
+              <Link to="/specializations/engineer" onClick={onClose}>Инженерия</Link>
+            </div>
 
             {(access?.is_admin || access?.can_access_event_room) && (
               <div className="sidebar-links-group">

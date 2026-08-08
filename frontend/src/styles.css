@@ -725,6 +725,39 @@ label {
   overflow-y: auto;
 }
 
+/* Статичный список командования формирований на странице Штаба (см. решение
+ * пользователя) — не роструктура, просто справочный список */
+.hq-leadership-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.hq-leadership-panel h3 {
+  margin: 0 0 0.5rem;
+  color: var(--accent);
+}
+
+.hq-formation-block {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.hq-formation-block h4 {
+  margin: 0 0 0.35rem;
+}
+
+.hq-leadership-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
 .category-nav {
   position: sticky;
   top: 1.5rem;

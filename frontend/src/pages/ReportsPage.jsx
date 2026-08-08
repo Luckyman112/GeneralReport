@@ -6,6 +6,7 @@ import { CategoryManagerModal } from "../components/CategoryManagerModal";
 import { CategoryNav } from "../components/CategoryNav";
 import { DetentionReportForm } from "../components/DetentionReportForm";
 import { EmptyState } from "../components/EmptyState";
+import { HqLeadershipPanel } from "../components/HqLeadershipPanel";
 import { OverflowMenu } from "../components/OverflowMenu";
 import { PageLoading } from "../components/PageLoading";
 import { RegimentPanel } from "../components/RegimentPanel";
@@ -50,6 +51,8 @@ export function ReportsPage() {
   const [loading, setLoading] = useState(true);
 
   const regimentsById = useMemo(() => Object.fromEntries(regiments.map((r) => [r.id, r])), [regiments]);
+  const hqRegiment = useMemo(() => regiments.find((r) => r.name === "Штаб"), [regiments]);
+  const isViewingHq = Boolean(hqRegiment && Number(regimentFilter) === hqRegiment.id);
 
   const accessibleRegimentIds = useMemo(() => {
     if (access?.is_admin || access?.is_high_command) return regiments.map((r) => r.id);
@@ -437,15 +440,21 @@ export function ReportsPage() {
         </div>
       )}
 
-      {accessibleRegimentIds.length > 0 && (
+      {isViewingHq ? (
         <aside className="reports-sidebar">
-          <RegimentPanel
-            regiments={regiments.filter((r) => accessibleRegimentIds.includes(r.id))}
-            canManageMembers={canManageMembers}
-            initialRegimentId={focusMemberRegimentId ? Number(focusMemberRegimentId) : undefined}
-            focusDiscordId={focusMemberDiscordId}
-          />
+          <HqLeadershipPanel />
         </aside>
+      ) : (
+        accessibleRegimentIds.length > 0 && (
+          <aside className="reports-sidebar">
+            <RegimentPanel
+              regiments={regiments.filter((r) => accessibleRegimentIds.includes(r.id))}
+              canManageMembers={canManageMembers}
+              initialRegimentId={focusMemberRegimentId ? Number(focusMemberRegimentId) : undefined}
+              focusDiscordId={focusMemberDiscordId}
+            />
+          </aside>
+        )
       )}
 
       {showCategoryManager && (

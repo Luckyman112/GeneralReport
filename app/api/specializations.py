@@ -17,7 +17,7 @@ from app.crud import specialization as specialization_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
-from app.models.specialization import DISCIPLINE_CATEGORIES, UNLIMITED_TRAINING_CODE, Specialization
+from app.models.specialization import DISCIPLINE_CATEGORIES, INSTRUCTOR_TIER_RANK, UNLIMITED_TRAINING_CODE, Specialization
 from app.models.user import User
 from app.schemas.specialization import (
     DisciplineRosterEntry,
@@ -156,15 +156,24 @@ async def get_discipline_roster(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> list[DisciplineRosterEntry]:
-    """Кросс-формационный ростер: все бойцы с любой специализацией этой ветки,
-    во всех формированиях сразу — доступно DEP+/куратору ветки или админу."""
+    """Кросс-формационный ростер: все бойцы с любой специализацией этой ветки, во
+    всех формированиях сразу — виден любому (см. решение пользователя — раздел
+    "Специализации" открыт всем, не только DEP/CU своей ветки). Отсортирован по
+    инструкторской иерархии ветки: куратор -> зам -> инструктор -> просто
+    держит специализацию без инструкторской роли."""
     if discipline not in DISCIPLINE_CATEGORIES:
         raise NotFoundError("Неизвестная дисциплина")
-    if not access.is_discipline_deputy(discipline):
-        raise ForbiddenError("Кросс-формационный ростер доступен DEP+/куратору своей дисциплины или администратору")
 
     grants = await specialization_crud.list_grants_by_category(db, discipline)
     regiments = await regiment_crud.get_all(db)
+    instructor_roles = await specialization_crud.list_instructor_roles(db)
+    matched_roles = [r for r in instructor_roles if r.can_teach_all or r.discipline == discipline]
+
+    def best_tier(role_ids: set[str]) -> str | None:
+        tiers = [r.tier for r in matched_roles if r.discord_role_id in role_ids]
+        if not tiers:
+            return None
+        return min(tiers, key=lambda t: INSTRUCTOR_TIER_RANK.get(t, 99))
 
     entries = []
     for grant in grants:
@@ -176,9 +185,10 @@ async def get_discipline_roster(
                 specialization=SpecializationRead.model_validate(grant.specialization),
                 granted_at=grant.granted_at,
                 regiment_names=regiment_names,
+                tier=best_tier(role_ids),
             )
         )
-    entries.sort(key=lambda e: e.user.username.lower())
+    entries.sort(key=lambda e: (INSTRUCTOR_TIER_RANK.get(e.tier, 99), e.user.username.lower()))
     return entries
 
 
