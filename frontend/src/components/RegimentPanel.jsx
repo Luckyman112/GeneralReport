@@ -194,6 +194,12 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
                               {formatFullName(m)}
                             </span>
                             {m.is_inactive && <span className="member-inactive-badge">разжалован</span>}
+                            {m.registration_status === "rejected" && (
+                              <span className="member-unregistered-badge">заявка отклонена</span>
+                            )}
+                            {(m.registration_status === "pending" || m.registration_status == null) && (
+                              <span className="member-unregistered-badge">не зарегистрирован</span>
+                            )}
                           </span>
                         </td>
                         <td className="mono-num">{m.days_in_rank ?? "—"}</td>

@@ -109,6 +109,15 @@ async def list_pending_registrations(db: AsyncSession) -> list[User]:
     return list(result.scalars().all())
 
 
+async def list_rejected_registrations(db: AsyncSession) -> list[User]:
+    """Отклонённые заявки — показываются отдельно от ожидающих решения (см.
+    решение пользователя), чтобы не терялись из виду: reject_registration
+    обнуляет service_id/callsign/steam_id, поэтому здесь фильтр только по
+    статусу, без проверки service_id."""
+    result = await db.execute(select(User).where(User.registration_status == "rejected"))
+    return list(result.scalars().all())
+
+
 async def get_by_ids(db: AsyncSession, user_ids: list[int]) -> list[User]:
     if not user_ids:
         return []

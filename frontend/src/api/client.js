@@ -226,6 +226,7 @@ export const api = {
     }),
   getSteamLoginUrl: (token) => request("/api/steam/login-url", { token }),
   listPendingRegistrations: (token) => request("/api/registrations/pending", { token }),
+  listRejectedRegistrations: (token) => request("/api/registrations/rejected", { token }),
   approveRegistration: (token, discordId) =>
     request(`/api/registrations/${discordId}/approve`, { method: "POST", token }),
   rejectRegistration: (token, discordId) =>

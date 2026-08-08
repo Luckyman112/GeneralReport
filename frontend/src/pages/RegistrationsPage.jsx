@@ -17,13 +17,16 @@ export function RegistrationsPage() {
   const { token } = useAuth();
   const showToast = useToast();
   const [requests, setRequests] = useState([]);
+  const [rejected, setRejected] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    api
-      .listPendingRegistrations(token)
-      .then(setRequests)
+    Promise.all([api.listPendingRegistrations(token), api.listRejectedRegistrations(token)])
+      .then(([pending, rejectedList]) => {
+        setRequests(pending);
+        setRejected(rejectedList);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
@@ -94,6 +97,30 @@ export function RegistrationsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {rejected.length > 0 && (
+        <>
+          <h3 style={{ marginTop: "2rem" }}>Отклонённые заявки</h3>
+          <p className="hint-text">
+            Заявка отклонена — боец может подать её заново. До этого профиль пуст (ИДН/позывной/Steam ID сброшены).
+          </p>
+          <div className="report-list">
+            {rejected.map((r) => (
+              <div key={r.discord_id} className="report-row fade-in-up">
+                <div className="report-row-header">
+                  {r.avatar_url && <img src={r.avatar_url} alt="" className="member-avatar" />}
+                  <span className="report-regiment">{r.username}</span>
+                  {r.regiment_names.map((name) => (
+                    <span key={name} className="report-category">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

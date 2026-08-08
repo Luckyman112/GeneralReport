@@ -516,6 +516,7 @@ def _build_guild_member(member: dict, user: User | None, character: Character | 
         last_login_at=user.last_login_at if user else None,
         joined_at=user.created_at if user else None,
         rank_assigned_at=rank_assigned_at,
+        registration_status=user.registration_status if user else None,
     )
 
 

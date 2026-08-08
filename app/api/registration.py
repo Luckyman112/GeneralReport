@@ -135,6 +135,41 @@ async def list_pending_registrations(
     return result
 
 
+@router.get("/registrations/rejected", response_model=list[PendingRegistrationRead])
+async def list_rejected_registrations(
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[PendingRegistrationRead]:
+    """Отклонённые заявки — отдельно от ожидающих решения (см. решение
+    пользователя), та же видимость: администратор/высшее командование/
+    командир-зам формирования заявителя."""
+    rejected_users = await user_crud.list_rejected_registrations(db)
+    regiments = await regiment_crud.get_all(db)
+
+    result: list[PendingRegistrationRead] = []
+    for user in rejected_users:
+        user_regiments = [r for r in regiments if r.discord_role_id in set(user.roles)]
+        if not (
+            access.is_admin
+            or access.is_high_command
+            or any(access.is_commander_of(r.id) for r in user_regiments)
+        ):
+            continue
+        result.append(
+            PendingRegistrationRead(
+                discord_id=user.discord_id,
+                username=user.username,
+                avatar_url=user.avatar_url,
+                service_id=user.service_id,
+                callsign=user.callsign,
+                steam_id=user.steam_id,
+                created_at=user.created_at,
+                regiment_names=[r.name for r in user_regiments],
+            )
+        )
+    return result
+
+
 async def _require_reviewer_access(db: AsyncSession, access: AccessContext, target_user) -> None:
     user_regiments = await _regiments_for_user(db, target_user)
     if access.is_admin or access.is_high_command:

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.report import Report, ReportStatus
+from app.models.report_category import ReportCategory
 from app.models.user import User
 
 _LOAD_OPTIONS = [
@@ -68,8 +69,21 @@ async def create_report(
 
 async def list_since(db: AsyncSession, *, user_id: int, since, status: ReportStatus | None = None) -> list[Report]:
     """Рапорты пользователя начиная с указанной даты (используется для обзора
-    повышения — рапорты за текущее звание, с даты назначения этого звания)."""
-    query = select(Report).where(Report.user_id == user_id, Report.created_at >= since).options(*_LOAD_OPTIONS)
+    повышения — рапорты за текущее звание, с даты назначения этого звания).
+    Системная копия заявки на повышение (категория is_promotion) сюда не
+    попадает — это не рапорт, поданный бойцом, и не должна засчитываться в
+    статистику для следующего повышения (см. решение пользователя, аналогично
+    app/crud/stats.py::_exclude_promotion_mirrors)."""
+    query = (
+        select(Report)
+        .outerjoin(ReportCategory, Report.category_id == ReportCategory.id)
+        .where(
+            Report.user_id == user_id,
+            Report.created_at >= since,
+            or_(ReportCategory.id.is_(None), ReportCategory.is_promotion.is_(False)),
+        )
+        .options(*_LOAD_OPTIONS)
+    )
     if status is not None:
         query = query.where(Report.status == status)
     query = query.order_by(Report.created_at.desc())

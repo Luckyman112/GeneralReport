@@ -50,6 +50,10 @@ class GuildMemberRead(BaseModel):
     # first web login, approximates join date (no exact discord-role-grant tracking)
     joined_at: datetime | None = None
     rank_assigned_at: datetime | None = None
+    # None — вообще нет записи в БД (ни разу не заходил), "pending"/"rejected" —
+    # заходил, но не прошёл регистрацию/был отклонён (см. решение пользователя —
+    # такие участники должны быть заметны прямо в составе формирования)
+    registration_status: str | None = None
 
 
 class DiscordChannelRead(BaseModel):

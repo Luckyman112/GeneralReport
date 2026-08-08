@@ -2573,6 +2573,18 @@ label {
   margin-left: 0.3rem;
 }
 
+/* Не прошёл (или ещё не подал) регистрацию — виден прямо в составе
+ * формирования, не только на отдельной странице "Регистрации" (см. решение
+ * пользователя) */
+.member-unregistered-badge {
+  font-size: 0.7rem;
+  color: var(--accent-warn);
+  border: 1px solid var(--accent-warn);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  margin-left: 0.3rem;
+}
+
 input[type="file"] {
   display: block;
   font-family: var(--font-body);
