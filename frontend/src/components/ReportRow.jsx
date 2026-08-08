@@ -48,6 +48,13 @@ export function ReportRow({
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [showPointsPanel]);
 
+  // Зеркальная копия (см. ReportCategory.mirrors_to_category_id) — статус
+  // синхронизируется от исходного рапорта, тут его не меняют напрямую
+  const isMirror = Boolean(report.mirror_of_report_id);
+  canManage = canManage && !isMirror;
+  canReject = canReject && !isMirror;
+  canDelete = (canDelete ?? canManage) && !isMirror;
+
   const detentionTargetName = formatDetentionTarget(report);
   const punishmentLabel = formatPunishmentType(report);
   const canManageImages = canManage;
@@ -63,6 +70,7 @@ export function ReportRow({
           {regimentName}
         </span>
         {categoryName && <span className="report-category">{categoryName}</span>}
+        {isMirror && <span className="hint-text">(зеркало из формирования)</span>}
         <StatusBadge status={report.status} />
         <span className="report-date">{formatMskDate(report.created_at)} МСК</span>
 

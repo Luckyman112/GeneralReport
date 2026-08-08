@@ -68,6 +68,12 @@ class Report(Base):
     # training reports only, each granted to target_discord_id on approval —
     # points to the author (instructor), one per specialization, not to the trainee
     training_specialization_ids: Mapped[list[int]] = mapped_column(JSON, default=list, server_default="[]")
+    # Заполнено только у read-only зеркальных копий (см.
+    # ReportCategory.mirrors_to_category_id) — статус синхронизируется с исходным
+    # рапортом, у самого зеркала статус напрямую не меняется (см. app/api/reports.py)
+    mirror_of_report_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reports.id"), nullable=True
+    )
 
     images: Mapped[list["ReportImage"]] = relationship(
         back_populates="report", cascade="all, delete-orphan", order_by="ReportImage.created_at"

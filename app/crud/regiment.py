@@ -8,6 +8,18 @@ DETENTION_CATEGORY_NAME = "Задержание"
 PROMOTION_CATEGORY_NAME = "Повышение"
 DEMOTION_CATEGORY_NAME = "Понижение"
 TRAINING_CATEGORY_NAME = "Обучение на специализации"
+STAFF_REGIMENT_NAME = "Штаб"
+# Обучение НОВИЧКОВ формирования (не путать с TRAINING_CATEGORY_NAME — та про
+# выдачу мед/пилот/инж специализаций инструктором). Заводится в каждом
+# формировании — min_rank_id (кто может обучать, например "Капрал+") командир
+# настраивает сам как у обычной категории. Копия каждого поданного рапорта
+# автоматически зеркалится в одноимённую категорию Штаба — см.
+# ReportCategory.mirrors_to_category_id и _ensure_recruit_training_category ниже.
+RECRUIT_TRAINING_CATEGORY_NAME = "Обучение рекрута"
+RECRUIT_TRAINING_FIELDS = [
+    {"name": "Рекрут", "type": "roster", "allowed_regiment_ids": [], "allow_manual": True},
+    {"name": "Заметки", "type": "text", "allowed_regiment_ids": []},
+]
 
 # Базовый набор обычных (не системных) категорий рапортов — заводится каждому
 # новому формированию сразу при создании (см. решение пользователя), в
@@ -126,7 +138,47 @@ async def create(
         )
     await db.commit()
 
+    await _ensure_recruit_training_category(db, regiment)
+
     return regiment
+
+
+async def _ensure_recruit_training_category(db: AsyncSession, regiment: Regiment) -> None:
+    """Заводит "Обучение рекрута" этому формированию, зазеркаленную в одноимённую
+    категорию Штаба (если она уже есть) — см. RECRUIT_TRAINING_CATEGORY_NAME.
+    Сам Штаб (когда заводят его самого) — конечная точка, mirrors_to_category_id
+    не выставляется."""
+    existing = await db.execute(
+        select(ReportCategory).where(
+            ReportCategory.regiment_id == regiment.id, ReportCategory.name == RECRUIT_TRAINING_CATEGORY_NAME
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+
+    mirrors_to_category_id = None
+    if regiment.name != STAFF_REGIMENT_NAME:
+        hq_result = await db.execute(select(Regiment).where(Regiment.name == STAFF_REGIMENT_NAME))
+        hq = hq_result.scalar_one_or_none()
+        if hq is not None:
+            hq_category_result = await db.execute(
+                select(ReportCategory).where(
+                    ReportCategory.regiment_id == hq.id, ReportCategory.name == RECRUIT_TRAINING_CATEGORY_NAME
+                )
+            )
+            hq_category = hq_category_result.scalar_one_or_none()
+            if hq_category is not None:
+                mirrors_to_category_id = hq_category.id
+
+    db.add(
+        ReportCategory(
+            regiment_id=regiment.id,
+            name=RECRUIT_TRAINING_CATEGORY_NAME,
+            fields=RECRUIT_TRAINING_FIELDS,
+            mirrors_to_category_id=mirrors_to_category_id,
+        )
+    )
+    await db.commit()
 
 
 async def update(db: AsyncSession, regiment: Regiment, **changes) -> Regiment:

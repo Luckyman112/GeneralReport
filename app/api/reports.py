@@ -81,6 +81,25 @@ async def _check_category_filing_restrictions(db: AsyncSession, access: AccessCo
             raise ForbiddenError(f"Подавать рапорт категории «{category.name}» может только участник отряда «{squad_label}»")
 
 
+async def _create_mirror_report(db: AsyncSession, report, category) -> None:
+    """См. ReportCategory.mirrors_to_category_id — read-only копия рапорта в
+    другой категории (обычно Штаба), для общего обзора без влияния на баллы
+    (баллы уже начислены/будут начислены по исходному рапорту)."""
+    mirror_category = await report_category_crud.get_by_id(db, category.mirrors_to_category_id)
+    if mirror_category is None:
+        return
+    await report_crud.create_report(
+        db,
+        user_id=report.user_id,
+        regiment_id=mirror_category.regiment_id,
+        category_id=mirror_category.id,
+        content=report.content,
+        status=report.status,
+        author_rank_id=report.author_rank_id,
+        mirror_of_report_id=report.id,
+    )
+
+
 def _attach_training_specializations(read: ReportRead, report, specs_by_id: dict) -> None:
     if report.training_specialization_ids:
         from app.schemas.specialization import SpecializationRead
@@ -307,6 +326,8 @@ async def create_report(
     logger.info("Пользователь %s создал рапорт %s (%s)", access.user.username, report.id, status)
     if auto_approve:
         report = await _apply_approval_side_effects(db, report, category, access.user.id)
+    if status == ReportStatus.SUBMITTED and category is not None and category.mirrors_to_category_id is not None:
+        await _create_mirror_report(db, report, category)
     event_bus.publish("reports")
     return await _to_report_read(db, report)
 
@@ -489,6 +510,8 @@ async def update_report_status(
     report = await report_crud.get_by_id(db, report_id)
     if report is None:
         raise NotFoundError("Рапорт не найден")
+    if report.mirror_of_report_id is not None:
+        raise ForbiddenError("Это зеркальная копия рапорта из другого формирования — статус меняется у исходного")
 
     is_self_submit = (
         report.user_id == access.user.id
@@ -567,6 +590,20 @@ async def update_report_status(
         # sum_approved_points, no extra code needed there)
         await report_participant_crud.delete_for_report(db, report_id=updated.id)
 
+    if is_self_submit and category is not None and category.mirrors_to_category_id is not None:
+        await _create_mirror_report(db, updated, category)
+    else:
+        mirror = await report_crud.get_mirror_of(db, updated.id)
+        if mirror is not None:
+            await report_crud.sync_mirror_status(
+                db,
+                mirror,
+                status=payload.status,
+                updated_by=access.user.id,
+                updated_by_rank_id=access.user.rank_id,
+                rejection_reason=payload.rejection_reason,
+            )
+
     event_bus.publish("reports")
     return await _to_report_read(db, updated)
 
@@ -601,6 +638,8 @@ async def delete_report(
     report = await report_crud.get_by_id(db, report_id)
     if report is None:
         raise NotFoundError("Рапорт не найден")
+    if report.mirror_of_report_id is not None:
+        raise ForbiddenError("Это зеркальная копия рапорта из другого формирования — удаляется у исходного")
 
     is_own_draft = report.user_id == access.user.id and report.status == ReportStatus.DRAFT
     was_approved = report.status == ReportStatus.APPROVED
@@ -634,6 +673,11 @@ async def delete_report(
         await report_participant_crud.delete_for_report(db, report_id=report.id)
 
     deleted = await report_crud.soft_delete(db, report, updated_by=access.user.id)
+    mirror = await report_crud.get_mirror_of(db, deleted.id)
+    if mirror is not None:
+        await report_crud.sync_mirror_status(
+            db, mirror, status=ReportStatus.DELETED, updated_by=access.user.id, updated_by_rank_id=access.user.rank_id
+        )
     logger.info("%s удалил рапорт %s", access.user.username, report_id)
     if not is_own_draft and (category is None or not category.is_detention):
         # аннулирование задержания уже залогировано отдельно (detention_report_delete)

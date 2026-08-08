@@ -17,6 +17,10 @@ class ReportCategoryField(BaseModel):
     # подающего (можно сменить/убрать вручную) — см. решение пользователя
     # ("я сам" функция)
     default_self: bool = False
+    # roster-поля only — разрешает вписать имя вручную текстом, если человека
+    # ещё нет в составе (например только что присоединившийся рекрут) — хранится
+    # в значениях поля с префиксом "manual:", см. frontend/src/components/RosterFieldPicker.jsx
+    allow_manual: bool = False
 
 
 class ReportCategoryRead(BaseModel):

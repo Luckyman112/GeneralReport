@@ -54,6 +54,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
   const [newFieldType, setNewFieldType] = useState("text");
   const [newFieldAllowedRegimentIds, setNewFieldAllowedRegimentIds] = useState([]);
   const [newFieldDefaultSelf, setNewFieldDefaultSelf] = useState(false);
+  const [newFieldAllowManual, setNewFieldAllowManual] = useState(false);
   const [pointsDraft, setPointsDraft] = useState(category.points ?? "");
   const [participantPointsDraft, setParticipantPointsDraft] = useState(category.participant_points ?? "");
   const [minRankDraft, setMinRankDraft] = useState(category.min_rank?.id ?? "");
@@ -73,6 +74,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
       if (newFieldType === "roster") {
         field.allowed_regiment_ids = newFieldAllowedRegimentIds;
         field.default_self = newFieldDefaultSelf;
+        field.allow_manual = newFieldAllowManual;
       }
       await api.updateCategory(token, category.regiment_id, category.id, {
         fields: [...category.fields, field],
@@ -81,6 +83,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
       setNewFieldType("text");
       setNewFieldAllowedRegimentIds([]);
       setNewFieldDefaultSelf(false);
+      setNewFieldAllowManual(false);
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -159,6 +162,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
                   {f.name}
                   <span className="field-tag-type">{FIELD_TYPE_LABELS[f.type] || f.type}</span>
                   {f.type === "roster" && f.default_self && <span className="hint-text"> (я сам)</span>}
+                  {f.type === "roster" && f.allow_manual && <span className="hint-text"> (+ ручной ввод)</span>}
                   {f.type === "roster" && f.allowed_regiment_ids?.length > 0 && (
                     <span className="hint-text">
                       {" "}
@@ -198,6 +202,15 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
                 />
                 По умолчанию — я сам
                 <InfoHint text="При открытии формы поле сразу подставит того, кто подаёт рапорт — можно сменить или убрать вручную перед отправкой." />
+              </label>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={newFieldAllowManual}
+                  onChange={(e) => setNewFieldAllowManual(e.target.checked)}
+                />
+                Разрешить ручной ввод
+                <InfoHint text="Позволяет вписать имя текстом, если человека ещё нет в составе (например только вступивший рекрут) — вместо выбора из списка." />
               </label>
               <RosterAllowedRegiments
                 allRegiments={allRegiments}
@@ -334,6 +347,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
   const [newFieldDraftType, setNewFieldDraftType] = useState("text");
   const [newFieldDraftAllowedRegimentIds, setNewFieldDraftAllowedRegimentIds] = useState([]);
   const [newFieldDraftDefaultSelf, setNewFieldDraftDefaultSelf] = useState(false);
+  const [newFieldDraftAllowManual, setNewFieldDraftAllowManual] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   // Защита от гонки: устаревший ответ (для уже покинутого формирования) не должен
@@ -378,12 +392,14 @@ export function CategoryManagerModal({ regiments, onClose }) {
     if (newFieldDraftType === "roster") {
       field.allowed_regiment_ids = newFieldDraftAllowedRegimentIds;
       field.default_self = newFieldDraftDefaultSelf;
+      field.allow_manual = newFieldDraftAllowManual;
     }
     setNewCategoryFields((prev) => [...prev, field]);
     setNewFieldDraft("");
     setNewFieldDraftType("text");
     setNewFieldDraftAllowedRegimentIds([]);
     setNewFieldDraftDefaultSelf(false);
+    setNewFieldDraftAllowManual(false);
   }
 
   function handleRemoveFieldDraft(fieldName) {
@@ -483,6 +499,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
                       {f.name}
                       <span className="field-tag-type">{FIELD_TYPE_LABELS[f.type] || f.type}</span>
                       {f.type === "roster" && f.default_self && <span className="hint-text"> (я сам)</span>}
+                      {f.type === "roster" && f.allow_manual && <span className="hint-text"> (+ ручной ввод)</span>}
                       <button type="button" onClick={() => handleRemoveFieldDraft(f.name)}>
                         ×
                       </button>
@@ -521,6 +538,14 @@ export function CategoryManagerModal({ regiments, onClose }) {
                       onChange={(e) => setNewFieldDraftDefaultSelf(e.target.checked)}
                     />
                     По умолчанию — я сам
+                  </label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={newFieldDraftAllowManual}
+                      onChange={(e) => setNewFieldDraftAllowManual(e.target.checked)}
+                    />
+                    Разрешить ручной ввод
                   </label>
                   <RosterAllowedRegiments
                     allRegiments={allRegiments}

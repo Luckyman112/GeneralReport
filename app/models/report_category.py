@@ -68,3 +68,11 @@ class ReportCategory(Base):
     # ограничения нет. Отряд всегда из того же формирования, что и категория.
     required_squad_id: Mapped[int | None] = mapped_column(ForeignKey("squads.id"), nullable=True)
     required_squad: Mapped["Squad | None"] = relationship()
+    # Рапорты этой категории при подаче автоматически дублируются read-only копией
+    # в категорию, на которую указывает это поле (обычно — категория Штаба, для
+    # общего обзора всеми кмд+, см. "Обучение рекрута" в regiment_crud) — сама эта
+    # категория (в Штабе) mirrors_to_category_id не имеет, она конечная точка.
+    # Не настраивается через обычный API категорий, выставляется программно.
+    mirrors_to_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("report_categories.id"), nullable=True
+    )

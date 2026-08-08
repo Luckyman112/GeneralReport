@@ -94,3 +94,7 @@ class ReportRead(BaseModel):
     punishment_amount: str | None = None
     violation_id: int | None = None
     training_specializations: list[SpecializationRead] = []
+    # Заполнено только у read-only зеркальных копий (см.
+    # ReportCategory.mirrors_to_category_id) — статус меняется не здесь, а у
+    # исходного рапорта (mirror_of_report_id указывает на него)
+    mirror_of_report_id: uuid.UUID | None = None

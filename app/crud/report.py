@@ -41,6 +41,7 @@ async def create_report(
     punishment_other_text: str | None = None,
     punishment_amount: str | None = None,
     training_specialization_ids: list[int] | None = None,
+    mirror_of_report_id: uuid.UUID | None = None,
 ) -> Report:
     report = Report(
         user_id=user_id,
@@ -61,6 +62,7 @@ async def create_report(
         punishment_other_text=punishment_other_text,
         punishment_amount=punishment_amount,
         training_specialization_ids=training_specialization_ids or [],
+        mirror_of_report_id=mirror_of_report_id,
     )
     db.add(report)
     await db.commit()
@@ -232,6 +234,34 @@ async def update_status(
         report.deleted_at = datetime.now(timezone.utc)
     await db.commit()
     return await get_by_id(db, report.id)
+
+
+async def get_mirror_of(db: AsyncSession, origin_report_id: uuid.UUID) -> Report | None:
+    """Зеркальная копия (см. Report.mirror_of_report_id) этого рапорта в другой
+    категории, если она есть — для синхронизации статуса при одобрении/отклонении."""
+    result = await db.execute(select(Report).where(Report.mirror_of_report_id == origin_report_id))
+    return result.scalars().first()
+
+
+async def sync_mirror_status(
+    db: AsyncSession,
+    mirror: Report,
+    *,
+    status: ReportStatus,
+    updated_by: int,
+    updated_by_rank_id: int | None = None,
+    rejection_reason: str | None = None,
+) -> Report:
+    """Проставляет статус зеркалу вслед за исходным рапортом — без начисления баллов
+    и прочих сайд-эффектов одобрения (те уже применились к исходному рапорту)."""
+    mirror.status = status
+    mirror.updated_by = updated_by
+    mirror.updated_by_rank_id = updated_by_rank_id
+    mirror.rejection_reason = rejection_reason
+    if status == ReportStatus.DELETED:
+        mirror.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    return await get_by_id(db, mirror.id)
 
 
 async def update_content(db: AsyncSession, report: Report, *, content: str) -> Report:

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { RosterFieldPicker } from "./RosterFieldPicker";
+import { isManualEntry, manualEntryName, RosterFieldPicker } from "./RosterFieldPicker";
 
 // Категории дисциплин (медик/пилот/инженер) — в общей форме не показываются
 // вообще (подача перенесена на страницы Специализации, см. решение
@@ -147,7 +147,10 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
       const names = rosterMembersForField(field)
         .filter((m) => value?.includes(m.discord_id))
         .map((m) => (m._regimentName ? `${m.username} (${m._regimentName})` : m.username));
-      return names.join(", ");
+      const manualNames = (value || [])
+        .filter(isManualEntry)
+        .map((id) => `${manualEntryName(id)} (не в составе)`);
+      return [...names, ...manualNames].join(", ");
     }
     return value.trim();
   }
@@ -172,6 +175,7 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
         categoryFields
           .filter((f) => f.type === "roster")
           .flatMap((f) => fieldValues[f.name] || [])
+          .filter((id) => !isManualEntry(id))
       ),
     ];
 
@@ -233,6 +237,7 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
                 members={rosterMembersForField(field)}
                 selectedIds={fieldValues[field.name] || []}
                 onChange={(ids) => setFieldValues((prev) => ({ ...prev, [field.name]: ids }))}
+                allowManual={field.allow_manual}
               />
             </label>
           ) : (

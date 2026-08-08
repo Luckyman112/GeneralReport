@@ -2072,6 +2072,21 @@ label {
   margin-bottom: 0.3rem;
 }
 
+.roster-picker-manual {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+
+.roster-picker-manual-input {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.roster-picker-manual-input input {
+  flex: 1;
+}
+
 .datetime-picker {
   position: relative;
 }
