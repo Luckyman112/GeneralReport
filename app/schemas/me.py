@@ -22,6 +22,10 @@ class AccessInfo(BaseModel):
     # расширенные разделы (каталог своей ветки, кросс-формационный ростер и т.д.)
     deputy_disciplines: list[str] = []
     curator_disciplines: list[str] = []
+    # дисциплины, где у САМОГО пользователя есть специализация (обучен на
+    # ветку) — доступ к разделам Специализации (Медицина/Инженерия), см.
+    # AccessContext.can_access_discipline
+    specialization_disciplines: list[str] = []
     # командир/заместитель хотя бы одного формирования — открывает Штаб-категории
     # с open_to_regiment_leadership, даже если сам не состоит в Штабе
     is_regiment_leadership: bool = False

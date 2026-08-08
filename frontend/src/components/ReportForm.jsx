@@ -3,7 +3,28 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { RosterFieldPicker } from "./RosterFieldPicker";
 
-export function ReportForm({ regiments, onSubmit, onCancel }) {
+// Категории дисциплин (медик/пилот/инженер) — в общей форме не показываются
+// вообще (подача перенесена на страницы Специализации, см. решение
+// пользователя); discipline-проп используется теми самыми страницами, чтобы
+// показать ТОЛЬКО категории своей ветки. required_specialization категории
+// рапорта обычно указывает на БАЗОВУЮ специализацию (например "Медик"), а её
+// собственный Specialization.category — это категория лимита состава ("class"
+// и т.п.), НЕ discipline — поэтому вдобавок к category сверяем ещё и code
+// корневой специализации ветки.
+const DISCIPLINE_CATEGORIES = ["medic", "pilot", "engineer"];
+const DISCIPLINE_ROOT_CODES = { medic: ["MED"], engineer: ["ENG"], pilot: ["PIL"] };
+
+function categoryDiscipline(category) {
+  const spec = category.required_specialization;
+  if (!spec) return null;
+  if (DISCIPLINE_CATEGORIES.includes(spec.category)) return spec.category;
+  for (const [discipline, codes] of Object.entries(DISCIPLINE_ROOT_CODES)) {
+    if (codes.includes(spec.code)) return discipline;
+  }
+  return null;
+}
+
+export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
   const { token, activeCharacter } = useAuth();
   const preferredRegimentId = activeCharacter?.regiment.id;
   const defaultRegimentId = regiments.some((r) => r.id === preferredRegimentId)
@@ -37,7 +58,13 @@ export function ReportForm({ regiments, onSubmit, onCancel }) {
         // Задержание/обучение оформляются отдельными формами (кнопка "Рапорт о
         // задержании" и Инструкторская), повышение создаётся автоматически —
         // вручную выбрать их в обычной форме нельзя
-        const selectable = data.filter((c) => !c.is_detention && !c.is_promotion && !c.is_demotion && !c.is_training);
+        const selectable = data.filter((c) => {
+          if (c.is_detention || c.is_promotion || c.is_demotion || c.is_training) return false;
+          if (discipline) return categoryDiscipline(c) === discipline;
+          // общая форма — категории дисциплин сюда не попадают, подача только
+          // со страниц Специализации (Медицина/Инженерия и т.п.)
+          return categoryDiscipline(c) === null;
+        });
         setCategories(selectable);
         setCategoryId(selectable[0]?.id ?? "");
       })
@@ -55,7 +82,7 @@ export function ReportForm({ regiments, onSubmit, onCancel }) {
     return () => {
       ignore = true;
     };
-  }, [token, regimentId]);
+  }, [token, regimentId, discipline]);
 
   useEffect(() => {
     setFieldValues({});

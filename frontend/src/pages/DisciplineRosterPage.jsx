@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
 import { PageLoading } from "../components/PageLoading";
+import { ReportForm } from "../components/ReportForm";
 import { formatFullName } from "../utils/formatName";
 
 const TIER_LABELS = {
@@ -14,19 +14,31 @@ const TIER_LABELS = {
 // порядок блоков сверху вниз — куратор/зам/инструктор/просто состав (см. решение пользователя)
 const TIER_ORDER = ["curator", "deputy", "instructor", null];
 
-/** Открытая всем страница ветки специализации (Медицина/Инженерия/Пилотирование)
- * — иерархия (куратор -> зам -> инструктор -> просто состав) + кросс-формационный
- * ростер. В отличие от /discipline (только для DEP/CU своей ветки, с формой
- * объявления), эта страница просто показывает состав ветки; подать рапорт —
- * обычным образом на странице Рапортов (категории, открытые под специализацию,
- * уже фильтруются там сами). */
+/** Страница ветки специализации (Медицина/Инженерия) — доступна только тем, кто
+ * обучен на ветку (держит специализацию) или инструктору/DEP/CU этой ветки (см.
+ * решение пользователя — не всем подряд, как Розыск). Иерархия (куратор -> зам
+ * -> инструктор -> просто состав) + кросс-формационный ростер + подача рапорта
+ * своей ветки прямо здесь — в общей форме "Создать рапорт" эти категории больше
+ * не показываются вообще (см. ReportForm.jsx). */
 export function DisciplineRosterPage({ discipline, title }) {
-  const { token } = useAuth();
+  const { token, access, regiments } = useAuth();
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showForm, setShowForm] = useState(false);
 
-  useEffect(() => {
+  // Обучен на ветку сам, либо инструктор/DEP/CU этой ветки — те же критерии,
+  // что и на бэкенде (AccessContext.can_access_discipline), но тут только
+  // сериализуемые поля из /me, метод с бэкенда сюда не доезжает
+  const hasAccess = Boolean(
+    access?.is_admin ||
+      (access?.specialization_disciplines || []).includes(discipline) ||
+      (access?.instructor_disciplines || []).includes(discipline) ||
+      (access?.deputy_disciplines || []).includes(discipline)
+  );
+  const canSubmit = hasAccess;
+
+  function load() {
     setLoading(true);
     setError(null);
     api
@@ -34,7 +46,13 @@ export function DisciplineRosterPage({ discipline, title }) {
       .then(setRoster)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [token, discipline]);
+  }
+
+  useEffect(() => {
+    if (hasAccess) load();
+    else setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, discipline, hasAccess]);
 
   const grouped = useMemo(() => {
     const byUser = new Map();
@@ -63,17 +81,48 @@ export function DisciplineRosterPage({ discipline, title }) {
     return buckets;
   }, [roster]);
 
+  async function handleCreate({ regimentId, categoryId, content, submit, images, participantDiscordIds }) {
+    const report = await api.createReport(token, { regimentId, categoryId, content, submit, participantDiscordIds });
+    for (const file of images) {
+      await api.uploadReportImage(token, report.id, file);
+    }
+    setShowForm(false);
+    load();
+  }
+
   if (loading) return <PageLoading />;
+
+  if (!hasAccess) {
+    return (
+      <div className="page-container">
+        <h2>{title}</h2>
+        <EmptyState text="Доступно только тем, кто обучен на эту ветку, или инструктору/заместителю/куратору ветки." />
+      </div>
+    );
+  }
 
   return (
     <div className="page-container">
-      <h2>{title}</h2>
-      <p className="hint-text">
-        Состав ветки по всему серверу, в порядке иерархии. Подать рапорт — как обычно, на странице{" "}
-        <Link to="/reports">Рапорты</Link>.
-      </p>
+      <div className="reports-toolbar">
+        <h2 style={{ margin: 0 }}>{title}</h2>
+        {canSubmit && !showForm && (
+          <button className="primary" onClick={() => setShowForm(true)}>
+            Подать рапорт
+          </button>
+        )}
+      </div>
+      <p className="hint-text">Состав ветки по всему серверу, в порядке иерархии.</p>
 
       {error && <p className="error-text">{error}</p>}
+
+      {showForm && (
+        <ReportForm
+          regiments={regiments}
+          discipline={discipline}
+          onSubmit={handleCreate}
+          onCancel={() => setShowForm(false)}
+        />
+      )}
 
       {roster.length === 0 ? (
         <EmptyState text="В этой ветке пока никого нет." />

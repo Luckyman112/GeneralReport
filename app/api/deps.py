@@ -13,6 +13,7 @@ from app.crud import app_settings as app_settings_crud
 from app.crud import regiment as regiment_crud
 from app.crud import regiment_commander as regiment_commander_crud
 from app.crud import specialization as specialization_crud
+from app.models.specialization import DISCIPLINE_CATEGORIES
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import NotFoundError, UnauthorizedError
@@ -72,6 +73,11 @@ class AccessContext:
     # может быть DEP в одной ветке и просто INS в другой.
     deputy_disciplines: set[str] = field(default_factory=set)
     curator_disciplines: set[str] = field(default_factory=set)
+    # Дисциплины, где у САМОГО пользователя есть хотя бы одна специализация
+    # (обучен на ветку) — не то же самое, что instructor_disciplines (тот
+    # преподаёт ветку, необязательно ей обучен сам, хотя обычно совпадает).
+    # Для доступа к разделам Специализации (см. can_access_discipline)
+    specialization_disciplines: set[str] = field(default_factory=set)
     role_ids: set[str] = field(default_factory=set)
     commander_regiment_ids: set[int] = field(default_factory=set)
     # subset of commander_regiment_ids where role is specifically "commander"
@@ -258,6 +264,19 @@ class AccessContext:
         обзор своей ветки и правку самой лестницы специализаций."""
         return self.is_admin or discipline in self.curator_disciplines
 
+    def can_access_discipline(self, discipline: str) -> bool:
+        """Доступ к разделу Специализации (Медицина/Инженерия) — обучен на ветку
+        сам, либо инструктор/DEP/CU этой ветки (см. решение пользователя: они
+        считаются обученными изначально, даже если сами специализацию не
+        получали)."""
+        return (
+            self.is_admin
+            or discipline in self.specialization_disciplines
+            or discipline in self.instructor_disciplines
+            or discipline in self.deputy_disciplines
+            or discipline in self.curator_disciplines
+        )
+
     @property
     def can_view_trainings(self) -> bool:
         return (
@@ -319,6 +338,13 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
     }
     curator_disciplines = {r.discipline for r in matched_instructor_roles if r.discipline and r.tier == "curator"}
 
+    own_specialization_grants = await specialization_crud.list_for_user(db, user_id=user.id)
+    specialization_disciplines = {
+        g.specialization.category
+        for g in own_specialization_grants
+        if g.specialization.category in DISCIPLINE_CATEGORIES
+    }
+
     # explicit per-regiment assignment, so having a generic commander/deputy role
     # doesn't grant command in every regiment the user's roles touch
     assignments_by_regiment: dict[int, str] = {
@@ -356,6 +382,7 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
         "is_universal_instructor": is_universal_instructor,
         "deputy_disciplines": deputy_disciplines,
         "curator_disciplines": curator_disciplines,
+        "specialization_disciplines": specialization_disciplines,
         "role_ids": role_ids,
         "commander_regiment_ids": commander_regiment_ids,
         "category_manager_regiment_ids": category_manager_regiment_ids,
@@ -385,6 +412,7 @@ def _build_access_context(
         is_universal_instructor=fields["is_universal_instructor"],
         deputy_disciplines=fields["deputy_disciplines"],
         curator_disciplines=fields["curator_disciplines"],
+        specialization_disciplines=fields["specialization_disciplines"],
         role_ids=fields["role_ids"],
         commander_regiment_ids=fields["commander_regiment_ids"],
         category_manager_regiment_ids=fields["category_manager_regiment_ids"],

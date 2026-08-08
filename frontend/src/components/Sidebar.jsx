@@ -18,6 +18,17 @@ export function Sidebar({ open, onClose }) {
   const hqRegiment = regiments.find((r) => r.name === "Штаб");
   const isHqMember = Boolean(hqRegiment && (access?.soldier_regiment_ids || []).includes(hqRegiment.id));
   const isDisciplineDeputy = (access?.deputy_disciplines || []).length > 0;
+  // Обучен на ветку (держит специализацию) либо инструктор/DEP/CU этой ветки —
+  // тот же критерий, что и доступ к самой странице (см. решение пользователя:
+  // разделы Медицина/Инженерия не для всех подряд)
+  function hasDisciplineAccess(discipline) {
+    return (
+      access?.is_admin ||
+      (access?.specialization_disciplines || []).includes(discipline) ||
+      (access?.instructor_disciplines || []).includes(discipline) ||
+      (access?.deputy_disciplines || []).includes(discipline)
+    );
+  }
 
   return (
     <>
@@ -62,8 +73,12 @@ export function Sidebar({ open, onClose }) {
             <div className="sidebar-links-group">
               <span className="sidebar-links-group-label">Специализации</span>
               <Link to="/instructor-room" onClick={onClose}>Инструкторская</Link>
-              <Link to="/specializations/medic" onClick={onClose}>Медицина</Link>
-              <Link to="/specializations/engineer" onClick={onClose}>Инженерия</Link>
+              {hasDisciplineAccess("medic") && (
+                <Link to="/specializations/medic" onClick={onClose}>Медицина</Link>
+              )}
+              {hasDisciplineAccess("engineer") && (
+                <Link to="/specializations/engineer" onClick={onClose}>Инженерия</Link>
+              )}
             </div>
 
             {(access?.is_admin || access?.can_access_event_room) && (
