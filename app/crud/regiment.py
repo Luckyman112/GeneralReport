@@ -9,6 +9,63 @@ PROMOTION_CATEGORY_NAME = "Повышение"
 DEMOTION_CATEGORY_NAME = "Понижение"
 TRAINING_CATEGORY_NAME = "Обучение на специализации"
 
+# Базовый набор обычных (не системных) категорий рапортов — заводится каждому
+# новому формированию сразу при создании (см. решение пользователя), в
+# дополнение к системным выше. Даёт баллы и подавшему, и участникам из
+# ростер-поля "Состав" — командир может донастроить/добавить свои поля потом
+# как обычно, это просто стартовый набор, не системные категории.
+BASE_CATEGORY_SET = [
+    {
+        "name": "Тренировка",
+        "fields": [
+            {"name": "Тема тренировки", "type": "text", "allowed_regiment_ids": []},
+            {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
+            {"name": "Итоги", "type": "text", "allowed_regiment_ids": []},
+        ],
+        "points": 1,
+        "participant_points": 1,
+    },
+    {
+        "name": "Пост",
+        "fields": [
+            {"name": "Место несения поста", "type": "text", "allowed_regiment_ids": []},
+            {"name": "Время", "type": "text", "allowed_regiment_ids": []},
+        ],
+        "points": 1,
+        "participant_points": None,
+    },
+    {
+        "name": "Патруль",
+        "fields": [
+            {"name": "Маршрут патрулирования", "type": "text", "allowed_regiment_ids": []},
+            {"name": "Время", "type": "text", "allowed_regiment_ids": []},
+            {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
+        ],
+        "points": 1,
+        "participant_points": 1,
+    },
+    {
+        "name": "Боевой вылет",
+        "fields": [
+            {"name": "Цель вылета", "type": "text", "allowed_regiment_ids": []},
+            {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
+            {"name": "Результат", "type": "text", "allowed_regiment_ids": []},
+        ],
+        "points": 1,
+        "participant_points": 1,
+    },
+    {
+        "name": "Защита ОВО",
+        "fields": [
+            {"name": "Объект", "type": "text", "allowed_regiment_ids": []},
+            {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
+            {"name": "Результат", "type": "text", "allowed_regiment_ids": []},
+        ],
+        "points": 1,
+        "participant_points": 1,
+    },
+]
+
 
 async def get_all(db: AsyncSession, *, include_archived: bool = False) -> list[Regiment]:
     query = select(Regiment)
@@ -51,6 +108,16 @@ async def create(
     db.add(ReportCategory(regiment_id=regiment.id, name=PROMOTION_CATEGORY_NAME, fields=[], is_promotion=True))
     db.add(ReportCategory(regiment_id=regiment.id, name=DEMOTION_CATEGORY_NAME, fields=[], is_demotion=True))
     db.add(ReportCategory(regiment_id=regiment.id, name=TRAINING_CATEGORY_NAME, fields=[], is_training=True))
+    for spec in BASE_CATEGORY_SET:
+        db.add(
+            ReportCategory(
+                regiment_id=regiment.id,
+                name=spec["name"],
+                fields=spec["fields"],
+                points=spec["points"],
+                participant_points=spec["participant_points"],
+            )
+        )
     await db.commit()
 
     return regiment
