@@ -21,6 +21,7 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
   const { token } = useAuth();
   const [regimentId, setRegimentId] = useState(initialRegimentId ?? regiments[0]?.id ?? "");
   const [members, setMembers] = useState([]);
+  const [commanders, setCommanders] = useState([]);
   const [tiers, setTiers] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
   const focusedDiscordIdRef = useRef(focusDiscordId ?? null);
@@ -70,6 +71,14 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, regimentId]);
 
+  useEffect(() => {
+    if (!regimentId) {
+      setCommanders([]);
+      return;
+    }
+    api.listCommanders(token, regimentId).then(setCommanders).catch(() => setCommanders([]));
+  }, [token, regimentId]);
+
   const loadPending = useCallback(() => {
     if (!regimentId || !canEditHere) {
       setPendingRequestByDiscordId({});
@@ -110,9 +119,22 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
   const inactiveCount = members.filter((m) => m.is_inactive).length;
   const visibleMembers = showInactive ? members : members.filter((m) => !m.is_inactive);
 
+  // Командир формирования — отдельной группой сверху независимо от звания (даже
+  // если он, например, сержант) — не теряется среди обычного состава своего
+  // тира (см. решение пользователя)
+  const commanderDiscordId = useMemo(
+    () => commanders.find((c) => c.role_type === "commander")?.discord_id ?? null,
+    [commanders]
+  );
+
   const groups = useMemo(() => {
+    const commanderMember = commanderDiscordId
+      ? visibleMembers.find((m) => m.discord_id === commanderDiscordId)
+      : null;
+    const rest = commanderMember ? visibleMembers.filter((m) => m.discord_id !== commanderDiscordId) : visibleMembers;
+
     const byTier = new Map();
-    for (const m of visibleMembers) {
+    for (const m of rest) {
       const key = m.rank?.tier_id ?? NO_RANK_GROUP;
       if (!byTier.has(key)) byTier.set(key, []);
       byTier.get(key).push(m);
@@ -130,8 +152,12 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
     if (byTier.has(NO_RANK_GROUP)) {
       ordered.push({ title: NO_RANK_GROUP, members: byTier.get(NO_RANK_GROUP) });
     }
+
+    if (commanderMember) {
+      ordered.unshift({ title: "Командование", members: [commanderMember] });
+    }
     return ordered;
-  }, [visibleMembers, tiers]);
+  }, [visibleMembers, tiers, commanderDiscordId]);
 
   return (
     <div className="regiment-panel">
