@@ -2385,6 +2385,12 @@ label {
   align-items: flex-end;
 }
 
+.violations-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
 .violations-filters .violation-filter-label,
 .reports-toolbar .violation-filter-label {
   margin-bottom: 0;

@@ -42,7 +42,7 @@ export function Sidebar({ open, onClose }) {
               <span className="sidebar-links-group-label">Служба</span>
               <Link to="/main" onClick={onClose}>Главное</Link>
               <Link to="/reports" onClick={onClose}>Рапорты</Link>
-              <Link to="/wanted" onClick={onClose}>Розыск</Link>
+              <Link to="/violations" onClick={onClose}>Нарушители</Link>
               <button
                 type="button"
                 className="ghost sidebar-link-button"
@@ -56,10 +56,9 @@ export function Sidebar({ open, onClose }) {
               <Link to="/promotions" onClick={onClose}>Повышения</Link>
             </div>
 
-            {(access?.can_view_violations || hasCommandAccess || isHqMember || isDisciplineDeputy) && (
+            {(hasCommandAccess || isHqMember || isDisciplineDeputy) && (
               <div className="sidebar-links-group">
                 <span className="sidebar-links-group-label">Командование</span>
-                {access?.can_view_violations && <Link to="/violations" onClick={onClose}>Нарушители</Link>}
                 {hqRegiment && (hasCommandAccess || isHqMember) && (
                   <Link to={`/reports?regiment=${hqRegiment.id}`} onClick={onClose}>Штаб</Link>
                 )}

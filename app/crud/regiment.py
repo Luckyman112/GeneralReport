@@ -5,6 +5,7 @@ from app.models.regiment import Regiment
 from app.models.report_category import ReportCategory
 
 DETENTION_CATEGORY_NAME = "Задержание"
+DETENTION_POINTS = 2
 PROMOTION_CATEGORY_NAME = "Повышение"
 DEMOTION_CATEGORY_NAME = "Понижение"
 TRAINING_CATEGORY_NAME = "Обучение на специализации"
@@ -123,7 +124,11 @@ async def create(
     # Категории "задержание" и "повышение" заводятся автоматически для каждого
     # формирования — обе системные, их не создают и не настраивают вручную
     # (см. is_detention/is_promotion)
-    db.add(ReportCategory(regiment_id=regiment.id, name=DETENTION_CATEGORY_NAME, fields=[], is_detention=True))
+    db.add(
+        ReportCategory(
+            regiment_id=regiment.id, name=DETENTION_CATEGORY_NAME, fields=[], is_detention=True, points=DETENTION_POINTS
+        )
+    )
     db.add(ReportCategory(regiment_id=regiment.id, name=PROMOTION_CATEGORY_NAME, fields=[], is_promotion=True))
     db.add(ReportCategory(regiment_id=regiment.id, name=DEMOTION_CATEGORY_NAME, fields=[], is_demotion=True))
     db.add(ReportCategory(regiment_id=regiment.id, name=TRAINING_CATEGORY_NAME, fields=[], is_training=True))
