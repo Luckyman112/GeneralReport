@@ -3,6 +3,7 @@
 Используются обычные REST-запросы через httpx (без discord.py) — это не требует
 постоянного gateway-подключения бота и хорошо ложится на модель запрос/ответ FastAPI.
 """
+import json
 import logging
 import time
 
@@ -210,4 +211,27 @@ async def send_channel_message(channel_id: str, content: str | None = None, *, e
 
     if response.status_code not in (200, 201):
         logger.error("Discord send channel message failed: %s %s", response.status_code, response.text)
+        raise DiscordAPIError("Не удалось отправить сообщение в Discord-канал.")
+
+
+async def send_channel_message_with_file(
+    channel_id: str, *, embed: dict | None, file_bytes: bytes, filename: str
+) -> None:
+    """Как send_channel_message, но с приложенным файлом (карточка-досье
+    операции, см. app/core/event_card.py) — Discord Bot API требует
+    multipart/form-data, а не JSON, когда есть вложение."""
+    url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages"
+    payload: dict = {"attachments": [{"id": 0, "filename": filename}]}
+    if embed:
+        embed = {**embed, "image": {"url": f"attachment://{filename}"}}
+        payload["embeds"] = [embed]
+
+    files = {"files[0]": (filename, file_bytes, "image/png")}
+    data = {"payload_json": json.dumps(payload)}
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=_bot_headers(), data=data, files=files)
+
+    if response.status_code not in (200, 201):
+        logger.error("Discord send channel message (with file) failed: %s %s", response.status_code, response.text)
         raise DiscordAPIError("Не удалось отправить сообщение в Discord-канал.")

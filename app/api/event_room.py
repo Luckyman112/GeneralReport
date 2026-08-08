@@ -11,11 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
+from app.core.event_card import render_operation_dossier
 from app.core.events import event_bus
 from app.crud import app_settings as app_settings_crud
 from app.crud import event as event_crud
 from app.crud import regiment as regiment_crud
-from app.crud.user import format_full_name
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
 from app.schemas.event import EventCreate, EventMapCreate, EventMapRead, EventRead, EventRejectRequest, EventUpdate
@@ -119,9 +119,10 @@ def _format_datetime(value: str | None) -> str | None:
     return dt.strftime("%d.%m.%Y, %H:%M")
 
 
-def _format_audience(value: dict | None, regiments_by_id: dict) -> str | None:
+def _format_audience(value: dict | None, regiments_by_id: dict, *, plain: bool, members_by_id: dict) -> str | None:
     """Участники/приписной состав — либо роль формирования, либо список людей
-    (см. решение пользователя про поля формы ивента)."""
+    (см. решение пользователя про поля формы ивента). plain=True — для
+    картинки-досье (там нет живых Discord-упоминаний, нужны обычные имена)."""
     if not value:
         return None
     mode = value.get("mode")
@@ -133,14 +134,17 @@ def _format_audience(value: dict | None, regiments_by_id: dict) -> str | None:
         discord_ids = value.get("discord_ids") or []
         if not discord_ids:
             return None
+        if plain:
+            return ", ".join(members_by_id.get(discord_id, discord_id) for discord_id in discord_ids)
         return ", ".join(f"<@{discord_id}>" for discord_id in discord_ids)
     return None
 
 
 async def _build_event_embed(db: AsyncSession, row) -> dict:
+    """Метаданные операции — живые Discord-поля (упоминания, дата) сверху
+    сообщения; содержательная часть (сводка/цель/задача/состав/угроза) —
+    в приложенной картинке-досье, см. render_operation_dossier."""
     payload = row.payload or {}
-    regiments = await regiment_crud.get_all(db)
-    regiments_by_id = {r.id: r for r in regiments}
 
     fields = []
 
@@ -149,15 +153,10 @@ async def _build_event_embed(db: AsyncSession, row) -> dict:
             return
         fields.append({"name": name, "value": str(value), "inline": inline})
 
-    add_field("🎯 Цель операции", payload.get("objective"))
-    add_field("📋 Задача", payload.get("task"))
-    add_field("⚠️ Угроза", payload.get("threat"))
     add_field("🕐 Начало брифинга", _format_datetime(payload.get("briefing_start")))
     add_field("👤 Проводящий", f"<@{row.submitted_by.discord_id}>")
     if payload.get("commander_discord_id"):
         add_field("⭐ Командующий", f"<@{payload['commander_discord_id']}>")
-    add_field("🪖 Состав", _format_audience(payload.get("participants"), regiments_by_id))
-    add_field("➕ Приписной состав", _format_audience(payload.get("attached"), regiments_by_id))
 
     map_name = None
     map_id = payload.get("map_id")
@@ -168,11 +167,44 @@ async def _build_event_embed(db: AsyncSession, row) -> dict:
 
     return {
         "title": row.title,
-        "description": payload.get("summary"),
         "color": 0x3B6FD6,
         "fields": fields,
         "footer": {"text": f"COLLAPSAR · Ивентрум · Заявка #{row.id}"},
     }
+
+
+async def _render_event_image(db: AsyncSession, row) -> bytes:
+    payload = row.payload or {}
+    regiments = await regiment_crud.get_all(db)
+    regiments_by_id = {r.id: r for r in regiments}
+    members = await discord_client.fetch_guild_members()
+    members_by_id = {m["discord_id"]: m["username"] for m in members}
+
+    participants_label = _format_audience(
+        payload.get("participants"), regiments_by_id, plain=True, members_by_id=members_by_id
+    )
+    attached_label = _format_audience(
+        payload.get("attached"), regiments_by_id, plain=True, members_by_id=members_by_id
+    )
+    if attached_label:
+        participants_label = f"{participants_label} + {attached_label}" if participants_label else attached_label
+
+    map_name = None
+    map_id = payload.get("map_id")
+    if map_id:
+        map_row = await event_crud.get_map_by_id(db, map_id)
+        map_name = map_row.name if map_row else None
+
+    return render_operation_dossier(
+        event_id=row.id,
+        title=row.title,
+        summary=payload.get("summary"),
+        objective=payload.get("objective"),
+        task=payload.get("task"),
+        threat=payload.get("threat"),
+        participants_label=participants_label,
+        map_name=map_name,
+    )
 
 
 @router.post("/{event_id}/approve", response_model=EventRead)
@@ -195,7 +227,13 @@ async def approve_event(
     if app_config.event_notify_channel_id:
         try:
             embed = await _build_event_embed(db, updated)
-            await discord_client.send_channel_message(app_config.event_notify_channel_id, embed=embed)
+            image_bytes = await _render_event_image(db, updated)
+            await discord_client.send_channel_message_with_file(
+                app_config.event_notify_channel_id,
+                embed=embed,
+                file_bytes=image_bytes,
+                filename=f"operation-{updated.id}.png",
+            )
             await event_crud.mark_notified(db, updated)
         except Exception:
             # одобрение уже сохранено — сбой отправки в Discord не должен
