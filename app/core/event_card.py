@@ -91,9 +91,13 @@ def _build_sections(
 
     clean_tasks = [t for t in (tasks or []) if t and t.strip()]
     if clean_tasks:
-        label = "ЗАДАЧА" if len(clean_tasks) == 1 else "ЗАДАЧИ"
-        lines = [clean_tasks[0]] if len(clean_tasks) == 1 else [f"{i + 1}. {t}" for i, t in enumerate(clean_tasks)]
-        sections.append((label, lines))
+        # первая задача — основная, остальные идут отдельным пунктом "ДОП. ЗАДАЧИ"
+        # (см. решение пользователя), а не одним однородным списком
+        sections.append(("ЗАДАЧА", [clean_tasks[0]]))
+        extra_tasks = clean_tasks[1:]
+        if extra_tasks:
+            lines = [f"{i + 1}. {t}" for i, t in enumerate(extra_tasks)]
+            sections.append(("ДОП. ЗАДАЧИ", lines))
 
     sections.append(("СОСТАВ", [participants_label or _TBD_PLACEHOLDER]))
 

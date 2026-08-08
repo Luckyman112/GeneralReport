@@ -178,20 +178,22 @@ function TasksField({ tasks, onChange }) {
   }
 
   return (
-    <label>
-      Задачи
+    <div className="add-category-form">
       {tasks.map((t, idx) => (
-        <span className="picker-row" key={idx}>
-          <input type="text" value={t} onChange={(e) => setTask(idx, e.target.value)} />
-          <button type="button" className="ghost" onClick={() => removeTask(idx)} disabled={tasks.length === 1 && !t}>
-            ×
-          </button>
-        </span>
+        <label key={idx}>
+          {idx === 0 ? "Задача" : `Доп. задача ${idx}`}
+          <span className="picker-row">
+            <input type="text" value={t} onChange={(e) => setTask(idx, e.target.value)} />
+            <button type="button" className="ghost" onClick={() => removeTask(idx)} disabled={tasks.length === 1 && !t}>
+              ×
+            </button>
+          </span>
+        </label>
       ))}
       <button type="button" className="ghost" onClick={addTask}>
-        + Ещё задача
+        + Доп. задача
       </button>
-    </label>
+    </div>
   );
 }
 
