@@ -98,6 +98,19 @@ export function RosterBrowserModal({ onClose }) {
     return map;
   }, [reprimands]);
 
+  // Только реально зарегистрированные (ИДН/звание задано) — незарегистрированные
+  // тут только мусорят таблицу; командир формирования сверху, ниже по убыванию
+  // звания (см. решение пользователя)
+  const sortedMembers = useMemo(() => {
+    const registered = members.filter((m) => m.registration_status === "approved");
+    return [...registered].sort((a, b) => {
+      const aIsCommander = positionByDiscordId.get(a.discord_id) === "Командир";
+      const bIsCommander = positionByDiscordId.get(b.discord_id) === "Командир";
+      if (aIsCommander !== bIsCommander) return aIsCommander ? -1 : 1;
+      return (b.rank?.order ?? -1) - (a.rank?.order ?? -1);
+    });
+  }, [members, positionByDiscordId]);
+
   const modalContent = (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal roster-browser-modal" onClick={(e) => e.stopPropagation()}>
@@ -160,7 +173,7 @@ export function RosterBrowserModal({ onClose }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {members.map((m) => (
+                    {sortedMembers.map((m) => (
                       <tr key={m.discord_id} onClick={() => setSelectedMember(m)} className="clickable-row">
                         <td className="mono-num">{m.service_id || "—"}</td>
                         <td>{m.rank ? `${m.rank.code} — ${m.rank.name}` : "—"}</td>
