@@ -77,27 +77,37 @@ def _draw_stamp(img: Image.Image, top_left: tuple[int, int]) -> None:
 
 
 def _build_sections(
-    *, summary: str | None, objective: str | None, tasks: list[str] | None, participants_label: str | None, threat: str | None
+    *,
+    summary: str | None,
+    objective: str | None,
+    tasks: list[str] | None,
+    extra_tasks: list[str] | None,
+    participants_label: str | None,
+    threat: str | None,
 ) -> list[tuple[str, list[str]]]:
-    """Возвращает [(заголовок, [строки текста]), ...] — задачи нумеруются
-    списком (см. "доп. задачи" в решении пользователя); незаполненные
-    состав/задачи — не пропускаются, а показывают плейсхолдер "узнается на
-    брифинге", а не пустоту."""
+    """Возвращает [(заголовок, [строки текста]), ...] — "Задача" и "Доп. задача"
+    это два независимых заполняемых списка (см. решение пользователя: например
+    3 задачи и 4 доп. задачи), каждый нумеруется, если в нём больше одной
+    строки; незаполненный состав — не пропускается, а показывает плейсхолдер
+    "узнается на брифинге", а не пустоту."""
     sections: list[tuple[str, list[str]]] = []
     if summary:
         sections.append(("СВОДКА ОПЕРАЦИИ", [summary]))
     if objective:
         sections.append(("ЦЕЛЬ ОПЕРАЦИИ", [objective]))
 
+    def numbered(items: list[str]) -> list[str]:
+        return [items[0]] if len(items) == 1 else [f"{i + 1}. {t}" for i, t in enumerate(items)]
+
     clean_tasks = [t for t in (tasks or []) if t and t.strip()]
     if clean_tasks:
-        # первая задача — основная, остальные идут отдельным пунктом "ДОП. ЗАДАЧИ"
-        # (см. решение пользователя), а не одним однородным списком
-        sections.append(("ЗАДАЧА", [clean_tasks[0]]))
-        extra_tasks = clean_tasks[1:]
-        if extra_tasks:
-            lines = [f"{i + 1}. {t}" for i, t in enumerate(extra_tasks)]
-            sections.append(("ДОП. ЗАДАЧИ", lines))
+        label = "ЗАДАЧА" if len(clean_tasks) == 1 else "ЗАДАЧИ"
+        sections.append((label, numbered(clean_tasks)))
+
+    clean_extra_tasks = [t for t in (extra_tasks or []) if t and t.strip()]
+    if clean_extra_tasks:
+        label = "ДОП. ЗАДАЧА" if len(clean_extra_tasks) == 1 else "ДОП. ЗАДАЧИ"
+        sections.append((label, numbered(clean_extra_tasks)))
 
     sections.append(("СОСТАВ", [participants_label or _TBD_PLACEHOLDER]))
 
@@ -113,13 +123,19 @@ def render_operation_dossier(
     summary: str | None,
     objective: str | None,
     tasks: list[str] | None,
+    extra_tasks: list[str] | None,
     threat: str | None,
     participants_label: str | None,
     map_name: str | None,
     map_image: bytes | None = None,
 ) -> bytes:
     sections = _build_sections(
-        summary=summary, objective=objective, tasks=tasks, participants_label=participants_label, threat=threat
+        summary=summary,
+        objective=objective,
+        tasks=tasks,
+        extra_tasks=extra_tasks,
+        participants_label=participants_label,
+        threat=threat,
     )
 
     # первый проход — только для измерения текста (реальный размер холста

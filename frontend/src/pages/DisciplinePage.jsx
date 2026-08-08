@@ -110,7 +110,7 @@ export function DisciplinePage() {
         ) : roster.length === 0 ? (
           <EmptyState text="В этой дисциплине пока никого нет." />
         ) : (
-          <table className="roster-table">
+          <table className="roster-table roster-table-wide">
             <thead>
               <tr>
                 <th>Боец</th>

@@ -70,6 +70,15 @@ const ACTION_GROUPS = [
     },
   },
   {
+    label: "Ивентрум",
+    actions: {
+      event_create: "Подача заявки на ивент",
+      event_update: "Дозаполнение заявки на ивент",
+      event_approve: "Одобрение ивента",
+      event_reject: "Отклонение ивента",
+    },
+  },
+  {
     label: "Настройки",
     actions: {
       settings_roles_update: "Изменение ролей доступа",

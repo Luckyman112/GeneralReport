@@ -60,8 +60,10 @@ async def decide(
     return await db.get(Event, event.id, options=_LOAD_OPTIONS, populate_existing=True)
 
 
-async def mark_notified(db: AsyncSession, event: Event) -> None:
+async def mark_notified(db: AsyncSession, event: Event, *, discord_message_id: str | None = None) -> None:
     event.notified_at = datetime.now(timezone.utc)
+    if discord_message_id is not None:
+        event.discord_message_id = discord_message_id
     await db.commit()
 
 

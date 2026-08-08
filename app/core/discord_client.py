@@ -216,10 +216,12 @@ async def send_channel_message(channel_id: str, content: str | None = None, *, e
 
 async def send_channel_message_with_file(
     channel_id: str, *, embed: dict | None, file_bytes: bytes, filename: str
-) -> None:
+) -> str:
     """Как send_channel_message, но с приложенным файлом (карточка-досье
     операции, см. app/core/event_card.py) — Discord Bot API требует
-    multipart/form-data, а не JSON, когда есть вложение."""
+    multipart/form-data, а не JSON, когда есть вложение. Возвращает id
+    отправленного сообщения — при дозаполнении заявки после одобрения им
+    редактируют это же сообщение (см. edit_channel_message)."""
     url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages"
     payload: dict = {"attachments": [{"id": 0, "filename": filename}]}
     if embed:
@@ -235,3 +237,28 @@ async def send_channel_message_with_file(
     if response.status_code not in (200, 201):
         logger.error("Discord send channel message (with file) failed: %s %s", response.status_code, response.text)
         raise DiscordAPIError("Не удалось отправить сообщение в Discord-канал.")
+
+    return response.json()["id"]
+
+
+async def edit_channel_message(
+    channel_id: str, message_id: str, *, embed: dict | None, file_bytes: bytes, filename: str
+) -> None:
+    """Редактирует уже отправленное ботом сообщение вместе с вложением — для
+    дозаполнения одобренной заявки в Ивентруме (см. решение пользователя:
+    правится то же сообщение, а не отправляется новое)."""
+    url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages/{message_id}"
+    payload: dict = {"attachments": [{"id": 0, "filename": filename}]}
+    if embed:
+        embed = {**embed, "image": {"url": f"attachment://{filename}"}}
+        payload["embeds"] = [embed]
+
+    files = {"files[0]": (filename, file_bytes, "image/png")}
+    data = {"payload_json": json.dumps(payload)}
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(url, headers=_bot_headers(), data=data, files=files)
+
+    if response.status_code not in (200, 201):
+        logger.error("Discord edit channel message failed: %s %s", response.status_code, response.text)
+        raise DiscordAPIError("Не удалось отредактировать сообщение в Discord-канале.")

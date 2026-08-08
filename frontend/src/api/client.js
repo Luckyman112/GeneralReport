@@ -666,6 +666,22 @@ export const api = {
     }
     return response.blob();
   },
+  // как previewEventCard, но для уже сохранённой заявки (см. app/api/event_room.py::get_event_card)
+  getEventCard: async (token, eventId) => {
+    const response = await fetch(`${API_BASE_URL}/api/event-room/${eventId}/card`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      let detail = null;
+      try {
+        detail = (await response.json()).detail;
+      } catch {
+        // тело ответа не JSON
+      }
+      throw new ApiError(response.status, detail);
+    }
+    return response.blob();
+  },
 };
 
 export { ApiError };

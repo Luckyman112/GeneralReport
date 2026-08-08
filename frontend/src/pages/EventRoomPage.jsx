@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { DateTimePicker } from "../components/DateTimePicker";
@@ -29,6 +29,7 @@ function emptyForm() {
     summary: "",
     objective: "",
     tasks: [""],
+    extraTasks: [""],
     threat: "",
     briefing_start: "",
     participants: emptyAudience(),
@@ -44,6 +45,7 @@ function formToPayload(form) {
     summary: form.summary.trim() || null,
     objective: form.objective.trim() || null,
     tasks: form.tasks.map((t) => t.trim()).filter(Boolean),
+    extra_tasks: form.extraTasks.map((t) => t.trim()).filter(Boolean),
     threat: form.threat.trim() || null,
     briefing_start: form.briefing_start || null,
     participants:
@@ -71,6 +73,7 @@ function payloadToForm(event) {
     summary: p.summary || "",
     objective: p.objective || "",
     tasks: p.tasks && p.tasks.length ? p.tasks : [""],
+    extraTasks: p.extra_tasks && p.extra_tasks.length ? p.extra_tasks : [""],
     threat: p.threat || "",
     briefing_start: p.briefing_start || "",
     participants: { ...emptyAudience(), ...(p.participants || {}) },
@@ -166,7 +169,10 @@ function AudienceField({ label, value, onChange, regiments, members }) {
   );
 }
 
-function TasksField({ tasks, onChange }) {
+/** Список задач либо доп. задач — два независимых заполняемых списка (см.
+ * решение пользователя: например 3 задачи и 4 доп. задачи), каждый со своей
+ * нумерацией в карточке. */
+function TasksField({ tasks, onChange, label, addLabel }) {
   function setTask(idx, value) {
     onChange(tasks.map((t, i) => (i === idx ? value : t)));
   }
@@ -181,7 +187,7 @@ function TasksField({ tasks, onChange }) {
     <div className="add-category-form">
       {tasks.map((t, idx) => (
         <label key={idx}>
-          {idx === 0 ? "Задача" : `Доп. задача ${idx}`}
+          {tasks.length === 1 ? label : `${label} ${idx + 1}`}
           <span className="picker-row">
             <input type="text" value={t} onChange={(e) => setTask(idx, e.target.value)} />
             <button type="button" className="ghost" onClick={() => removeTask(idx)} disabled={tasks.length === 1 && !t}>
@@ -191,7 +197,7 @@ function TasksField({ tasks, onChange }) {
         </label>
       ))}
       <button type="button" className="ghost" onClick={addTask}>
-        + Доп. задача
+        {addLabel}
       </button>
     </div>
   );
@@ -243,6 +249,7 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
   const [error, setError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const previewRequestRef = useRef(0);
 
   const isValid = form.title.trim().length > 0;
 
@@ -260,24 +267,44 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
     }
   }
 
-  async function handlePreview() {
-    setPreviewLoading(true);
-    setError(null);
-    try {
-      const blob = await api.previewEventCard(token, {
-        title: form.title.trim() || "Без названия",
-        payload: formToPayload(form),
+  // Предпросмотр включается автоматически по мере заполнения формы (см.
+  // решение пользователя), с задержкой после последнего изменения — иначе
+  // рендер карточки летел бы на бэкенд на каждое нажатие клавиши
+  useEffect(() => {
+    if (!form.title.trim()) {
+      setPreviewUrl((old) => {
+        if (old) URL.revokeObjectURL(old);
+        return null;
       });
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(URL.createObjectURL(blob));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setPreviewLoading(false);
+      return undefined;
     }
-  }
+    const requestId = ++previewRequestRef.current;
+    setPreviewLoading(true);
+    const timeout = setTimeout(async () => {
+      try {
+        const blob = await api.previewEventCard(token, {
+          title: form.title.trim(),
+          payload: formToPayload(form),
+        });
+        if (requestId !== previewRequestRef.current) return; // устарел, пока летел запрос
+        const url = URL.createObjectURL(blob);
+        setPreviewUrl((old) => {
+          if (old) URL.revokeObjectURL(old);
+          return url;
+        });
+      } catch {
+        // тихо игнорируем — предпросмотр вспомогательный, не должен мешать заполнению формы
+      } finally {
+        if (requestId === previewRequestRef.current) setPreviewLoading(false);
+      }
+    }, 700);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, token]);
 
-  useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
+  const previewUrlRef = useRef(previewUrl);
+  previewUrlRef.current = previewUrl;
+  useEffect(() => () => previewUrlRef.current && URL.revokeObjectURL(previewUrlRef.current), []);
 
   return (
     <form className="regiment-panel fade-in-up" onSubmit={handleSubmit}>
@@ -302,7 +329,18 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
         />
       </label>
 
-      <TasksField tasks={form.tasks} onChange={(tasks) => setForm((f) => ({ ...f, tasks }))} />
+      <TasksField
+        tasks={form.tasks}
+        onChange={(tasks) => setForm((f) => ({ ...f, tasks }))}
+        label="Задача"
+        addLabel="+ Задача"
+      />
+      <TasksField
+        tasks={form.extraTasks}
+        onChange={(extraTasks) => setForm((f) => ({ ...f, extraTasks }))}
+        label="Доп. задача"
+        addLabel="+ Доп. задача"
+      />
 
       <label>
         Угрозы и вражеские силы
@@ -357,16 +395,16 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
 
       {error && <p className="error-text">{error}</p>}
 
-      <div className="picker-row">
-        <button type="button" className="ghost" onClick={handlePreview} disabled={previewLoading}>
-          {previewLoading ? "Рендерим…" : "Предпросмотр карточки"}
-        </button>
-      </div>
-      {previewUrl && (
-        <div className="regiment-panel">
+      <div className="regiment-panel">
+        <h4>
+          Предпросмотр карточки {previewLoading && <span className="hint-text">— обновляется…</span>}
+        </h4>
+        {previewUrl ? (
           <img src={previewUrl} alt="Предпросмотр карточки" style={{ maxWidth: "100%", borderRadius: 8 }} />
-        </div>
-      )}
+        ) : (
+          <p className="hint-text">Заполните название операции — карточка появится здесь автоматически.</p>
+        )}
+      </div>
 
       <div className="modal-actions">
         <button className="primary" type="submit" disabled={!isValid || submitting}>
@@ -379,6 +417,49 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
         )}
       </div>
     </form>
+  );
+}
+
+/** Кнопка "Показать карточку" — подгружает и раскрывает полную карточку-досье
+ * уже сохранённой заявки (см. решение пользователя: посмотреть полностью то,
+ * что уже было одобрено/подано). */
+function CardViewButton({ eventId }) {
+  const { token } = useAuth();
+  const [imageUrl, setImageUrl] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => () => imageUrl && URL.revokeObjectURL(imageUrl), [imageUrl]);
+
+  async function toggle() {
+    if (imageUrl) {
+      setImageUrl(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const blob = await api.getEventCard(token, eventId);
+      setImageUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <button type="button" onClick={toggle} disabled={loading}>
+        {loading ? "Загрузка…" : imageUrl ? "Скрыть карточку" : "Показать карточку"}
+      </button>
+      {error && <p className="error-text">{error}</p>}
+      {imageUrl && (
+        <div className="regiment-panel">
+          <img src={imageUrl} alt="Карточка операции" style={{ maxWidth: "100%", borderRadius: 8 }} />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -429,7 +510,7 @@ function RosterPanel() {
       {roster.length === 0 ? (
         <EmptyState text="Роли Ивентрума ещё не настроены или никто их не занимает." />
       ) : (
-        <table className="roster-table">
+        <table className="roster-table roster-table-wide">
           <thead>
             <tr>
               <th>Участник</th>
@@ -587,6 +668,7 @@ export function EventRoomPage() {
                   </div>
                   {ev.payload?.summary && <p className="report-row-content">{ev.payload.summary}</p>}
                   <div className="report-row-actions">
+                    <CardViewButton eventId={ev.id} />
                     <button type="button" onClick={() => setEditingId(ev.id)}>
                       Редактировать
                     </button>
@@ -642,13 +724,14 @@ export function EventRoomPage() {
                 {ev.status === "rejected" && ev.rejection_reason && (
                   <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
                 )}
-                {(ev.status === "pending" || ev.status === "approved") && (
-                  <div className="report-row-actions">
+                <div className="report-row-actions">
+                  <CardViewButton eventId={ev.id} />
+                  {(ev.status === "pending" || ev.status === "approved") && (
                     <button type="button" onClick={() => setEditingId(ev.id)}>
                       {ev.status === "approved" ? "Дозаполнить" : "Редактировать"}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>

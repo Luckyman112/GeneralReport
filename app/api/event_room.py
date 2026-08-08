@@ -17,6 +17,7 @@ from app.core import discord_client
 from app.core.event_card import render_operation_dossier
 from app.core.events import event_bus
 from app.crud import app_settings as app_settings_crud
+from app.crud import audit_log as audit_log_crud
 from app.crud import event as event_crud
 from app.crud import regiment as regiment_crud
 from app.database import get_db
@@ -72,6 +73,13 @@ async def create_event(
         db, title=payload.title.strip(), payload=payload.payload, submitted_by_user_id=access.user.id
     )
     logger.info("%s подал заявку на ивент «%s»", access.user.username, row.title)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_create",
+        details=f"Подал заявку на ивент «{row.title}» (#{row.id})",
+    )
     event_bus.publish("event_room")
     return EventRead.model_validate(row)
 
@@ -202,6 +210,25 @@ async def get_event(
     return EventRead.model_validate(row)
 
 
+@router.get("/{event_id}/card")
+async def get_event_card(
+    event_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> Response:
+    """Полная карточка-досье уже сохранённой заявки — и для куратора/ассистента
+    перед решением по заявке, и чтобы посмотреть, что уже было одобрено и
+    отправлено в Discord (см. решение пользователя)."""
+    row = await event_crud.get_by_id(db, event_id)
+    if row is None:
+        raise NotFoundError("Заявка не найдена")
+    if not access.can_decide_event and row.submitted_by_user_id != access.user.id:
+        raise ForbiddenError("Нет доступа к этой заявке")
+
+    image_bytes = await _render_event_image(db, event_id=row.id, title=row.title, payload=row.payload or {})
+    return StreamingResponse(iter([image_bytes]), media_type="image/png")
+
+
 @router.patch("/{event_id}", response_model=EventRead)
 async def update_event(
     event_id: int,
@@ -213,8 +240,9 @@ async def update_event(
     одобрения (многое, например командующего операции, узнают только по мере
     брифинга — см. решение пользователя). Отклонённую заявку менять нельзя —
     решение по ней уже окончательно. Если заявка уже была одобрена, дозаполнение
-    отправляет в Discord НОВОЕ сообщение с обновлённой карточкой (см. решение
-    пользователя), а не редактирует старое."""
+    РЕДАКТИРУЕТ уже отправленное ботом сообщение (см. решение пользователя) —
+    если его почему-то не удалось отредактировать (например, кто-то удалил
+    сообщение вручную), бот отправляет новое и запоминает уже его id."""
     row = await event_crud.get_by_id(db, event_id)
     if row is None:
         raise NotFoundError("Заявка не найдена")
@@ -225,22 +253,54 @@ async def update_event(
 
     was_approved = row.status == "approved"
     updated = await event_crud.update_content(db, row, title=payload.title.strip(), payload=payload.payload)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_update",
+        details=f"Дозаполнил заявку на ивент «{updated.title}» (#{updated.id})",
+        target_user_id=updated.submitted_by_user_id,
+    )
 
     if was_approved:
         app_config = await app_settings_crud.get(db)
         if app_config.event_notify_channel_id:
             try:
                 embed = await _build_event_embed(db, updated)
-                embed["title"] = f"🔄 {embed['title']} — обновление"
                 image_bytes = await _render_event_image(
                     db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
                 )
-                await discord_client.send_channel_message_with_file(
-                    app_config.event_notify_channel_id,
-                    embed=embed,
-                    file_bytes=image_bytes,
-                    filename=f"operation-{updated.id}-update.png",
-                )
+                if updated.discord_message_id:
+                    try:
+                        await discord_client.edit_channel_message(
+                            app_config.event_notify_channel_id,
+                            updated.discord_message_id,
+                            embed=embed,
+                            file_bytes=image_bytes,
+                            filename=f"operation-{updated.id}.png",
+                        )
+                    except Exception:
+                        # сообщение могли удалить руками в Discord — не роняем
+                        # дозаполнение, просто заводим сообщение заново
+                        logger.exception(
+                            "Не удалось отредактировать сообщение ивента «%s», отправляю новое", updated.title
+                        )
+                        message_id = await discord_client.send_channel_message_with_file(
+                            app_config.event_notify_channel_id,
+                            embed=embed,
+                            file_bytes=image_bytes,
+                            filename=f"operation-{updated.id}.png",
+                        )
+                        await event_crud.mark_notified(db, updated, discord_message_id=message_id)
+                else:
+                    # одобрили ещё до этой возможности — id сообщения не сохранён
+                    message_id = await discord_client.send_channel_message_with_file(
+                        app_config.event_notify_channel_id,
+                        embed=embed,
+                        file_bytes=image_bytes,
+                        filename=f"operation-{updated.id}.png",
+                    )
+                    await event_crud.mark_notified(db, updated, discord_message_id=message_id)
             except Exception:
                 logger.exception("Не удалось отправить обновление ивента «%s» в Discord", updated.title)
 
@@ -355,6 +415,7 @@ async def _render_event_image(db: AsyncSession, *, event_id: int, title: str, pa
         summary=payload.get("summary"),
         objective=payload.get("objective"),
         tasks=payload.get("tasks"),
+        extra_tasks=payload.get("extra_tasks"),
         threat=payload.get("threat"),
         participants_label=participants_label,
         map_name=map_name,
@@ -377,6 +438,14 @@ async def approve_event(
 
     updated = await event_crud.decide(db, row, approve=True, decided_by_user_id=access.user.id)
     logger.info("%s одобрил ивент «%s»", access.user.username, updated.title)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_approve",
+        details=f"Одобрил заявку на ивент «{updated.title}» (#{updated.id})",
+        target_user_id=updated.submitted_by_user_id,
+    )
 
     app_config = await app_settings_crud.get(db)
     if app_config.event_notify_channel_id:
@@ -385,13 +454,13 @@ async def approve_event(
             image_bytes = await _render_event_image(
                 db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
             )
-            await discord_client.send_channel_message_with_file(
+            message_id = await discord_client.send_channel_message_with_file(
                 app_config.event_notify_channel_id,
                 embed=embed,
                 file_bytes=image_bytes,
                 filename=f"operation-{updated.id}.png",
             )
-            await event_crud.mark_notified(db, updated)
+            await event_crud.mark_notified(db, updated, discord_message_id=message_id)
         except Exception:
             # одобрение уже сохранено — сбой отправки в Discord не должен
             # откатывать решение, просто notified_at останется пустым
@@ -419,6 +488,14 @@ async def reject_event(
         db, row, approve=False, decided_by_user_id=access.user.id, rejection_reason=payload.reason.strip()
     )
     logger.info("%s отклонил ивент «%s»", access.user.username, updated.title)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_reject",
+        details=f"Отклонил заявку на ивент «{updated.title}» (#{updated.id}): {payload.reason.strip()}",
+        target_user_id=updated.submitted_by_user_id,
+    )
     event_bus.publish("event_room")
     return EventRead.model_validate(updated)
 

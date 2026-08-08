@@ -38,6 +38,10 @@ class Event(Base):
     # заполняется, когда бот успешно отправил сообщение в канал при одобрении —
     # позволяет отличить "одобрено, но отправка не удалась" от "всё прошло"
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # id отправленного ботом сообщения в Discord — при дозаполнении заявки после
+    # одобрения бот РЕДАКТИРУЕТ это же сообщение вместо отправки нового (см.
+    # решение пользователя); канал берётся из текущих настроек, не хранится тут
+    discord_message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     submitted_by: Mapped["User"] = relationship(foreign_keys=[submitted_by_user_id])
     decided_by: Mapped["User | None"] = relationship(foreign_keys=[decided_by_user_id])
