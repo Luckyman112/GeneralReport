@@ -112,6 +112,7 @@ async def list_reports(
     category_id: int | None = None,
     status: ReportStatus | None = None,
     search: str | None = None,
+    since: datetime | None = None,
     visible_target_regiment_ids: set[int] | None = None,
     limit: int | None = None,
     offset: int = 0,
@@ -158,6 +159,8 @@ async def list_reports(
 
     if search:
         query = query.where(Report.content.ilike(f"%{search}%"))
+    if since is not None:
+        query = query.where(Report.created_at >= since)
 
     if limit is not None:
         query = query.limit(limit).offset(offset)
@@ -174,6 +177,7 @@ async def count_reports(
     category_id: int | None = None,
     status: ReportStatus | None = None,
     search: str | None = None,
+    since: datetime | None = None,
     visible_target_regiment_ids: set[int] | None = None,
 ) -> int:
     """Тот же набор фильтров, что и list_reports — для отображения "Показать ещё"
@@ -204,6 +208,8 @@ async def count_reports(
 
     if search:
         query = query.where(Report.content.ilike(f"%{search}%"))
+    if since is not None:
+        query = query.where(Report.created_at >= since)
 
     result = await db.execute(query)
     return int(result.scalar_one())

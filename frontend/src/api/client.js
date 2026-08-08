@@ -86,12 +86,13 @@ export const api = {
   getMe: (token) => request("/api/me", { token }),
   getViewAsCandidates: (token) => request("/api/me/view-as-candidates", { token }),
 
-  listReports: (token, { status, regimentId, categoryId, search, limit, offset } = {}) => {
+  listReports: (token, { status, regimentId, categoryId, search, period, limit, offset } = {}) => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (regimentId) params.set("regiment_id", regimentId);
     if (categoryId) params.set("category_id", categoryId);
     if (search) params.set("search", search);
+    if (period) params.set("period", period);
     if (limit) params.set("limit", limit);
     if (offset) params.set("offset", offset);
     const query = params.toString() ? `?${params.toString()}` : "";

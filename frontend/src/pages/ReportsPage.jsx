@@ -30,12 +30,20 @@ const STATUS_OPTIONS = [
   { value: "deleted", label: "Удалён" },
 ];
 
+const PERIOD_OPTIONS = [
+  { value: "day", label: "За день" },
+  { value: "week", label: "За неделю" },
+  { value: "month", label: "За месяц" },
+  { value: "all", label: "Всё время" },
+];
+
 export function ReportsPage() {
   const { token, user, access, regiments: allRegiments } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [regiments, setRegiments] = useState([]);
   const [reports, setReports] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [periodFilter, setPeriodFilter] = useState("all");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [regimentFilter, setRegimentFilter] = useState(searchParams.get("regiment") || "");
@@ -129,6 +137,7 @@ export function ReportsPage() {
         regimentId: regimentFilter || undefined,
         categoryId: categoryFilter || undefined,
         search: searchQuery || undefined,
+        period: periodFilter !== "all" ? periodFilter : undefined,
         limit: REPORTS_PAGE_SIZE,
         offset: 0,
       });
@@ -138,7 +147,7 @@ export function ReportsPage() {
     } catch (e) {
       setError(e.message);
     }
-  }, [token, statusFilter, regimentFilter, categoryFilter, searchQuery]);
+  }, [token, statusFilter, regimentFilter, categoryFilter, searchQuery, periodFilter]);
 
   async function loadMoreReports() {
     const generation = reportsGenerationRef.current;
@@ -149,6 +158,7 @@ export function ReportsPage() {
         regimentId: regimentFilter || undefined,
         categoryId: categoryFilter || undefined,
         search: searchQuery || undefined,
+        period: periodFilter !== "all" ? periodFilter : undefined,
         limit: REPORTS_PAGE_SIZE,
         offset: reports.length,
       });
@@ -340,6 +350,13 @@ export function ReportsPage() {
             />
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               {STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)}>
+              {PERIOD_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>

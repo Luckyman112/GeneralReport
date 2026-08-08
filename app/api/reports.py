@@ -19,6 +19,7 @@ from app.crud import report_category as report_category_crud
 from app.crud import report_image as report_image_crud
 from app.crud import report_participant as report_participant_crud
 from app.crud import specialization as specialization_crud
+from app.crud import stats as stats_crud
 from app.crud import user as user_crud
 from app.crud import violation as violation_crud
 from app.database import get_db
@@ -134,6 +135,7 @@ async def list_reports(
     regiment_id: int | None = Query(default=None),
     category_id: int | None = Query(default=None),
     search: str | None = Query(default=None, min_length=1, max_length=200),
+    period: str | None = Query(default=None, pattern="^(day|week|month|all)$"),
     limit: int | None = Query(default=None, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -183,6 +185,7 @@ async def list_reports(
             # для простоты и безопасности сужаем до собственных рапортов.
             user_id_filter = access.user.id
 
+    since = stats_crud.period_cutoff(period) if period else None
     reports = await report_crud.list_reports(
         db,
         regiment_ids=visible_regiment_ids,
@@ -190,6 +193,7 @@ async def list_reports(
         category_id=category_id,
         status=status_filter,
         search=search,
+        since=since,
         visible_target_regiment_ids=visible_target_regiment_ids,
         limit=limit,
         offset=offset,
@@ -202,6 +206,7 @@ async def list_reports(
             category_id=category_id,
             status=status_filter,
             search=search,
+            since=since,
             visible_target_regiment_ids=visible_target_regiment_ids,
         )
         response.headers["X-Total-Count"] = str(total)
