@@ -1552,22 +1552,6 @@ label {
   background: radial-gradient(124% 100% at 50% 50%, transparent 50%, rgba(0, 0, 0, 0.36) 82%, rgba(0, 0, 0, 0.8) 100%);
 }
 
-.term-sweep {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 66px;
-  z-index: 3;
-  pointer-events: none;
-  background: linear-gradient(180deg, transparent, rgba(200, 245, 255, 0.05), transparent);
-  animation: term-sweep-move 6.5s linear infinite;
-}
-
-@keyframes term-sweep-move {
-  from { top: -16%; }
-  to { top: 106%; }
-}
-
 .term-flicker {
   position: absolute;
   inset: 0;
@@ -1757,7 +1741,6 @@ label {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .term-sweep,
   .term-cur,
   .term-flicker {
     animation: none;

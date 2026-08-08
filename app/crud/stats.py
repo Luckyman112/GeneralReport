@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.report import Report, ReportStatus
@@ -20,11 +20,23 @@ def period_cutoff(period: str) -> datetime | None:
     return datetime.now(timezone.utc) - delta
 
 
+def _exclude_promotion_mirrors(query):
+    """Заявки на повышение системно дублируются в "Нарушители"/рапорты как
+    записи категории is_promotion (см. app/models/report_category.py) — в
+    статистике/графиках по рапортам их считать не нужно, это не рапорт,
+    поданный человеком. Внешнее соединение, чтобы рапорты вовсе без
+    категории (category_id IS NULL) не отфильтровались заодно."""
+    return query.outerjoin(ReportCategory, Report.category_id == ReportCategory.id).where(
+        or_(ReportCategory.id.is_(None), ReportCategory.is_promotion.is_(False))
+    )
+
+
 async def count_by_person(db: AsyncSession, *, regiment_id: int, cutoff: datetime | None) -> list[tuple[int, int]]:
     """Возвращает [(user_id, count), ...]."""
     query = select(Report.user_id, func.count(Report.id)).where(
         Report.regiment_id == regiment_id, Report.status != ReportStatus.DELETED
     )
+    query = _exclude_promotion_mirrors(query)
     if cutoff is not None:
         query = query.where(Report.created_at >= cutoff)
     query = query.group_by(Report.user_id)
@@ -39,6 +51,7 @@ async def count_by_category(
     query = select(Report.category_id, func.count(Report.id)).where(
         Report.regiment_id == regiment_id, Report.status != ReportStatus.DELETED
     )
+    query = _exclude_promotion_mirrors(query)
     if cutoff is not None:
         query = query.where(Report.created_at >= cutoff)
     query = query.group_by(Report.category_id)
@@ -49,6 +62,7 @@ async def count_by_category(
 async def count_by_regiment(db: AsyncSession, *, cutoff: datetime | None) -> list[tuple[int, int]]:
     """Возвращает [(regiment_id, count), ...] — для сравнения активности формирований."""
     query = select(Report.regiment_id, func.count(Report.id)).where(Report.status != ReportStatus.DELETED)
+    query = _exclude_promotion_mirrors(query)
     if cutoff is not None:
         query = query.where(Report.created_at >= cutoff)
     query = query.group_by(Report.regiment_id)
@@ -61,11 +75,11 @@ async def count_by_regiment_daily(db: AsyncSession, *, days: int) -> list[tuple[
     для графика тренда активности формирований."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days - 1)
     day_expr = func.to_char(Report.created_at, "YYYY-MM-DD")
-    query = (
-        select(Report.regiment_id, day_expr, func.count(Report.id))
-        .where(Report.status != ReportStatus.DELETED, Report.created_at >= cutoff)
-        .group_by(Report.regiment_id, day_expr)
+    query = select(Report.regiment_id, day_expr, func.count(Report.id)).where(
+        Report.status != ReportStatus.DELETED, Report.created_at >= cutoff
     )
+    query = _exclude_promotion_mirrors(query)
+    query = query.group_by(Report.regiment_id, day_expr)
     result = await db.execute(query)
     return list(result.all())
 

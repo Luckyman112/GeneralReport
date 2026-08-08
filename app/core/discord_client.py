@@ -215,15 +215,19 @@ async def send_channel_message(channel_id: str, content: str | None = None, *, e
 
 
 async def send_channel_message_with_file(
-    channel_id: str, *, embed: dict | None, file_bytes: bytes, filename: str
+    channel_id: str, *, embed: dict | None, file_bytes: bytes, filename: str, content: str | None = None
 ) -> str:
     """Как send_channel_message, но с приложенным файлом (карточка-досье
     операции, см. app/core/event_card.py) — Discord Bot API требует
     multipart/form-data, а не JSON, когда есть вложение. Возвращает id
     отправленного сообщения — при дозаполнении заявки после одобрения им
-    редактируют это же сообщение (см. edit_channel_message)."""
+    редактируют это же сообщение (см. edit_channel_message). content — текст
+    сообщения (используется для пинга роли — упоминания ролей работают только
+    в content, не в embed)."""
     url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages"
     payload: dict = {"attachments": [{"id": 0, "filename": filename}]}
+    if content:
+        payload["content"] = content
     if embed:
         embed = {**embed, "image": {"url": f"attachment://{filename}"}}
         payload["embeds"] = [embed]
@@ -242,13 +246,21 @@ async def send_channel_message_with_file(
 
 
 async def edit_channel_message(
-    channel_id: str, message_id: str, *, embed: dict | None, file_bytes: bytes, filename: str
+    channel_id: str,
+    message_id: str,
+    *,
+    embed: dict | None,
+    file_bytes: bytes,
+    filename: str,
+    content: str | None = None,
 ) -> None:
     """Редактирует уже отправленное ботом сообщение вместе с вложением — для
     дозаполнения одобренной заявки в Ивентруме (см. решение пользователя:
     правится то же сообщение, а не отправляется новое)."""
     url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages/{message_id}"
     payload: dict = {"attachments": [{"id": 0, "filename": filename}]}
+    if content:
+        payload["content"] = content
     if embed:
         embed = {**embed, "image": {"url": f"attachment://{filename}"}}
         payload["embeds"] = [embed]

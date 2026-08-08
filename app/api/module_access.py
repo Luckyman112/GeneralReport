@@ -52,7 +52,13 @@ async def update_module_access(
     # единственные single-value nullable-строки в этом апдейте (остальные поля —
     # списки, где "" не бывает) — пустая строка из <select> "не выбрано" должна
     # стать NULL, а не буквально сохранённой пустой строкой
-    for key in ("event_role_id", "event_assistant_role_id", "event_curator_role_id", "event_notify_channel_id"):
+    for key in (
+        "event_role_id",
+        "event_assistant_role_id",
+        "event_curator_role_id",
+        "event_notify_channel_id",
+        "event_notify_ping_role_id",
+    ):
         if key in changes:
             changes[key] = changes[key] or None
     row = await app_settings_crud.update_module_access(db, **changes)

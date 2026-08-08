@@ -295,6 +295,21 @@ function ModuleAccessSettings() {
           ))}
         </select>
       </label>
+      <label>
+        Роль для пинга в сообщении об одобренном ивенте:
+        <InfoHint text="Необязательно. Если выбрана, бот упомянет эту роль в тексте сообщения — вместе с прикреплённой картинкой-досье." />
+        <select
+          value={access.event_notify_ping_role_id || ""}
+          onChange={(e) => setSingleField("event_notify_ping_role_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="report-form-actions">
         <button className="primary" onClick={handleSave} disabled={saving}>

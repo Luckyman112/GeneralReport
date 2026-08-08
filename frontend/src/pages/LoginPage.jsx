@@ -91,7 +91,6 @@ export function LoginPage() {
                   ДОСТУП&gt; <span className="term-cur" aria-hidden="true" />
                 </p>
               </div>
-              <div className="term-sweep" aria-hidden="true" />
               <div className="term-flicker" aria-hidden="true" />
             </div>
           </div>

@@ -85,6 +85,9 @@ class AppSettings(Base):
     # Discord-канал, куда бот шлёт сообщение об одобренном ивенте (Bot API, не
     # webhook — см. app/core/discord_client.py::send_channel_message)
     event_notify_channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Роль, которую бот пингует в тексте сообщения об одобренном ивенте
+    # (в дополнение к вложенной картинке-досье) — необязательно
+    event_notify_ping_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Отдельная привилегия "может отклонить любой рапорт" — не привязана к
     # командиру/заму формирования или INS/DEP/CU, настраивается ролью и/или

@@ -270,6 +270,7 @@ async def update_event(
                 image_bytes = await _render_event_image(
                     db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
                 )
+                content = _ping_content(app_config)
                 if updated.discord_message_id:
                     try:
                         await discord_client.edit_channel_message(
@@ -278,6 +279,7 @@ async def update_event(
                             embed=embed,
                             file_bytes=image_bytes,
                             filename=f"operation-{updated.id}.png",
+                            content=content,
                         )
                     except Exception:
                         # сообщение могли удалить руками в Discord — не роняем
@@ -290,6 +292,7 @@ async def update_event(
                             embed=embed,
                             file_bytes=image_bytes,
                             filename=f"operation-{updated.id}.png",
+                            content=content,
                         )
                         await event_crud.mark_notified(db, updated, discord_message_id=message_id)
                 else:
@@ -299,6 +302,7 @@ async def update_event(
                         embed=embed,
                         file_bytes=image_bytes,
                         filename=f"operation-{updated.id}.png",
+                        content=content,
                     )
                     await event_crud.mark_notified(db, updated, discord_message_id=message_id)
             except Exception:
@@ -306,6 +310,15 @@ async def update_event(
 
     event_bus.publish("event_room")
     return EventRead.model_validate(updated)
+
+
+def _ping_content(app_config) -> str | None:
+    """Текст сообщения с упоминанием настроенной роли (см. решение
+    пользователя — при одобрении бот пингует роль, помимо карточки-досье).
+    Упоминания ролей работают только в content, не в embed."""
+    if app_config.event_notify_ping_role_id:
+        return f"<@&{app_config.event_notify_ping_role_id}>"
+    return None
 
 
 def _format_datetime(value: str | None) -> str | None:
@@ -459,6 +472,7 @@ async def approve_event(
                 embed=embed,
                 file_bytes=image_bytes,
                 filename=f"operation-{updated.id}.png",
+                content=_ping_content(app_config),
             )
             await event_crud.mark_notified(db, updated, discord_message_id=message_id)
         except Exception:
