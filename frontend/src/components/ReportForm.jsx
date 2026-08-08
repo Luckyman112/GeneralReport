@@ -25,7 +25,7 @@ function categoryDiscipline(category) {
 }
 
 export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
-  const { token, activeCharacter } = useAuth();
+  const { token, user, activeCharacter } = useAuth();
   const preferredRegimentId = activeCharacter?.regiment.id;
   const defaultRegimentId = regiments.some((r) => r.id === preferredRegimentId)
     ? preferredRegimentId
@@ -85,7 +85,15 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
   }, [token, regimentId, discipline]);
 
   useEffect(() => {
-    setFieldValues({});
+    // roster-поля с default_self ("я сам") — сразу подставляют подающего, можно
+    // сменить/убрать вручную как обычный выбор (см. решение пользователя)
+    const initial = {};
+    for (const f of categoryFields) {
+      if (f.type === "roster" && f.default_self && user?.discord_id) {
+        initial[f.name] = [user.discord_id];
+      }
+    }
+    setFieldValues(initial);
 
     // roster fields can also search other regiments' rosters (allowed_regiment_ids)
     let ignore = false;

@@ -12,6 +12,10 @@ class ReportCategoryField(BaseModel):
     name: str
     type: Literal["text", "roster"] = "text"
     allowed_regiment_ids: list[int] = []
+    # roster-поля only — при открытии формы автоматически подставляет самого
+    # подающего (можно сменить/убрать вручную) — см. решение пользователя
+    # ("я сам" функция)
+    default_self: bool = False
 
 
 class ReportCategoryRead(BaseModel):

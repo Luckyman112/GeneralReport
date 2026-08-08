@@ -53,6 +53,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
   const [newField, setNewField] = useState("");
   const [newFieldType, setNewFieldType] = useState("text");
   const [newFieldAllowedRegimentIds, setNewFieldAllowedRegimentIds] = useState([]);
+  const [newFieldDefaultSelf, setNewFieldDefaultSelf] = useState(false);
   const [pointsDraft, setPointsDraft] = useState(category.points ?? "");
   const [participantPointsDraft, setParticipantPointsDraft] = useState(category.participant_points ?? "");
   const [minRankDraft, setMinRankDraft] = useState(category.min_rank?.id ?? "");
@@ -68,13 +69,17 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
     if (!newField.trim()) return;
     try {
       const field = { name: newField.trim(), type: newFieldType };
-      if (newFieldType === "roster") field.allowed_regiment_ids = newFieldAllowedRegimentIds;
+      if (newFieldType === "roster") {
+        field.allowed_regiment_ids = newFieldAllowedRegimentIds;
+        field.default_self = newFieldDefaultSelf;
+      }
       await api.updateCategory(token, category.regiment_id, category.id, {
         fields: [...category.fields, field],
       });
       setNewField("");
       setNewFieldType("text");
       setNewFieldAllowedRegimentIds([]);
+      setNewFieldDefaultSelf(false);
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -150,6 +155,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
                 <span key={f.name} className="field-tag">
                   {f.name}
                   <span className="field-tag-type">{FIELD_TYPE_LABELS[f.type] || f.type}</span>
+                  {f.type === "roster" && f.default_self && <span className="hint-text"> (я сам)</span>}
                   {f.type === "roster" && f.allowed_regiment_ids?.length > 0 && (
                     <span className="hint-text">
                       {" "}
@@ -180,12 +186,23 @@ function CategoryRow({ category, tiers, allRegiments, specializations, onChanged
             <button type="submit">Добавить поле</button>
           </form>
           {newFieldType === "roster" && (
-            <RosterAllowedRegiments
-              allRegiments={allRegiments}
-              currentRegimentId={category.regiment_id}
-              selectedIds={newFieldAllowedRegimentIds}
-              onChange={setNewFieldAllowedRegimentIds}
-            />
+            <>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={newFieldDefaultSelf}
+                  onChange={(e) => setNewFieldDefaultSelf(e.target.checked)}
+                />
+                По умолчанию — я сам
+                <InfoHint text="При открытии формы поле сразу подставит того, кто подаёт рапорт — можно сменить или убрать вручную перед отправкой." />
+              </label>
+              <RosterAllowedRegiments
+                allRegiments={allRegiments}
+                currentRegimentId={category.regiment_id}
+                selectedIds={newFieldAllowedRegimentIds}
+                onChange={setNewFieldAllowedRegimentIds}
+              />
+            </>
           )}
         </>
       )}
@@ -297,6 +314,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
   const [newFieldDraft, setNewFieldDraft] = useState("");
   const [newFieldDraftType, setNewFieldDraftType] = useState("text");
   const [newFieldDraftAllowedRegimentIds, setNewFieldDraftAllowedRegimentIds] = useState([]);
+  const [newFieldDraftDefaultSelf, setNewFieldDraftDefaultSelf] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   // Защита от гонки: устаревший ответ (для уже покинутого формирования) не должен
@@ -330,11 +348,15 @@ export function CategoryManagerModal({ regiments, onClose }) {
   function handleAddFieldDraft() {
     if (!newFieldDraft.trim()) return;
     const field = { name: newFieldDraft.trim(), type: newFieldDraftType };
-    if (newFieldDraftType === "roster") field.allowed_regiment_ids = newFieldDraftAllowedRegimentIds;
+    if (newFieldDraftType === "roster") {
+      field.allowed_regiment_ids = newFieldDraftAllowedRegimentIds;
+      field.default_self = newFieldDraftDefaultSelf;
+    }
     setNewCategoryFields((prev) => [...prev, field]);
     setNewFieldDraft("");
     setNewFieldDraftType("text");
     setNewFieldDraftAllowedRegimentIds([]);
+    setNewFieldDraftDefaultSelf(false);
   }
 
   function handleRemoveFieldDraft(fieldName) {
@@ -430,6 +452,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
                     <span key={f.name} className="field-tag">
                       {f.name}
                       <span className="field-tag-type">{FIELD_TYPE_LABELS[f.type] || f.type}</span>
+                      {f.type === "roster" && f.default_self && <span className="hint-text"> (я сам)</span>}
                       <button type="button" onClick={() => handleRemoveFieldDraft(f.name)}>
                         ×
                       </button>
@@ -460,12 +483,22 @@ export function CategoryManagerModal({ regiments, onClose }) {
                 </button>
               </div>
               {newFieldDraftType === "roster" && (
-                <RosterAllowedRegiments
-                  allRegiments={allRegiments}
-                  currentRegimentId={regimentId}
-                  selectedIds={newFieldDraftAllowedRegimentIds}
-                  onChange={setNewFieldDraftAllowedRegimentIds}
-                />
+                <>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={newFieldDraftDefaultSelf}
+                      onChange={(e) => setNewFieldDraftDefaultSelf(e.target.checked)}
+                    />
+                    По умолчанию — я сам
+                  </label>
+                  <RosterAllowedRegiments
+                    allRegiments={allRegiments}
+                    currentRegimentId={regimentId}
+                    selectedIds={newFieldDraftAllowedRegimentIds}
+                    onChange={setNewFieldDraftAllowedRegimentIds}
+                  />
+                </>
               )}
 
               <label>

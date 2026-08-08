@@ -18,7 +18,7 @@ BASE_CATEGORY_SET = [
     {
         "name": "Тренировка",
         "fields": [
-            {"name": "Проводящий тренировку", "type": "roster", "allowed_regiment_ids": []},
+            {"name": "Проводящий тренировку", "type": "roster", "allowed_regiment_ids": [], "default_self": True},
             {"name": "Тип тренировки", "type": "text", "allowed_regiment_ids": []},
             {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
             {"name": "Заметки", "type": "text", "allowed_regiment_ids": []},
@@ -29,7 +29,7 @@ BASE_CATEGORY_SET = [
     {
         "name": "Пост",
         "fields": [
-            {"name": "Заступивший на пост", "type": "roster", "allowed_regiment_ids": []},
+            {"name": "Заступивший на пост", "type": "roster", "allowed_regiment_ids": [], "default_self": True},
             {"name": "Место несения поста", "type": "text", "allowed_regiment_ids": []},
             {"name": "Кто поставил на пост", "type": "roster", "allowed_regiment_ids": []},
             {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
@@ -51,7 +51,7 @@ BASE_CATEGORY_SET = [
     {
         "name": "Боевой вылет",
         "fields": [
-            {"name": "Командующий формированием", "type": "roster", "allowed_regiment_ids": []},
+            {"name": "Командующий формированием", "type": "roster", "allowed_regiment_ids": [], "default_self": True},
             {"name": "Цель вылета", "type": "text", "allowed_regiment_ids": []},
             {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
             {"name": "Результат", "type": "text", "allowed_regiment_ids": []},
@@ -62,7 +62,7 @@ BASE_CATEGORY_SET = [
     {
         "name": "Защита ОВО",
         "fields": [
-            {"name": "Командующий формированием", "type": "roster", "allowed_regiment_ids": []},
+            {"name": "Командующий формированием", "type": "roster", "allowed_regiment_ids": [], "default_self": True},
             {"name": "Объект", "type": "text", "allowed_regiment_ids": []},
             {"name": "Состав", "type": "roster", "allowed_regiment_ids": []},
             {"name": "Результат", "type": "text", "allowed_regiment_ids": []},
