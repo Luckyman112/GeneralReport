@@ -103,18 +103,25 @@ class AccessContext:
     password_login_owner_discord_id: str | None = None
 
     @property
-    def is_event_submitter(self) -> bool:
-        """Только роль Ивентолога — без обхода даже для администратора, это
-        сознательно закрытый список подающих заявки (см. решение пользователя)."""
-        return bool(self.event_role_id and self.event_role_id in self.role_ids)
-
-    @property
     def is_event_assistant(self) -> bool:
         return bool(self.event_assistant_role_id and self.event_assistant_role_id in self.role_ids)
 
     @property
     def is_event_curator(self) -> bool:
         return bool(self.event_curator_role_id and self.event_curator_role_id in self.role_ids)
+
+    @property
+    def is_event_submitter(self) -> bool:
+        """Роль Ивентолога, а также Ассистент/Куратор ивентологии и создатель
+        (is_founder — включает и локального админа, см. его определение) — все
+        они тоже могут подавать заявки, не только рядовой Ивентолог (см.
+        решение пользователя)."""
+        return bool(
+            (self.event_role_id and self.event_role_id in self.role_ids)
+            or self.is_event_assistant
+            or self.is_event_curator
+            or self.is_founder
+        )
 
     @property
     def can_decide_event(self) -> bool:

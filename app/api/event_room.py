@@ -47,7 +47,7 @@ async def create_event(
     access: AccessContext = Depends(get_access_context),
 ) -> EventRead:
     if not access.is_event_submitter:
-        raise ForbiddenError("Подавать заявки на ивент может только Ивентолог")
+        raise ForbiddenError("Подавать заявки на ивент может только Ивентолог, Ассистент/Куратор ивентологии или создатель")
 
     row = await event_crud.create(
         db, title=payload.title.strip(), payload=payload.payload, submitted_by_user_id=access.user.id
