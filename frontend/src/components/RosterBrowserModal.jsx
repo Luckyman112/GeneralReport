@@ -6,6 +6,8 @@ import { InlineSpinner } from "./InlineSpinner";
 import { LinkIcon } from "./icons";
 import { MemberDetailModal } from "./MemberDetailModal";
 import { formatMskDate } from "../utils/formatDate";
+import { steamProfileUrl } from "../utils/steam";
+import { discordProfileUrl } from "../utils/discord";
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
@@ -187,8 +189,34 @@ export function RosterBrowserModal({ onClose }) {
                             .filter(Boolean)
                             .join(", ") || "—"}
                         </td>
-                        <td>{m.steam_id || "—"}</td>
-                        <td className="mono-num">{m.discord_id}</td>
+                        <td className="mono-num">
+                          {m.steam_id ? (
+                            steamProfileUrl(m.steam_id) ? (
+                              <a
+                                href={steamProfileUrl(m.steam_id)}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {m.steam_id}
+                              </a>
+                            ) : (
+                              m.steam_id
+                            )
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="mono-num">
+                          <a
+                            href={discordProfileUrl(m.discord_id)}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {m.discord_id}
+                          </a>
+                        </td>
                         <td className="mono-num">{activeReprimandCountByDiscordId.get(m.discord_id) || 0}</td>
                         <td>{activeLeaveDiscordIds.has(m.discord_id) ? "В отпуске" : "—"}</td>
                       </tr>

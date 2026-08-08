@@ -11,6 +11,7 @@ import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName, formatFullNameAtRank } from "../utils/formatName";
 import { steamProfileUrl } from "../utils/steam";
+import { discordProfileUrl } from "../utils/discord";
 import { DISCIPLINE_CATEGORIES } from "../utils/specialization";
 
 function profileSnapshot(member) {
@@ -368,7 +369,12 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           )}
           <div>
             <h3>{member.username}</h3>
-            <p className="hint-text">Discord: {member.discord_username}</p>
+            <p className="hint-text">
+              Discord:{" "}
+              <a href={discordProfileUrl(member.discord_id)} target="_blank" rel="noreferrer">
+                {member.discord_username}
+              </a>
+            </p>
             {member.steam_id && (
               <p className="hint-text">
                 Steam ID:{" "}

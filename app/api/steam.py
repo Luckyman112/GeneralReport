@@ -13,6 +13,7 @@ from app.core.security import create_steam_link_token, decode_steam_link_token
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import UnauthorizedError
+from app.schemas.validators import steamid64_to_steam2
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +52,19 @@ async def steam_callback(request: Request, db: AsyncSession = Depends(get_db)) -
     if steam_id64 is None:
         return RedirectResponse(f"{frontend_root}/#/main?steam=error")
 
-    existing = await user_crud.get_by_steam_id(db, steam_id64)
+    # Храним всегда STEAM_X:Y:Z (см. app/schemas/validators.py) — так ссылка на
+    # профиль строится единообразно везде, независимо от формата, которым
+    # аккаунт был привязан (см. решение пользователя)
+    steam_id = steamid64_to_steam2(steam_id64)
+
+    existing = await user_crud.get_by_steam_id(db, steam_id)
     if existing is not None and existing.id != user_id:
-        logger.warning("Steam-аккаунт %s уже привязан к другому бойцу (id=%s)", steam_id64, existing.id)
+        logger.warning("Steam-аккаунт %s уже привязан к другому бойцу (id=%s)", steam_id, existing.id)
         return RedirectResponse(f"{frontend_root}/#/main?steam=duplicate")
 
-    user = await user_crud.set_verified_steam_id(db, user_id=user_id, steam_id=steam_id64)
+    user = await user_crud.set_verified_steam_id(db, user_id=user_id, steam_id=steam_id)
     if user is None:
         return RedirectResponse(f"{frontend_root}/#/main?steam=error")
 
-    logger.info("Пользователь id=%s подтвердил Steam-аккаунт %s", user_id, steam_id64)
+    logger.info("Пользователь id=%s подтвердил Steam-аккаунт %s", user_id, steam_id)
     return RedirectResponse(f"{frontend_root}/#/main?steam=linked")
