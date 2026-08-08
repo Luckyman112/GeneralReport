@@ -43,7 +43,6 @@ export function Sidebar({ open, onClose }) {
               </button>
               <Link to="/instructor-room" onClick={onClose}>Инструкторская</Link>
               <Link to="/promotions" onClick={onClose}>Повышения</Link>
-              {access?.can_access_event_room && <Link to="/event-room" onClick={onClose}>Ивентрум</Link>}
             </div>
 
             {(access?.can_view_violations || hasCommandAccess || isHqMember || isDisciplineDeputy) && (
@@ -60,14 +59,15 @@ export function Sidebar({ open, onClose }) {
               </div>
             )}
 
-            {access?.is_admin && (
+            {(access?.is_admin || access?.can_access_event_room) && (
               <div className="sidebar-links-group">
                 <span className="sidebar-links-group-label">Администрирование</span>
-                <Link to="/regiments" onClick={onClose}>Формирования</Link>
-                <Link to="/admin-panel" onClick={onClose}>Админ-панель</Link>
-                <Link to="/backups" onClick={onClose}>Резервные копии</Link>
-                <Link to="/logs" onClick={onClose}>Журнал</Link>
-                <Link to="/settings" onClick={onClose}>Настройки</Link>
+                {access?.can_access_event_room && <Link to="/event-room" onClick={onClose}>Ивентрум</Link>}
+                {access?.is_admin && <Link to="/regiments" onClick={onClose}>Формирования</Link>}
+                {access?.is_admin && <Link to="/admin-panel" onClick={onClose}>Админ-панель</Link>}
+                {access?.is_admin && <Link to="/backups" onClick={onClose}>Резервные копии</Link>}
+                {access?.is_admin && <Link to="/logs" onClick={onClose}>Журнал</Link>}
+                {access?.is_admin && <Link to="/settings" onClick={onClose}>Настройки</Link>}
               </div>
             )}
           </nav>
