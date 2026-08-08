@@ -2,14 +2,27 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { useTheme } from "../hooks/useTheme";
 
 const DISCORD_INVITE_URL = "https://discord.gg/sM9HWDuwTd";
 
 export function LoginPage() {
   const { isAuthenticated, login, error } = useAuth();
-  const [theme, toggleTheme] = useTheme();
   const [apiOk, setApiOk] = useState(null); // null = ещё проверяется, потом true/false
+
+  // Терминал входа — литеральный CRT-датапад, задуман только под тёмную
+  // палитру (см. решение пользователя — светлая тема тут "ущербно" смотрится).
+  // Временно перебиваем глобальный data-theme, пока страница открыта, и
+  // возвращаем как было при уходе — общий выбор темы в остальном приложении
+  // не трогаем.
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.getAttribute("data-theme");
+    root.setAttribute("data-theme", "dark");
+    return () => {
+      if (previous === null) root.removeAttribute("data-theme");
+      else root.setAttribute("data-theme", previous);
+    };
+  }, []);
 
   useEffect(() => {
     // 6с таймаут — без него зависший бэкенд оставляет "проверка…" навечно,
@@ -122,9 +135,6 @@ export function LoginPage() {
             <a className="term-key" href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">
               Приглашение в Discord
             </a>
-            <button type="button" className="term-key" onClick={toggleTheme}>
-              {theme === "dark" ? "Светлая тема" : "Тёмная тема"}
-            </button>
           </div>
           <span className="term-hint">ENTER — войти через Discord</span>
         </div>

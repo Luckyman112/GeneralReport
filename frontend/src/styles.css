@@ -1376,6 +1376,12 @@ label {
 }
 
 .login-page {
+  /* .page-container (родитель, см. Layout в App.jsx — общий и для гостя, и
+   * для авторизованных страниц) задаёт max-width:1400px + padding — без
+   * этого выхода за его рамки фон был бы обрезан в узкий "квадрат" по центру
+   * экрана, а не во весь экран (см. решение пользователя). */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
   position: relative;
   display: flex;
   flex-direction: column;
