@@ -11,6 +11,12 @@ PROMOTION_CATEGORY_NAME = "Повышение"
 DEMOTION_CATEGORY_NAME = "Понижение"
 TRAINING_CATEGORY_NAME = "Обучение на специализации"
 STAFF_REGIMENT_NAME = "Штаб"
+# Единая точка входа для всех новичков — выдаётся автоматически при регистрации
+# (см. app/api/registration.py), обучение до PVT см. ReportCategory.is_recruit_promotion,
+# после чего можно переводиться в другие формирования как обычно (см. решение
+# пользователя). Само формирование заводится один раз через обычную админку —
+# здесь только имя для резолва id.
+RECRUIT_REGIMENT_NAME = "17-ый Передовой Полк"
 # Обучение НОВИЧКОВ формирования (не путать с TRAINING_CATEGORY_NAME — та про
 # выдачу мед/пилот/инж специализаций инструктором). Заводится в каждом
 # формировании — min_rank_id (кто может обучать, например "Капрал+") командир
@@ -89,7 +95,12 @@ BASE_CATEGORY_SET = [
 
 
 async def get_all(db: AsyncSession, *, include_archived: bool = False) -> list[Regiment]:
-    query = select(Regiment)
+    # Без явного order_by порядок строк определяется физическим расположением в
+    # таблице — Postgres пишет новую версию строки при каждом UPDATE, поэтому
+    # заморозка/разморозка (тоже UPDATE) сама по себе двигала формирование в
+    # конец списка и обратно уже не поднимала. order_by по is_archived держит
+    # активные сверху детерминированно, id — стабильный порядок внутри группы.
+    query = select(Regiment).order_by(Regiment.is_archived, Regiment.id)
     if not include_archived:
         query = query.where(Regiment.is_archived.is_(False))
     result = await db.execute(query)
@@ -98,6 +109,11 @@ async def get_all(db: AsyncSession, *, include_archived: bool = False) -> list[R
 
 async def get_by_id(db: AsyncSession, regiment_id: int) -> Regiment | None:
     return await db.get(Regiment, regiment_id)
+
+
+async def get_by_name(db: AsyncSession, name: str) -> Regiment | None:
+    result = await db.execute(select(Regiment).where(Regiment.name == name))
+    return result.scalar_one_or_none()
 
 
 async def create(
