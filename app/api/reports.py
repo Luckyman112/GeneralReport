@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
 from app.core.events import event_bus
+from app.core.uploads import read_image_upload
 from app.crud import audit_log as audit_log_crud
 from app.crud import character as character_crud
 from app.crud import notification as notification_crud
@@ -937,13 +938,7 @@ async def upload_report_image(
     if not is_author and not access.is_commander_of(report.regiment_id):
         raise ForbiddenError("Прикреплять картинки может автор рапорта или командир формирования")
 
-    ext = ALLOWED_IMAGE_TYPES.get(file.content_type)
-    if ext is None:
-        raise AppError("Разрешены только изображения: JPEG, PNG, WEBP, GIF")
-
-    content = await file.read()
-    if len(content) > MAX_IMAGE_SIZE:
-        raise AppError("Файл слишком большой (максимум 5 МБ)")
+    content, ext = await read_image_upload(file, allowed_types=ALLOWED_IMAGE_TYPES, max_size=MAX_IMAGE_SIZE)
 
     report_dir = report_image_crud.UPLOAD_ROOT / str(report_id)
     report_dir.mkdir(parents=True, exist_ok=True)

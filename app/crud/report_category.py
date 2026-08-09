@@ -1,7 +1,9 @@
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.exceptions import AppError
 from app.models.report_category import ReportCategory
 
 _LOAD_OPTIONS = [
@@ -125,14 +127,24 @@ async def get_or_create_regiment_clone(
     existing = await get_by_name(db, regiment_id=target_regiment_id, name=source_category.name)
     if existing is not None:
         return existing
-    return await create(
-        db,
-        regiment_id=target_regiment_id,
-        name=source_category.name,
-        fields=source_category.fields,
-        points=source_category.points,
-        participant_points=source_category.participant_points,
-    )
+    try:
+        return await create(
+            db,
+            regiment_id=target_regiment_id,
+            name=source_category.name,
+            fields=source_category.fields,
+            points=source_category.points,
+            participant_points=source_category.participant_points,
+        )
+    except IntegrityError:
+        # Гонка: два формирования-участника одобрили совместный рапорт
+        # одновременно, оба прошли проверку "клона ещё нет" — тот, кто успел
+        # первым, уже создал категорию, здесь просто забираем её
+        await db.rollback()
+        existing = await get_by_name(db, regiment_id=target_regiment_id, name=source_category.name)
+        if existing is not None:
+            return existing
+        raise
 
 
 async def update(db: AsyncSession, category: ReportCategory, **changes) -> ReportCategory:
@@ -145,5 +157,13 @@ async def update(db: AsyncSession, category: ReportCategory, **changes) -> Repor
 
 
 async def delete(db: AsyncSession, category: ReportCategory) -> None:
+    # снимок имени ДО commit — после rollback объект просрочен, и обращение к его
+    # атрибутам в async-сессии само по себе упадёт (лениво подгружать в except
+    # блоке нечем await'ить), см. MissingGreenlet
+    name = category.name
     await db.delete(category)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise AppError(f"Нельзя удалить категорию «{name}» — по ней уже есть рапорта. Удалите/перенесите их сначала.")

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -88,6 +88,17 @@ class PromotionRequest(Base):
     заместитель/командир/высшее командование/админ этого формирования."""
 
     __tablename__ = "promotion_requests"
+    __table_args__ = (
+        # У одного бойца не может быть двух заявок в статусе pending одновременно —
+        # без этого ограничения два рапорта, одобренные почти одновременно, могли
+        # обе пройти проверку "нет открытой заявки" ДО того, как первая закоммитится
+        Index(
+            "uq_promotion_request_pending_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))

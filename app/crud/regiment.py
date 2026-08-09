@@ -122,30 +122,40 @@ async def create(
     await db.commit()
     await db.refresh(regiment)
 
-    # Категории "задержание" и "повышение" заводятся автоматически для каждого
-    # формирования — обе системные, их не создают и не настраивают вручную
-    # (см. is_detention/is_promotion)
-    db.add(
-        ReportCategory(
-            regiment_id=regiment.id, name=DETENTION_CATEGORY_NAME, fields=[], is_detention=True, points=DETENTION_POINTS
-        )
-    )
-    db.add(ReportCategory(regiment_id=regiment.id, name=PROMOTION_CATEGORY_NAME, fields=[], is_promotion=True))
-    db.add(ReportCategory(regiment_id=regiment.id, name=DEMOTION_CATEGORY_NAME, fields=[], is_demotion=True))
-    db.add(ReportCategory(regiment_id=regiment.id, name=TRAINING_CATEGORY_NAME, fields=[], is_training=True))
-    for spec in BASE_CATEGORY_SET:
+    # Системные + базовые категории заводятся сразу следом — если что-то из
+    # этого не закоммитится, не оставляем формирование висеть наполовину
+    # настроенным молча: откатываем и удаляем сам regiment тоже, чтобы вызывающий
+    # код (и пользователь) видел явную ошибку, а не тихо неполный результат.
+    try:
+        # Категории "задержание" и "повышение" заводятся автоматически для каждого
+        # формирования — обе системные, их не создают и не настраивают вручную
+        # (см. is_detention/is_promotion)
         db.add(
             ReportCategory(
-                regiment_id=regiment.id,
-                name=spec["name"],
-                fields=spec["fields"],
-                points=spec["points"],
-                participant_points=spec["participant_points"],
+                regiment_id=regiment.id, name=DETENTION_CATEGORY_NAME, fields=[], is_detention=True, points=DETENTION_POINTS
             )
         )
-    await db.commit()
+        db.add(ReportCategory(regiment_id=regiment.id, name=PROMOTION_CATEGORY_NAME, fields=[], is_promotion=True))
+        db.add(ReportCategory(regiment_id=regiment.id, name=DEMOTION_CATEGORY_NAME, fields=[], is_demotion=True))
+        db.add(ReportCategory(regiment_id=regiment.id, name=TRAINING_CATEGORY_NAME, fields=[], is_training=True))
+        for spec in BASE_CATEGORY_SET:
+            db.add(
+                ReportCategory(
+                    regiment_id=regiment.id,
+                    name=spec["name"],
+                    fields=spec["fields"],
+                    points=spec["points"],
+                    participant_points=spec["participant_points"],
+                )
+            )
+        await db.commit()
 
-    await _ensure_recruit_training_category(db, regiment)
+        await _ensure_recruit_training_category(db, regiment)
+    except Exception:
+        await db.rollback()
+        await db.delete(regiment)
+        await db.commit()
+        raise
 
     return regiment
 

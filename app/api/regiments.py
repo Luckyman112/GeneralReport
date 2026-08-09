@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
+from app.core.uploads import read_image_upload
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import character as character_crud
@@ -965,12 +966,7 @@ async def upload_member_photo(
     if member is None or regiment.discord_role_id not in member["roles"]:
         raise NotFoundError("Участник не найден в этом формировании")
 
-    ext = _ALLOWED_PHOTO_TYPES.get(file.content_type)
-    if ext is None:
-        raise AppError("Разрешены только изображения: JPEG, PNG, WEBP")
-    content = await file.read()
-    if len(content) > _MAX_PHOTO_SIZE:
-        raise AppError("Файл слишком большой (максимум 5 МБ)")
+    content, ext = await read_image_upload(file, allowed_types=_ALLOWED_PHOTO_TYPES, max_size=_MAX_PHOTO_SIZE)
 
     user = await user_crud.update_profile(
         db, discord_id=discord_id, fallback_username=member["username"], changes={}

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import or_, select, update
@@ -29,7 +29,10 @@ def _apply_filters(query, *, search: str | None, date_from: date | None, date_to
     if date_from is not None:
         query = query.where(Violation.created_at >= date_from)
     if date_to is not None:
-        query = query.where(Violation.created_at < date_to)
+        # created_at — timestamptz, date_to — просто дата (без времени), поэтому
+        # "< date_to" сравнивалось бы с полночью date_to и отсекало бы весь
+        # последний день диапазона — нужно "< начало следующего дня" (включительно)
+        query = query.where(Violation.created_at < date_to + timedelta(days=1))
     return query
 
 

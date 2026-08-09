@@ -1,5 +1,6 @@
 from app.models.app_settings import AppSettings
 from app.models.audit_log import AuditLog
+from app.models.character import Character
 from app.models.event import Event, EventMap, EventStatus
 from app.models.leave_request import LeaveRequest
 from app.models.notification import Notification, NotificationRead
@@ -27,6 +28,7 @@ from app.models.wanted import WantedEntry
 
 __all__ = [
     "User",
+    "Character",
     "Regiment",
     "RegimentCommander",
     "Report",

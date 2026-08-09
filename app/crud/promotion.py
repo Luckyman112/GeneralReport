@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +17,7 @@ from app.crud import report_category as report_category_crud
 from app.crud import report_participant as report_participant_crud
 from app.crud import reprimand as reprimand_crud
 from app.crud import user as user_crud
+from app.exceptions import AppError
 from app.models.promotion import (
     PromotionCategoryRequirement,
     PromotionRequest,
@@ -145,6 +147,13 @@ async def list_decided_for_user(db: AsyncSession, *, user_id: int) -> list[Promo
 
 
 async def decide(db: AsyncSession, request: PromotionRequest, *, approve: bool, decided_by: int) -> PromotionRequest:
+    # Защита от повторного решения (двойной клик/повтор запроса) — без неё
+    # повторное approve на уже одобренной заявке молча перезаписывает
+    # rank_assigned_at (обнуляя прогресс по набранным баллам) и может откатить
+    # звание бойца назад, если он уже получил более новое повышение
+    if request.status != "pending":
+        raise AppError("Заявка уже решена — повторное решение по ней невозможно")
+
     request.status = "approved" if approve else "rejected"
     request.decided_by = decided_by
     request.decided_at = datetime.now(timezone.utc)
@@ -242,7 +251,15 @@ async def check_and_create_promotion_request(
         tenure_started_at=user.rank_assigned_at,
     )
     db.add(request)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Гонка: два рапорта, дающих право на повышение, одобрили почти
+        # одновременно — оба прошли проверку "нет открытой заявки" до того, как
+        # первый закоммитился. Уникальный индекс по (user_id) WHERE pending не
+        # даёт завести вторую — тут просто отступаем, первая заявка уже есть.
+        await db.rollback()
+        return None
 
     # Дублируем заявку рапортом в системной категории "Повышение" — так её видно
     # сразу в обычной ленте рапортов, а не только на отдельной странице "Повышения"

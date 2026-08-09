@@ -22,7 +22,7 @@ from app.crud import report_participant as report_participant_crud
 from app.crud import reprimand as reprimand_crud
 from app.crud import user as user_crud
 from app.database import get_db
-from app.exceptions import ForbiddenError, NotFoundError
+from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.schemas.promotion import (
     AdminPointsUpdate,
     CategoryRequirementRead,
@@ -174,6 +174,8 @@ async def approve_promotion_request(
         raise NotFoundError("Заявка не найдена")
     if not access.can_decide_promotion(request.regiment_id):
         raise ForbiddenError("Одобрить заявку может только командир формирования, высшее командование или создатель")
+    if request.status != "pending":
+        raise AppError("Заявка уже решена — повторное решение по ней невозможно")
 
     updated = await promotion_crud.decide(db, request, approve=True, decided_by=access.user.id)
     logger.info("%s одобрил заявку на повышение %s", access.user.username, request_id)
@@ -198,6 +200,8 @@ async def reject_promotion_request(
         raise NotFoundError("Заявка не найдена")
     if not access.can_decide_promotion(request.regiment_id):
         raise ForbiddenError("Отклонить заявку может только командир формирования, высшее командование или создатель")
+    if request.status != "pending":
+        raise AppError("Заявка уже решена — повторное решение по ней невозможно")
 
     updated = await promotion_crud.decide(db, request, approve=False, decided_by=access.user.id)
     logger.info("%s отклонил заявку на повышение %s", access.user.username, request_id)

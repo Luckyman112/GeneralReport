@@ -16,6 +16,7 @@ from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
 from app.core.event_card import render_operation_dossier
 from app.core.events import event_bus
+from app.core.uploads import read_image_upload
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import event as event_crud
@@ -168,13 +169,7 @@ async def upload_map_image(
     if not access.can_access_event_room:
         raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
 
-    ext = _ALLOWED_IMAGE_TYPES.get(file.content_type)
-    if ext is None:
-        raise AppError("Разрешены только изображения: JPEG, PNG, WEBP")
-
-    content = await file.read()
-    if len(content) > _MAX_IMAGE_SIZE:
-        raise AppError("Файл слишком большой (максимум 5 МБ)")
+    content, ext = await read_image_upload(file, allowed_types=_ALLOWED_IMAGE_TYPES, max_size=_MAX_IMAGE_SIZE)
 
     _UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid.uuid4()}{ext}"
