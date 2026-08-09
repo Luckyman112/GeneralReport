@@ -655,13 +655,21 @@ export function EventRoomPage() {
   }
 
   async function handleApprove(id) {
-    await api.approveEvent(token, id);
-    load();
+    try {
+      await api.approveEvent(token, id);
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function handleReject(id, reason) {
-    await api.rejectEvent(token, id, reason);
-    load();
+    try {
+      await api.rejectEvent(token, id, reason);
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function handleSaveMap(form) {
@@ -674,18 +682,26 @@ export function EventRoomPage() {
       weather: form.weather.trim(),
       starSystem: form.starSystem.trim(),
     };
-    if (form.id) {
-      await api.updateEventMap(token, form.id, body);
-    } else {
-      await api.createEventMap(token, body);
+    try {
+      if (form.id) {
+        await api.updateEventMap(token, form.id, body);
+      } else {
+        await api.createEventMap(token, body);
+      }
+      setMapDraft(null);
+      load();
+    } catch (e) {
+      setError(e.message);
     }
-    setMapDraft(null);
-    load();
   }
 
   async function handleDeleteMap(id) {
-    await api.deleteEventMap(token, id);
-    load();
+    try {
+      await api.deleteEventMap(token, id);
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   if (loading) return <InlineSpinner />;

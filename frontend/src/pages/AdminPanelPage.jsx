@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -87,6 +87,8 @@ export function AdminPanelPage() {
 
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
+  const memberRequestIdRef = useRef(0);
+  const characterRequestIdRef = useRef(0);
 
   function loadSpecializations() {
     api.listSpecializations(token).then(setSpecializations).catch(() => setSpecializations([]));
@@ -192,20 +194,50 @@ export function AdminPanelPage() {
 
   useEffect(() => {
     if (!regimentId) return;
-    api.getMembers(token, regimentId).then(setMembers).catch(() => setMembers([]));
-    api.getCategoryRequirements(token, regimentId).then(setRequirements).catch(() => setRequirements([]));
-    api.listCategories(token, regimentId).then(setCategories).catch(() => setCategories([]));
+    const requestId = ++memberRequestIdRef.current;
+    api
+      .getMembers(token, regimentId)
+      .then((data) => {
+        if (memberRequestIdRef.current === requestId) setMembers(data);
+      })
+      .catch(() => {
+        if (memberRequestIdRef.current === requestId) setMembers([]);
+      });
+    api
+      .getCategoryRequirements(token, regimentId)
+      .then((data) => {
+        if (memberRequestIdRef.current === requestId) setRequirements(data);
+      })
+      .catch(() => {
+        if (memberRequestIdRef.current === requestId) setRequirements([]);
+      });
+    api
+      .listCategories(token, regimentId)
+      .then((data) => {
+        if (memberRequestIdRef.current === requestId) setCategories(data);
+      })
+      .catch(() => {
+        if (memberRequestIdRef.current === requestId) setCategories([]);
+      });
     setDiscordId("");
   }, [token, regimentId]);
 
   const member = members.find((m) => m.discord_id === discordId) || null;
 
   function loadCharacters() {
+    const requestId = ++characterRequestIdRef.current;
     if (!discordId) {
       setCharacters([]);
       return;
     }
-    api.listCharacters(token, discordId).then(setCharacters).catch(() => setCharacters([]));
+    api
+      .listCharacters(token, discordId)
+      .then((data) => {
+        if (characterRequestIdRef.current === requestId) setCharacters(data);
+      })
+      .catch(() => {
+        if (characterRequestIdRef.current === requestId) setCharacters([]);
+      });
   }
 
   useEffect(() => {

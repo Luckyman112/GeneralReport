@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { MemberSearchPicker } from "./MemberSearchPicker";
+import { useToast } from "./ToastContext";
 
 const ROLE_LABELS = {
   soldier: "Боец",
@@ -29,6 +30,7 @@ const REGIMENT_SCOPED_EXTRAS = new Set(["violation_writer", "violation_viewer", 
 
 export function ViewAsBar() {
   const { token, access, regiments, viewAs, applyViewAs, resetViewAs } = useAuth();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("role");
   const [role, setRole] = useState("commander");
@@ -51,25 +53,41 @@ export function ViewAsBar() {
     setExtras((prev) => (prev.includes(key) ? prev.filter((e) => e !== key) : [...prev, key]));
   }
 
+  async function handleReset() {
+    try {
+      await resetViewAs();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  }
+
   async function handleApplyRole() {
-    await applyViewAs({
-      mode: "role",
-      role,
-      regimentId: needsRegiment ? Number(regimentId) : null,
-      extras,
-    });
-    setOpen(false);
+    try {
+      await applyViewAs({
+        mode: "role",
+        role,
+        regimentId: needsRegiment ? Number(regimentId) : null,
+        extras,
+      });
+      setOpen(false);
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   async function handleApplyPerson() {
     if (!personDiscordId) return;
     const person = candidates.find((c) => c.discord_id === personDiscordId);
-    await applyViewAs({
-      mode: "person",
-      discordId: personDiscordId,
-      discordUsername: person?.username || personDiscordId,
-    });
-    setOpen(false);
+    try {
+      await applyViewAs({
+        mode: "person",
+        discordId: personDiscordId,
+        discordUsername: person?.username || personDiscordId,
+      });
+      setOpen(false);
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   if (viewAs.mode) {
@@ -77,7 +95,7 @@ export function ViewAsBar() {
       return (
         <div className="view-as-bar">
           Смотрите глазами: <strong>{viewAs.discordUsername}</strong>
-          <button className="ghost" onClick={resetViewAs}>
+          <button className="ghost" onClick={handleReset}>
             Выключить просмотр
           </button>
         </div>
@@ -90,7 +108,7 @@ export function ViewAsBar() {
         Смотрите как: <strong>{ROLE_LABELS[viewAs.role] || viewAs.role}</strong>
         {regimentName && ` — ${regimentName}`}
         {extraLabels.length > 0 && ` + ${extraLabels.join(", ")}`}
-        <button className="ghost" onClick={resetViewAs}>
+        <button className="ghost" onClick={handleReset}>
           Выключить просмотр
         </button>
       </div>

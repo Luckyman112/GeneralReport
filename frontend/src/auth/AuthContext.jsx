@@ -84,9 +84,20 @@ export function AuthProvider({ children }) {
 
   const applyViewAs = useCallback(
     async (state) => {
+      const previous = getViewAs();
       setViewAs(state);
       setViewAsState(getViewAs());
-      await loadMe(token);
+      try {
+        await loadMe(token);
+      } catch (e) {
+        if (previous.mode) {
+          setViewAs(previous);
+        } else {
+          clearViewAs();
+        }
+        setViewAsState(getViewAs());
+        throw e;
+      }
     },
     [loadMe, token]
   );

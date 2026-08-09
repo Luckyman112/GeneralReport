@@ -65,6 +65,26 @@ left out of `__init__.py` breaks other models' relationships in confusing ways.
 ("Ивентрум" event-request feature, `/api/event-room/*`) are unrelated despite the
 similar name — don't confuse them.
 
+### Reusable helpers worth knowing about before reinventing
+- `app/core/uploads.py::read_image_upload(file, allowed_types, max_size)` — the only
+  correct way to accept an uploaded image in this codebase: reads in capped chunks
+  (never buffers past `max_size` before rejecting) and verifies the bytes actually
+  decode as an image (Pillow), not just trusting the client's `Content-Type` header.
+  Used by report images, member photos, event-room map images — use it for any new
+  image upload endpoint instead of `await file.read()` + a manual length check.
+- A `PATCH`/`DELETE` crud function whose row can legitimately be referenced by other
+  rows (FK with no `ondelete`) should catch `IntegrityError`, `rollback()`, and raise a
+  friendly `AppError` — see `report_category_crud.delete`, `squad_crud.delete`,
+  `report_category_crud.get_or_create_regiment_clone`. **Snapshot any field you want to
+  put in the error message into a local variable before the commit that might fail** —
+  after `rollback()` the ORM object's attributes are expired, and touching one inside an
+  `except` block raises `MissingGreenlet` (attribute access can't lazily await there).
+- A "no two pending X for the same Y" invariant should be a partial unique index
+  (Postgres `CREATE UNIQUE INDEX ... WHERE status = 'pending'`), not just an
+  application-level check-then-insert — see `PromotionRequest.__table_args__` /
+  migration `0075`. Pair it with an `IntegrityError` catch at the insert site so the
+  loser of the race gets a clean no-op instead of a 500.
+
 ### Permission model — `AccessContext` (`app/api/deps.py`)
 Every endpoint depends on `get_access_context`, which computes one `AccessContext`
 dataclass per request in `_compute_permission_fields()` from the user's live Discord
@@ -135,6 +155,33 @@ at each existing call site explain why).
 ### Discord integration (`app/core/discord_client.py`)
 REST API only via `httpx` — no `discord.py`, no gateway connection, no persistent bot
 process. Guild member/role lookups are live HTTP calls, not cached locally (see above).
+
+### Frontend conventions
+- Every async button/form handler must wrap its `api.*` call in try/catch and surface
+  the failure — `showToast(e.message, "error")` (`ToastContext`) for one-off actions,
+  or a local `error` state rendered inline for forms. An `await api.x(...)` with no
+  surrounding try/catch in an `onClick`/`onSubmit` is an unhandled promise rejection —
+  the button silently does nothing on failure. This bit a large fraction of the app
+  before an audit caught it (`ReportsPage`, `ReportForm`, `PromotionsPage`,
+  `EventRoomPage`, `ViewAsBar`, `BackupsPage`, `RosterBrowserModal`, ...) — don't
+  reintroduce it in new handlers.
+- Any `useEffect` that fetches data keyed on a value the user can change quickly
+  (a regiment/member/category dropdown, a search box) needs a request-generation
+  guard, or a fast second change can let the first (now-stale) response land after the
+  second and overwrite newer state with older data:
+  ```js
+  const requestIdRef = useRef(0);
+  useEffect(() => {
+    const requestId = ++requestIdRef.current;
+    api.getX(token, id).then((data) => {
+      if (requestIdRef.current === requestId) setX(data);
+    });
+  }, [token, id]);
+  ```
+  See `RegimentPanel.loadMembers`, `CategoryManagerModal.load`,
+  `PromotionsPage.RequirementsTable` for the established shape. An effect with no
+  dependency on a fast-changing value (e.g. driven only by a stable `token`) doesn't
+  need this.
 
 ### Frontend
 React + Vite, `HashRouter` (routes are `#/...`; `?code=` from Discord OAuth is parsed at

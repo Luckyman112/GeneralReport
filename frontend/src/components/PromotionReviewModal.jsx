@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -15,12 +15,18 @@ export function PromotionReviewModal({ requestId, onClose }) {
   const navigate = useNavigate();
   const [review, setReview] = useState(null);
   const [error, setError] = useState(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
+    const currentRequestId = ++requestIdRef.current;
     api
       .getPromotionReview(token, requestId)
-      .then(setReview)
-      .catch((e) => setError(e.message));
+      .then((data) => {
+        if (requestIdRef.current === currentRequestId) setReview(data);
+      })
+      .catch((e) => {
+        if (requestIdRef.current === currentRequestId) setError(e.message);
+      });
   }, [token, requestId]);
 
   function goToReport(report) {

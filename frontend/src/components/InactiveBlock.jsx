@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -7,20 +7,25 @@ import { useAuth } from "../auth/AuthContext";
 export function InactiveBlock() {
   const { token, access, regiments } = useAuth();
   const [commanderNames, setCommanderNames] = useState([]);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
+    const requestId = ++requestIdRef.current;
     const regimentIds = [...new Set([...(access?.soldier_regiment_ids || []), ...(access?.commander_regiment_ids || [])])];
     if (regimentIds.length === 0) return;
 
     Promise.all(regimentIds.map((id) => api.listCommanders(token, id).catch(() => [])))
       .then((lists) => {
+        if (requestIdRef.current !== requestId) return;
         const names = lists
           .flat()
           .filter((c) => c.role_type === "commander")
           .map((c) => c.username);
         setCommanderNames([...new Set(names)]);
       })
-      .catch(() => setCommanderNames([]));
+      .catch(() => {
+        if (requestIdRef.current === requestId) setCommanderNames([]);
+      });
   }, [token, access, regiments]);
 
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { PageLoading } from "../components/PageLoading";
@@ -65,6 +65,8 @@ export function InstructorRoomPage() {
   const [banReason, setBanReason] = useState("");
   const [targetBans, setTargetBans] = useState([]);
   const [activeBans, setActiveBans] = useState([]);
+  const banMembersRequestIdRef = useRef(0);
+  const targetBansRequestIdRef = useRef(0);
 
   const isInstructor = Boolean(access?.can_grant_specializations);
   const canViewTrainings = Boolean(access?.can_view_trainings);
@@ -198,22 +200,38 @@ export function InstructorRoomPage() {
   }, [access?.is_admin, banSpecializationOptions]);
 
   useEffect(() => {
+    const requestId = ++banMembersRequestIdRef.current;
     if (!banRegimentId) {
       setBanMembers([]);
       return;
     }
     // getMembers requires actual membership in the regiment; instructors banning
     // across regiments they don't belong to need the broader candidates endpoint
-    api.getViolationTargetCandidates(token, banRegimentId).then(setBanMembers).catch(() => setBanMembers([]));
+    api
+      .getViolationTargetCandidates(token, banRegimentId)
+      .then((data) => {
+        if (banMembersRequestIdRef.current === requestId) setBanMembers(data);
+      })
+      .catch(() => {
+        if (banMembersRequestIdRef.current === requestId) setBanMembers([]);
+      });
     setBanTargetDiscordId("");
   }, [token, banRegimentId]);
 
   function loadTargetBans() {
+    const requestId = ++targetBansRequestIdRef.current;
     if (!banTargetDiscordId) {
       setTargetBans([]);
       return;
     }
-    api.listSpecializationBans(token, banTargetDiscordId).then(setTargetBans).catch(() => setTargetBans([]));
+    api
+      .listSpecializationBans(token, banTargetDiscordId)
+      .then((data) => {
+        if (targetBansRequestIdRef.current === requestId) setTargetBans(data);
+      })
+      .catch(() => {
+        if (targetBansRequestIdRef.current === requestId) setTargetBans([]);
+      });
   }
 
   useEffect(() => {

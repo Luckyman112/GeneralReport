@@ -40,6 +40,7 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
   // Защита от гонки: если формирование переключили, пока летел старый запрос,
   // его устаревший ответ не должен затереть уже актуальные данные
   const requestIdRef = useRef(0);
+  const commandersRequestIdRef = useRef(0);
 
   const canEditHere = canManageMembers(Number(regimentId));
   const currentRegiment = regiments.find((r) => r.id === Number(regimentId));
@@ -72,11 +73,19 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
   }, [token, regimentId]);
 
   useEffect(() => {
+    const requestId = ++commandersRequestIdRef.current;
     if (!regimentId) {
       setCommanders([]);
       return;
     }
-    api.listCommanders(token, regimentId).then(setCommanders).catch(() => setCommanders([]));
+    api
+      .listCommanders(token, regimentId)
+      .then((data) => {
+        if (commandersRequestIdRef.current === requestId) setCommanders(data);
+      })
+      .catch(() => {
+        if (commandersRequestIdRef.current === requestId) setCommanders([]);
+      });
   }, [token, regimentId]);
 
   const loadPending = useCallback(() => {

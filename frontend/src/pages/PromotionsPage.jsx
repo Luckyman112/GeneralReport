@@ -117,20 +117,32 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
 
   function load() {
     const requestId = ++requestIdRef.current;
-    Promise.all([api.getRanks(token), api.getPromotionRequirements(token, referenceRegimentId)]).then(
-      ([tiersData, reqData]) => {
+    Promise.all([api.getRanks(token), api.getPromotionRequirements(token, referenceRegimentId)])
+      .then(([tiersData, reqData]) => {
         if (requestIdRef.current === requestId) applyLoaded(tiersData, reqData);
-      }
-    );
+      })
+      .catch((e) => {
+        if (requestIdRef.current === requestId) setError(e.message);
+      });
     if (referenceRegimentId) {
-      api.listCategories(token, referenceRegimentId).then((data) => {
-        if (requestIdRef.current === requestId) {
-          setCategories(Object.fromEntries(data.map((c) => [c.id, c])));
-        }
-      });
-      api.getCategoryRequirements(token, referenceRegimentId).then((data) => {
-        if (requestIdRef.current === requestId) setCategoryRequirements(data);
-      });
+      api
+        .listCategories(token, referenceRegimentId)
+        .then((data) => {
+          if (requestIdRef.current === requestId) {
+            setCategories(Object.fromEntries(data.map((c) => [c.id, c])));
+          }
+        })
+        .catch((e) => {
+          if (requestIdRef.current === requestId) setError(e.message);
+        });
+      api
+        .getCategoryRequirements(token, referenceRegimentId)
+        .then((data) => {
+          if (requestIdRef.current === requestId) setCategoryRequirements(data);
+        })
+        .catch((e) => {
+          if (requestIdRef.current === requestId) setError(e.message);
+        });
     }
   }
 
@@ -524,13 +536,21 @@ export function PromotionsPage() {
   }, []);
 
   async function handleApprove(id) {
-    await api.approvePromotionRequest(token, id);
-    await loadRequests();
+    try {
+      await api.approvePromotionRequest(token, id);
+      await loadRequests();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function handleReject(id) {
-    await api.rejectPromotionRequest(token, id);
-    await loadRequests();
+    try {
+      await api.rejectPromotionRequest(token, id);
+      await loadRequests();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   if (loading) return <PageLoading />;

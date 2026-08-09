@@ -42,14 +42,21 @@ function ViolationsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const requestIdRef = useRef(0);
 
   const regimentsById = Object.fromEntries(regiments.map((r) => [r.id, r]));
 
   async function load() {
+    const requestId = ++requestIdRef.current;
     try {
-      setViolations(await api.listViolations(token, { search: search.trim() || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }));
+      const data = await api.listViolations(token, {
+        search: search.trim() || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      });
+      if (requestIdRef.current === requestId) setViolations(data);
     } catch (e) {
-      setError(e.message);
+      if (requestIdRef.current === requestId) setError(e.message);
     }
   }
 

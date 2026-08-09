@@ -73,6 +73,14 @@ export function BackupsPage() {
     }
   }
 
+  async function handleDownload(filename) {
+    try {
+      await api.downloadBackup(token, filename);
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  }
+
   async function handleRevokeAll() {
     setConfirmRevoke(false);
     setRevoking(true);
@@ -139,7 +147,7 @@ export function BackupsPage() {
                 {b.filename} — {formatSize(b.size_bytes)} — {formatMskDate(b.created_at)} МСК
               </span>
               <span className="report-form-actions">
-                <button onClick={() => api.downloadBackup(token, b.filename)}>Скачать</button>
+                <button onClick={() => handleDownload(b.filename)}>Скачать</button>
                 <button className="ghost" onClick={() => handleDelete(b.filename)}>
                   Удалить
                 </button>

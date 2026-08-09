@@ -12,6 +12,7 @@ import { PageLoading } from "../components/PageLoading";
 import { RegimentPanel } from "../components/RegimentPanel";
 import { ReportForm } from "../components/ReportForm";
 import { ReportRow } from "../components/ReportRow";
+import { useToast } from "../components/ToastContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 import { LeaveRequestsPage } from "./LeaveRequestsPage";
 import { ReprimandsPage } from "./ReprimandsPage";
@@ -39,6 +40,7 @@ const PERIOD_OPTIONS = [
 
 export function ReportsPage() {
   const { token, user, access, regiments: allRegiments } = useAuth();
+  const showToast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [regiments, setRegiments] = useState([]);
   const [reports, setReports] = useState([]);
@@ -278,23 +280,39 @@ export function ReportsPage() {
   }
 
   async function handleSubmitDraft(reportId) {
-    await api.updateReportStatus(token, reportId, { status: "submitted" });
-    await loadReports();
+    try {
+      await api.updateReportStatus(token, reportId, { status: "submitted" });
+      await loadReports();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   async function handleEditContent(reportId, content) {
-    await api.updateReportContent(token, reportId, content);
-    await loadReports();
+    try {
+      await api.updateReportContent(token, reportId, content);
+      await loadReports();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   async function handleApprove(reportId) {
-    await api.updateReportStatus(token, reportId, { status: "approved" });
-    await loadReports();
+    try {
+      await api.updateReportStatus(token, reportId, { status: "approved" });
+      await loadReports();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   async function handleReject(reportId, reason) {
-    await api.updateReportStatus(token, reportId, { status: "rejected", rejectionReason: reason });
-    await loadReports();
+    try {
+      await api.updateReportStatus(token, reportId, { status: "rejected", rejectionReason: reason });
+      await loadReports();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   // Совместные категории (см. ReportCategory.is_joint) — какими формированиями
@@ -307,23 +325,39 @@ export function ReportsPage() {
   }
 
   async function handleDecideRegiment(reportId, regimentId, status, reason) {
-    await api.decideReportForRegiment(token, reportId, regimentId, { status, rejectionReason: reason });
-    await loadReports();
+    try {
+      await api.decideReportForRegiment(token, reportId, regimentId, { status, rejectionReason: reason });
+      await loadReports();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   async function handleDelete(reportId) {
-    await api.deleteReport(token, reportId);
-    await loadReports();
+    try {
+      await api.deleteReport(token, reportId);
+      await loadReports();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   async function handleSetPoints(reportId, points) {
-    await api.setReportPoints(token, reportId, points);
-    await loadReports();
+    try {
+      await api.setReportPoints(token, reportId, points);
+      await loadReports();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   async function handleDeleteImage(reportId, imageId) {
-    await api.deleteReportImage(token, reportId, imageId);
-    await loadReports();
+    try {
+      await api.deleteReportImage(token, reportId, imageId);
+      await loadReports();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   }
 
   if (loading) return <PageLoading />;

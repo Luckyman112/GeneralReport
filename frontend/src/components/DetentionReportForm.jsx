@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { MemberSearchPicker } from "./MemberSearchPicker";
@@ -27,20 +27,26 @@ export function DetentionReportForm({ regiments, categoriesById, onSubmit, onCan
   const [images, setImages] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     api.getRanks(token).then(setTiers).catch(() => setTiers([]));
   }, [token]);
 
   useEffect(() => {
+    const requestId = ++requestIdRef.current;
     if (!targetRegimentId) {
       setMembers([]);
       return;
     }
     api
       .getViolationTargetCandidates(token, targetRegimentId)
-      .then(setMembers)
-      .catch(() => setMembers([]));
+      .then((data) => {
+        if (requestIdRef.current === requestId) setMembers(data);
+      })
+      .catch(() => {
+        if (requestIdRef.current === requestId) setMembers([]);
+      });
     setTargetId("");
   }, [token, targetRegimentId]);
 

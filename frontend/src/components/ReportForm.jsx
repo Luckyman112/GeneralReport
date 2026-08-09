@@ -39,6 +39,7 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
   const [fieldValues, setFieldValues] = useState({});
   const [images, setImages] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
   const selectedCategory = useMemo(
     () => categories.find((c) => c.id === Number(categoryId)),
@@ -180,6 +181,7 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
     ];
 
     setSubmitting(true);
+    setError(null);
     try {
       await onSubmit({
         regimentId: Number(regimentId),
@@ -189,6 +191,8 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
         images,
         participantDiscordIds,
       });
+    } catch (e) {
+      setError(e.message);
     } finally {
       setSubmitting(false);
     }
@@ -285,6 +289,8 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
           ))}
         </ul>
       )}
+
+      {error && <p className="error-text">{error}</p>}
 
       <div className="report-form-actions">
         <button disabled={submitting} onClick={() => handle(false)}>

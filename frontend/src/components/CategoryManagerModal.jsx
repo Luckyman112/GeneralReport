@@ -362,6 +362,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
   // Защита от гонки: устаревший ответ (для уже покинутого формирования) не должен
   // затирать список категорий актуально выбранного
   const requestIdRef = useRef(0);
+  const squadsRequestIdRef = useRef(0);
 
   async function load(id) {
     const requestId = ++requestIdRef.current;
@@ -388,11 +389,16 @@ export function CategoryManagerModal({ regiments, onClose }) {
   }, [token]);
 
   useEffect(() => {
+    const requestId = ++squadsRequestIdRef.current;
     if (!regimentId) return;
     api
       .listSquads(token, regimentId)
-      .then(setSquads)
-      .catch(() => setSquads([]));
+      .then((data) => {
+        if (squadsRequestIdRef.current === requestId) setSquads(data);
+      })
+      .catch(() => {
+        if (squadsRequestIdRef.current === requestId) setSquads([]);
+      });
   }, [token, regimentId]);
 
   function handleAddFieldDraft() {

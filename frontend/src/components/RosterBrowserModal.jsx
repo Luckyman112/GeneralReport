@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { InlineSpinner } from "./InlineSpinner";
 import { LinkIcon } from "./icons";
 import { MemberDetailModal } from "./MemberDetailModal";
+import { useToast } from "./ToastContext";
 import { formatMskDate } from "../utils/formatDate";
 import { steamProfileUrl } from "../utils/steam";
 import { discordProfileUrl } from "../utils/discord";
@@ -19,6 +20,7 @@ function todayIsoDate() {
  * которая раньше открывалась кнопкой "Инфо" на панели формирования. */
 export function RosterBrowserModal({ onClose }) {
   const { token, access, regiments } = useAuth();
+  const showToast = useToast();
   const [regimentId, setRegimentId] = useState(null);
   const [members, setMembers] = useState([]);
   const [commanders, setCommanders] = useState([]);
@@ -26,7 +28,9 @@ export function RosterBrowserModal({ onClose }) {
   const [activeLeaveDiscordIds, setActiveLeaveDiscordIds] = useState(new Set());
   const [specializationsByDiscordId, setSpecializationsByDiscordId] = useState({});
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
+  const requestIdRef = useRef(0);
 
   const regiment = regiments.find((r) => r.id === regimentId);
   const canEditHere = Boolean(
@@ -35,7 +39,9 @@ export function RosterBrowserModal({ onClose }) {
 
   useEffect(() => {
     if (!regimentId) return;
+    const requestId = ++requestIdRef.current;
     setLoading(true);
+    setError(null);
     setSelectedMember(null);
 
     async function load() {
@@ -43,6 +49,7 @@ export function RosterBrowserModal({ onClose }) {
         api.getMembers(token, regimentId),
         api.listCommanders(token, regimentId),
       ]);
+      if (requestIdRef.current !== requestId) return;
       setMembers(membersData);
       setCommanders(commandersData);
 
@@ -58,6 +65,7 @@ export function RosterBrowserModal({ onClose }) {
           )
         ),
       ]);
+      if (requestIdRef.current !== requestId) return;
 
       setReprimands(reprimandsResult.status === "fulfilled" ? reprimandsResult.value : []);
 
@@ -77,7 +85,13 @@ export function RosterBrowserModal({ onClose }) {
       }
     }
 
-    load().finally(() => setLoading(false));
+    load()
+      .catch((e) => {
+        if (requestIdRef.current === requestId) setError(e.message);
+      })
+      .finally(() => {
+        if (requestIdRef.current === requestId) setLoading(false);
+      });
   }, [token, regimentId]);
 
   const positionByDiscordId = useMemo(() => {
@@ -154,6 +168,7 @@ export function RosterBrowserModal({ onClose }) {
                 <LinkIcon /> Канал формирования
               </a>
             )}
+            {error && <p className="error-text">{error}</p>}
             {loading ? (
               <InlineSpinner />
             ) : (
@@ -260,7 +275,10 @@ export function RosterBrowserModal({ onClose }) {
           canEdit={canEditHere}
           onClose={() => setSelectedMember(null)}
           onSaved={() => {
-            api.getMembers(token, regimentId).then(setMembers);
+            api
+              .getMembers(token, regimentId)
+              .then(setMembers)
+              .catch((e) => showToast(e.message, "error"));
           }}
         />
       )}
