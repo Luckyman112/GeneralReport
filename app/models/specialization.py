@@ -86,6 +86,24 @@ class Specialization(Base):
     parent: Mapped["Specialization | None"] = relationship(remote_side=[id])
 
 
+class SpecializationPrerequisite(Base):
+    """"Нужны ВСЕ из" — не то же самое, что parent_id (тот — "нужна ровно одна
+    конкретная"). Для ступени "Старший" в дисциплине (см. решение пользователя):
+    отдельная специализация (например "Старший медик"), которую можно выдать
+    только тому, у кого уже есть КАЖДАЯ из веток корпуса разом (Вирусология +
+    Дефектология + Хирургия), а не одна любая — parent_id для такого не подходит,
+    он про единственного конкретного родителя. См. _check_can_grant."""
+
+    __tablename__ = "specialization_prerequisites"
+    __table_args__ = (
+        UniqueConstraint("specialization_id", "required_specialization_id", name="uq_specialization_prerequisite"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    specialization_id: Mapped[int] = mapped_column(ForeignKey("specializations.id"))
+    required_specialization_id: Mapped[int] = mapped_column(ForeignKey("specializations.id"))
+
+
 class UserSpecialization(Base):
     """Факт выдачи конкретной специализации конкретному бойцу — кто выдал и когда,
     чтобы это было видно в личном деле (аналогично early_promoted_by у званий)."""

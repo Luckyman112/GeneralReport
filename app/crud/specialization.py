@@ -6,7 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.exceptions import AppError
-from app.models.specialization import InstructorRole, Specialization, SpecializationBan, UserSpecialization
+from app.models.specialization import (
+    InstructorRole,
+    Specialization,
+    SpecializationBan,
+    SpecializationPrerequisite,
+    UserSpecialization,
+)
 from app.models.user import User
 
 _GRANT_LOAD_OPTIONS = [
@@ -73,6 +79,7 @@ async def create(
     min_rank_id: int | None = None,
     required_regiment_id: int | None = None,
     parent_id: int | None = None,
+    prerequisite_specialization_ids: list[int] | None = None,
 ) -> Specialization:
     specialization = Specialization(
         code=code,
@@ -88,6 +95,8 @@ async def create(
     except IntegrityError:
         await db.rollback()
         raise AppError(f"Специализация с кодом «{code}» уже существует")
+    if prerequisite_specialization_ids:
+        await _set_prerequisites(db, specialization.id, prerequisite_specialization_ids)
     await db.refresh(specialization, attribute_names=["min_rank"])
     return specialization
 
@@ -95,7 +104,10 @@ async def create(
 async def update(db: AsyncSession, specialization: Specialization, **changes) -> Specialization:
     """changes — только реально переданные клиентом поля (exclude_unset в
     эндпоинте), поэтому min_rank_id: None здесь означает явную очистку, а не
-    "не трогать"."""
+    "не трогать". prerequisite_specialization_ids не колонка Specialization —
+    отдельная таблица, обрабатывается отдельно (полная замена набора, как
+    fields у категорий рапортов)."""
+    prerequisite_specialization_ids = changes.pop("prerequisite_specialization_ids", None)
     for key, value in changes.items():
         setattr(specialization, key, value)
     try:
@@ -103,8 +115,38 @@ async def update(db: AsyncSession, specialization: Specialization, **changes) ->
     except IntegrityError:
         await db.rollback()
         raise AppError(f"Специализация с кодом «{changes.get('code', specialization.code)}» уже существует")
+    if prerequisite_specialization_ids is not None:
+        await _set_prerequisites(db, specialization.id, prerequisite_specialization_ids)
     await db.refresh(specialization, attribute_names=["min_rank"])
     return specialization
+
+
+async def _set_prerequisites(db: AsyncSession, specialization_id: int, required_ids: list[int]) -> None:
+    await db.execute(
+        SpecializationPrerequisite.__table__.delete().where(
+            SpecializationPrerequisite.specialization_id == specialization_id
+        )
+    )
+    for required_id in dict.fromkeys(required_ids):  # de-dupe, keep order
+        if required_id == specialization_id:
+            continue
+        db.add(
+            SpecializationPrerequisite(specialization_id=specialization_id, required_specialization_id=required_id)
+        )
+    await db.commit()
+
+
+async def list_prerequisites(db: AsyncSession, specialization_id: int) -> list[Specialization]:
+    result = await db.execute(
+        select(Specialization)
+        .join(
+            SpecializationPrerequisite,
+            SpecializationPrerequisite.required_specialization_id == Specialization.id,
+        )
+        .where(SpecializationPrerequisite.specialization_id == specialization_id)
+        .order_by(Specialization.name)
+    )
+    return list(result.scalars().all())
 
 
 async def has_specialization(db: AsyncSession, *, user_id: int, specialization_id: int) -> bool:

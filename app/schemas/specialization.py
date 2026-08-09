@@ -28,6 +28,9 @@ class SpecializationRead(BaseModel):
     min_rank: RankRead | None = None
     required_regiment_id: int | None = None
     parent_id: int | None = None
+    # "Нужны ВСЕ из" (ступень "Старший" — см. SpecializationPrerequisite), в
+    # отличие от parent_id — "нужна ровно одна конкретная"
+    prerequisite_specialization_ids: list[int] = []
 
 
 class SpecializationCreate(BaseModel):
@@ -39,6 +42,7 @@ class SpecializationCreate(BaseModel):
     required_regiment_id: int | None = None
     # Подспециализация — выдать её можно только тем, у кого уже есть родительская
     parent_id: int | None = None
+    prerequisite_specialization_ids: list[int] = []
 
 
 class SpecializationUpdate(BaseModel):
@@ -53,6 +57,7 @@ class SpecializationUpdate(BaseModel):
     min_rank_id: int | None = None
     required_regiment_id: int | None = None
     parent_id: int | None = None
+    prerequisite_specialization_ids: list[int] | None = None
 
 
 class UserSpecializationRead(BaseModel):

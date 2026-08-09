@@ -348,7 +348,10 @@ export const api = {
     request(`/api/specializations/instructor-activity?period=${period}`, { token }),
   getSystemHealth: (token, staleDays = 3) =>
     request(`/api/admin/health?stale_days=${staleDays}`, { token }),
-  createSpecialization: (token, { code, name, category, minRankId, requiredRegimentId, parentId }) =>
+  createSpecialization: (
+    token,
+    { code, name, category, minRankId, requiredRegimentId, parentId, prerequisiteSpecializationIds }
+  ) =>
     request("/api/specializations", {
       method: "POST",
       token,
@@ -359,9 +362,14 @@ export const api = {
         min_rank_id: minRankId ?? null,
         required_regiment_id: requiredRegimentId ?? null,
         parent_id: parentId ?? null,
+        prerequisite_specialization_ids: prerequisiteSpecializationIds ?? [],
       },
     }),
-  updateSpecialization: (token, specializationId, { code, name, category, minRankId, requiredRegimentId, parentId }) =>
+  updateSpecialization: (
+    token,
+    specializationId,
+    { code, name, category, minRankId, requiredRegimentId, parentId, prerequisiteSpecializationIds }
+  ) =>
     request(`/api/specializations/${specializationId}`, {
       method: "PATCH",
       token,
@@ -372,6 +380,7 @@ export const api = {
         min_rank_id: minRankId,
         required_regiment_id: requiredRegimentId,
         parent_id: parentId,
+        prerequisite_specialization_ids: prerequisiteSpecializationIds,
       },
     }),
   deleteSpecialization: (token, specializationId) =>

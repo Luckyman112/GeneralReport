@@ -61,6 +61,20 @@ async def _check_can_grant(db: AsyncSession, target: User, specialization: Speci
             parent_label = specialization.parent.code if specialization.parent else "базовая специализация"
             raise AppError(f"Сначала нужна специализация «{parent_label}» — эта подспециализация от неё")
 
+    # "Нужны ВСЕ из" (см. SpecializationPrerequisite) — не то же самое, что
+    # parent_id (нужен один конкретный родитель); например "Старший медик"
+    # требует Вирусологию+Дефектологию+Хирургию разом, а не любую одну
+    prerequisites = await specialization_crud.list_prerequisites(db, specialization.id)
+    if prerequisites:
+        missing = [
+            p
+            for p in prerequisites
+            if not await specialization_crud.has_specialization(db, user_id=target.id, specialization_id=p.id)
+        ]
+        if missing:
+            missing_labels = ", ".join(f"«{p.code}»" for p in missing)
+            raise AppError(f"Сначала нужны все специализации: не хватает {missing_labels}")
+
     if specialization.required_regiment_id is not None:
         required_role = specialization.required_regiment.discord_role_id if specialization.required_regiment else None
         if required_role is None or required_role not in target.roles:
@@ -116,12 +130,21 @@ def _can_manage_catalog_category(access: AccessContext, category: str) -> bool:
     return category in DISCIPLINE_CATEGORIES and access.is_discipline_deputy(category)
 
 
+async def _to_specialization_read(db: AsyncSession, specialization: Specialization) -> SpecializationRead:
+    """prerequisite_specialization_ids — отдельная таблица (SpecializationPrerequisite),
+    не колонка, поэтому обычный from_attributes её не подхватит — дозаполняем
+    после базовой валидации."""
+    base = SpecializationRead.model_validate(specialization)
+    prerequisites = await specialization_crud.list_prerequisites(db, specialization.id)
+    return base.model_copy(update={"prerequisite_specialization_ids": [p.id for p in prerequisites]})
+
+
 @router.get("/specializations", response_model=list[SpecializationRead])
 async def list_specializations(db: AsyncSession = Depends(get_db)) -> list[SpecializationRead]:
     """Каталог виден всем авторизованным — нужен, чтобы показать список в личном
     деле и в форме выдачи у инструктора."""
     specializations = await specialization_crud.get_all(db)
-    return [SpecializationRead.model_validate(s) for s in specializations]
+    return [await _to_specialization_read(db, s) for s in specializations]
 
 
 @router.get("/specializations/instructor-activity", response_model=list[InstructorActivityRead])
@@ -210,9 +233,10 @@ async def create_specialization(
         min_rank_id=payload.min_rank_id,
         required_regiment_id=payload.required_regiment_id,
         parent_id=payload.parent_id,
+        prerequisite_specialization_ids=payload.prerequisite_specialization_ids,
     )
     logger.info("%s добавил специализацию %s (%s)", access.user.username, specialization.code, specialization.name)
-    return SpecializationRead.model_validate(specialization)
+    return await _to_specialization_read(db, specialization)
 
 
 @router.patch("/specializations/{specialization_id}", response_model=SpecializationRead)
@@ -240,7 +264,7 @@ async def update_specialization(
         changes["name"] = changes["name"].strip()
     updated = await specialization_crud.update(db, specialization, **changes)
     logger.info("%s изменил специализацию %s (%s)", access.user.username, updated.code, updated.name)
-    return SpecializationRead.model_validate(updated)
+    return await _to_specialization_read(db, updated)
 
 
 @router.delete("/specializations/{specialization_id}", status_code=204)

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { SaveBar } from "../components/SaveBar";
 import { useToast } from "../components/ToastContext";
 import { SPECIALIZATION_CATEGORIES } from "../utils/specialization";
@@ -75,12 +76,14 @@ export function AdminPanelPage() {
   const [newSpecMinRankId, setNewSpecMinRankId] = useState("");
   const [newSpecParentId, setNewSpecParentId] = useState("");
   const [newSpecRequiredRegimentId, setNewSpecRequiredRegimentId] = useState("");
+  const [newSpecPrerequisiteIds, setNewSpecPrerequisiteIds] = useState([]);
   const [editingSpecId, setEditingSpecId] = useState(null);
   const [editSpecCode, setEditSpecCode] = useState("");
   const [editSpecName, setEditSpecName] = useState("");
   const [editSpecMinRankId, setEditSpecMinRankId] = useState("");
   const [editSpecParentId, setEditSpecParentId] = useState("");
   const [editSpecRequiredRegimentId, setEditSpecRequiredRegimentId] = useState("");
+  const [editSpecPrerequisiteIds, setEditSpecPrerequisiteIds] = useState([]);
 
   const [systemHealth, setSystemHealth] = useState(null);
   const [healthStaleDays, setHealthStaleDays] = useState(3);
@@ -135,12 +138,14 @@ export function AdminPanelPage() {
         minRankId: newSpecMinRankId === "" ? null : Number(newSpecMinRankId),
         requiredRegimentId: newSpecRequiredRegimentId === "" ? null : Number(newSpecRequiredRegimentId),
         parentId: newSpecParentId === "" ? null : Number(newSpecParentId),
+        prerequisiteSpecializationIds: newSpecPrerequisiteIds,
       });
       setNewSpecCode("");
       setNewSpecName("");
       setNewSpecMinRankId("");
       setNewSpecParentId("");
       setNewSpecRequiredRegimentId("");
+      setNewSpecPrerequisiteIds([]);
       loadSpecializations();
       showToast("Специализация добавлена");
     } catch (e) {
@@ -156,6 +161,7 @@ export function AdminPanelPage() {
     setEditSpecMinRankId(s.min_rank?.id ?? "");
     setEditSpecParentId(s.parent_id ?? "");
     setEditSpecRequiredRegimentId(s.required_regiment_id ?? "");
+    setEditSpecPrerequisiteIds(s.prerequisite_specialization_ids ?? []);
   }
 
   function cancelEditSpecialization() {
@@ -171,6 +177,7 @@ export function AdminPanelPage() {
         minRankId: editSpecMinRankId === "" ? null : Number(editSpecMinRankId),
         requiredRegimentId: editSpecRequiredRegimentId === "" ? null : Number(editSpecRequiredRegimentId),
         parentId: editSpecParentId === "" ? null : Number(editSpecParentId),
+        prerequisiteSpecializationIds: editSpecPrerequisiteIds,
       });
       setEditingSpecId(null);
       loadSpecializations();
@@ -854,6 +861,12 @@ export function AdminPanelPage() {
                           </option>
                         ))}
                       </select>
+                      <MultiSelectDropdown
+                        items={specializations.filter((p) => p.id !== s.id).map((p) => ({ id: p.id, name: `${p.code} — ${p.name}` }))}
+                        selectedIds={editSpecPrerequisiteIds}
+                        onChange={setEditSpecPrerequisiteIds}
+                        placeholder="Требуются все — выбрать"
+                      />
                       <button type="button" onClick={() => handleSaveSpecialization(s.id)}>
                         Сохранить
                       </button>
@@ -875,6 +888,16 @@ export function AdminPanelPage() {
                         <span className="hint-text">
                           {" "}
                           [{regiments.find((r) => r.id === s.required_regiment_id)?.name || "?"}]
+                        </span>
+                      )}
+                      {s.prerequisite_specialization_ids?.length > 0 && (
+                        <span className="hint-text">
+                          {" "}
+                          (нужны все:{" "}
+                          {s.prerequisite_specialization_ids
+                            .map((id) => specializations.find((p) => p.id === id)?.code || "?")
+                            .join(", ")}
+                          )
                         </span>
                       )}
                       <button type="button" title="Редактировать" onClick={() => startEditSpecialization(s)}>
@@ -937,6 +960,12 @@ export function AdminPanelPage() {
               </option>
             ))}
           </select>
+          <MultiSelectDropdown
+            items={specializations.map((p) => ({ id: p.id, name: `${p.code} — ${p.name}` }))}
+            selectedIds={newSpecPrerequisiteIds}
+            onChange={setNewSpecPrerequisiteIds}
+            placeholder="Требуются все — выбрать"
+          />
           <button type="button" disabled={!newSpecCode.trim() || !newSpecName.trim()} onClick={handleAddSpecialization}>
             Добавить
           </button>

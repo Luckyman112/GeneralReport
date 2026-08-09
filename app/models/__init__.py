@@ -20,7 +20,13 @@ from app.models.report_image import ReportImage
 from app.models.report_participant import ReportParticipant
 from app.models.report_regiment_decision import ReportRegimentDecision, RegimentDecisionStatus
 from app.models.reprimand import Reprimand
-from app.models.specialization import InstructorRole, Specialization, SpecializationBan, UserSpecialization
+from app.models.specialization import (
+    InstructorRole,
+    Specialization,
+    SpecializationBan,
+    SpecializationPrerequisite,
+    UserSpecialization,
+)
 from app.models.squad import Squad, SquadMembership
 from app.models.user import User
 from app.models.violation import Violation
@@ -53,6 +59,7 @@ __all__ = [
     "Specialization",
     "UserSpecialization",
     "SpecializationBan",
+    "SpecializationPrerequisite",
     "InstructorRole",
     "Event",
     "EventStatus",
