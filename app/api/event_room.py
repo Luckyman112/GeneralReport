@@ -192,20 +192,6 @@ async def preview_event_card(
     return StreamingResponse(iter([image_bytes]), media_type="image/png")
 
 
-@router.get("/{event_id}", response_model=EventRead)
-async def get_event(
-    event_id: int,
-    db: AsyncSession = Depends(get_db),
-    access: AccessContext = Depends(get_access_context),
-) -> EventRead:
-    row = await event_crud.get_by_id(db, event_id)
-    if row is None:
-        raise NotFoundError("Заявка не найдена")
-    if not access.can_decide_event and row.submitted_by_user_id != access.user.id:
-        raise ForbiddenError("Нет доступа к этой заявке")
-    return EventRead.model_validate(row)
-
-
 @router.get("/{event_id}/card")
 async def get_event_card(
     event_id: int,

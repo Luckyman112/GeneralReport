@@ -1,6 +1,5 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.models.points_adjustment import PointsAdjustment
 
@@ -15,16 +14,6 @@ async def create(
     await db.commit()
     await db.refresh(adjustment, attribute_names=["creator"])
     return adjustment
-
-
-async def list_for_user(db: AsyncSession, *, user_id: int) -> list[PointsAdjustment]:
-    result = await db.execute(
-        select(PointsAdjustment)
-        .where(PointsAdjustment.user_id == user_id)
-        .options(selectinload(PointsAdjustment.creator))
-        .order_by(PointsAdjustment.created_at.desc())
-    )
-    return list(result.scalars().all())
 
 
 async def sum_for_user(db: AsyncSession, *, user_id: int, since=None) -> int:

@@ -689,7 +689,6 @@ export const api = {
   listEvents: (token) => request("/api/event-room", { token }),
   createEvent: (token, { title, payload }) =>
     request("/api/event-room", { method: "POST", token, body: { title, payload } }),
-  getEvent: (token, eventId) => request(`/api/event-room/${eventId}`, { token }),
   updateEvent: (token, eventId, { title, payload }) =>
     request(`/api/event-room/${eventId}`, { method: "PATCH", token, body: { title, payload } }),
   approveEvent: (token, eventId) => request(`/api/event-room/${eventId}/approve`, { method: "POST", token }),
