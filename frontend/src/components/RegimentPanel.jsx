@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatFullName } from "../utils/formatName";
+import { safeUrl } from "../utils/safeUrl";
 import { EmptyState } from "./EmptyState";
 import { InlineSpinner } from "./InlineSpinner";
 import { LinkIcon } from "./icons";
@@ -265,9 +266,9 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
               </div>
             </div>
           ))}
-          {currentRegiment?.discord_channel_url && (
+          {safeUrl(currentRegiment?.discord_channel_url) && (
             <a
-              href={currentRegiment.discord_channel_url}
+              href={safeUrl(currentRegiment.discord_channel_url)}
               target="_blank"
               rel="noreferrer"
               className="regiment-info-channel-link"

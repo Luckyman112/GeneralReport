@@ -35,8 +35,8 @@ export function MandatoryRequirementModal({ ranks, existingCategoryNames, initia
     setFieldDraftType("text");
   }
 
-  function handleRemoveField(name) {
-    setFieldsList((prev) => prev.filter((f) => f.name !== name));
+  function handleRemoveField(index) {
+    setFieldsList((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handleSubmit(e) {
@@ -111,11 +111,11 @@ export function MandatoryRequirementModal({ ranks, existingCategoryNames, initia
           </label>
           {fieldsList.length > 0 && (
             <div className="field-tags">
-              {fieldsList.map((f) => (
-                <span key={f.name} className="field-tag">
+              {fieldsList.map((f, i) => (
+                <span key={`${f.name}-${i}`} className="field-tag">
                   {f.name}
                   <span className="field-tag-type">{FIELD_TYPE_LABELS[f.type] || f.type}</span>
-                  <button type="button" onClick={() => handleRemoveField(f.name)}>
+                  <button type="button" onClick={() => handleRemoveField(i)}>
                     ×
                   </button>
                 </span>

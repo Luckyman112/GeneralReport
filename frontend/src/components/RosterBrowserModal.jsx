@@ -9,6 +9,7 @@ import { useToast } from "./ToastContext";
 import { formatMskDate } from "../utils/formatDate";
 import { steamProfileUrl } from "../utils/steam";
 import { discordProfileUrl } from "../utils/discord";
+import { safeUrl } from "../utils/safeUrl";
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
@@ -158,9 +159,9 @@ export function RosterBrowserModal({ onClose }) {
         ) : (
           <>
             <h3 style={regiment?.color ? { color: regiment.color } : undefined}>{regiment?.name} — состав</h3>
-            {regiment?.discord_channel_url && (
+            {safeUrl(regiment?.discord_channel_url) && (
               <a
-                href={regiment.discord_channel_url}
+                href={safeUrl(regiment.discord_channel_url)}
                 target="_blank"
                 rel="noreferrer"
                 className="regiment-info-channel-link"

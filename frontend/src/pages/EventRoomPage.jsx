@@ -173,20 +173,38 @@ function AudienceField({ label, value, onChange, regiments, members }) {
  * решение пользователя: например 3 задачи и 4 доп. задачи), каждый со своей
  * нумерацией в карточке. */
 function TasksField({ tasks, onChange, label, addLabel }) {
+  // Стабильные id по позиции — plain string[] не несёт identity сам по себе,
+  // а index-ключ путает React при удалении задачи не с конца (инпут ниже
+  // "наследует" фокус/значение соседа вместо удаления своего).
+  const nextIdRef = useRef(0);
+  const idsRef = useRef(tasks.map(() => nextIdRef.current++));
+  if (idsRef.current.length < tasks.length) {
+    while (idsRef.current.length < tasks.length) idsRef.current.push(nextIdRef.current++);
+  } else if (idsRef.current.length > tasks.length) {
+    idsRef.current = idsRef.current.slice(0, tasks.length);
+  }
+
   function setTask(idx, value) {
     onChange(tasks.map((t, i) => (i === idx ? value : t)));
   }
   function addTask() {
+    idsRef.current = [...idsRef.current, nextIdRef.current++];
     onChange([...tasks, ""]);
   }
   function removeTask(idx) {
-    onChange(tasks.length > 1 ? tasks.filter((_, i) => i !== idx) : [""]);
+    if (tasks.length > 1) {
+      idsRef.current = idsRef.current.filter((_, i) => i !== idx);
+      onChange(tasks.filter((_, i) => i !== idx));
+    } else {
+      idsRef.current = [nextIdRef.current++];
+      onChange([""]);
+    }
   }
 
   return (
     <div className="add-category-form">
       {tasks.map((t, idx) => (
-        <label key={idx}>
+        <label key={idsRef.current[idx]}>
           {tasks.length === 1 ? label : `${label} ${idx + 1}`}
           <span className="picker-row">
             <input type="text" value={t} onChange={(e) => setTask(idx, e.target.value)} />

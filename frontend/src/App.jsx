@@ -77,9 +77,12 @@ function Layout({ children }) {
   }, [sidebarOpen]);
 
   if (!isAuthenticated) {
+    // Режим обслуживания публичный — блокируем и анонимных посетителей, кроме
+    // самой страницы входа, иначе админ не сможет зайти и выключить его.
+    const blockedByMaintenance = maintenanceStatus?.enabled && location.pathname !== "/login";
     return (
       <>
-        <main className="page-container">{children}</main>
+        <main className="page-container">{blockedByMaintenance ? <MaintenanceBlock status={maintenanceStatus} /> : children}</main>
         <a
           className="made-by-credit"
           href="https://discord.com/users/417686926695333890"

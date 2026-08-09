@@ -1,3 +1,5 @@
+import { useThemeValue } from "../hooks/useTheme";
+
 // Категориальная палитра (валидированная, фиксированный порядок — см. skill dataviz):
 // не переставлять и не генерировать новые оттенки, только эти 8 в этом порядке.
 const PALETTE_LIGHT = [
@@ -36,6 +38,7 @@ function arcPath(cx, cy, rOuter, rInner, startAngle, endAngle) {
  * сегменту/легенде — drill-down, наведение — тултип (нативный title), легенда с
  * подписями (identity никогда только через цвет). */
 export function DonutChart({ data, onSegmentClick, emptyLabel = "Нет данных" }) {
+  const theme = useThemeValue();
   const slices = buildSlices(data);
   const total = slices.reduce((sum, d) => sum + d.count, 0);
 
@@ -43,9 +46,7 @@ export function DonutChart({ data, onSegmentClick, emptyLabel = "Нет данн
     return <p className="empty-state">{emptyLabel}</p>;
   }
 
-  const isDark =
-    typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "dark";
-  const palette = isDark ? PALETTE_DARK : PALETTE_LIGHT;
+  const palette = theme === "dark" ? PALETTE_DARK : PALETTE_LIGHT;
 
   let angle = -Math.PI; // начинаем сверху... но проще с 0 (12 часов = -PI/2*2), используем 0 = верх через смещение
   angle = 0;

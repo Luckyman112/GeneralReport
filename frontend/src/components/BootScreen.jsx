@@ -4,7 +4,7 @@
 export function BootScreen({ error }) {
   return (
     <div className="boot-screen">
-      <div className="radar" aria-hidden={!error}>
+      <div className="radar" aria-hidden="true">
         <div className="radar-ring radar-ring-1" />
         <div className="radar-ring radar-ring-2" />
         <div className="radar-ring radar-ring-3" />

@@ -15,6 +15,9 @@ export function CategoryNav({
   showLeave,
 }) {
   const showRegimentName = new Set(categories.map((c) => c.regiment_id)).size > 1;
+  const showPromotionRegimentName = new Set(promotionCategories.map((c) => c.regiment_id)).size > 1;
+  const showDemotionRegimentName = new Set(demotionCategories.map((c) => c.regiment_id)).size > 1;
+  const showTrainingRegimentName = new Set(trainingCategories.map((c) => c.regiment_id)).size > 1;
   const showVirtualSection =
     showReprimands ||
     showLeave ||
@@ -60,7 +63,7 @@ export function CategoryNav({
                   onClick={() => onSelectView("reports", c.id)}
                 >
                   Повышения
-                  {showRegimentName && (
+                  {showPromotionRegimentName && (
                     <span className="category-nav-regiment"> — {regimentsById[c.regiment_id]?.name}</span>
                   )}
                 </button>
@@ -73,7 +76,7 @@ export function CategoryNav({
                   onClick={() => onSelectView("reports", c.id)}
                 >
                   Понижения
-                  {showRegimentName && (
+                  {showDemotionRegimentName && (
                     <span className="category-nav-regiment"> — {regimentsById[c.regiment_id]?.name}</span>
                   )}
                 </button>
@@ -86,7 +89,7 @@ export function CategoryNav({
                   onClick={() => onSelectView("reports", c.id)}
                 >
                   Обучение на специализацию
-                  {showRegimentName && (
+                  {showTrainingRegimentName && (
                     <span className="category-nav-regiment"> — {regimentsById[c.regiment_id]?.name}</span>
                   )}
                 </button>

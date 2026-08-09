@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useThemeValue } from "../hooks/useTheme";
 
 const PALETTE_LIGHT = [
   "#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948",
@@ -22,6 +23,7 @@ function formatShortDate(iso) {
  * (тот же Regiment.color, что и в остальной статистике), вертикальная
  * направляющая при наведении показывает значения всех серий в этот день. */
 export function TrendChart({ dates, series }) {
+  const theme = useThemeValue();
   const [hoverIndex, setHoverIndex] = useState(null);
 
   const visibleSeries = series.filter((s) => s.points.some((p) => p > 0));
@@ -29,9 +31,7 @@ export function TrendChart({ dates, series }) {
     return <p className="empty-state">Недостаточно данных за период.</p>;
   }
 
-  const isDark =
-    typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "dark";
-  const palette = isDark ? PALETTE_DARK : PALETTE_LIGHT;
+  const palette = theme === "dark" ? PALETTE_DARK : PALETTE_LIGHT;
 
   const max = Math.max(1, ...visibleSeries.flatMap((s) => s.points));
   const plotWidth = WIDTH - PAD_LEFT;
