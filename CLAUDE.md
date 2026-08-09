@@ -152,6 +152,13 @@ changes them. Every `get_by_id`-style crud function in this codebase passes
 `populate_existing=True` to force a real reload; do the same for any new one (comments
 at each existing call site explain why).
 
+### Known incomplete feature
+`POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
+backend support but no frontend form anywhere — violations currently only get
+created as a side effect of approving a detention report. Flagged during the 2026-08
+audit, not removed and not built out; if you land here needing to add a manual
+"create violation" UI, that's expected new work, not a bug to fix.
+
 ### Discord integration (`app/core/discord_client.py`)
 REST API only via `httpx` — no `discord.py`, no gateway connection, no persistent bot
 process. Guild member/role lookups are live HTTP calls, not cached locally (see above).
@@ -161,10 +168,12 @@ process. Guild member/role lookups are live HTTP calls, not cached locally (see 
   the failure — `showToast(e.message, "error")` (`ToastContext`) for one-off actions,
   or a local `error` state rendered inline for forms. An `await api.x(...)` with no
   surrounding try/catch in an `onClick`/`onSubmit` is an unhandled promise rejection —
-  the button silently does nothing on failure. This bit a large fraction of the app
-  before an audit caught it (`ReportsPage`, `ReportForm`, `PromotionsPage`,
+  the button silently does nothing on failure. A 2026-08 audit found and fixed this
+  across most of the app (`ReportsPage`, `ReportForm`, `PromotionsPage`,
   `EventRoomPage`, `ViewAsBar`, `BackupsPage`, `RosterBrowserModal`, ...) — don't
-  reintroduce it in new handlers.
+  reintroduce it in new handlers. `AuthContext.applyViewAs` also rolls the `viewAs`
+  state back to its previous value if the follow-up `loadMe` fails, so the "View as"
+  banner never claims a simulation is active when it isn't.
 - Any `useEffect` that fetches data keyed on a value the user can change quickly
   (a regiment/member/category dropdown, a search box) needs a request-generation
   guard, or a fast second change can let the first (now-stale) response land after the
@@ -181,7 +190,20 @@ process. Guild member/role lookups are live HTTP calls, not cached locally (see 
   See `RegimentPanel.loadMembers`, `CategoryManagerModal.load`,
   `PromotionsPage.RequirementsTable` for the established shape. An effect with no
   dependency on a fast-changing value (e.g. driven only by a stable `token`) doesn't
-  need this.
+  need this. The same 2026-08 audit added this guard to every effect in the app that
+  was missing it — if you add a new dropdown-keyed effect, give it its own
+  `requestIdRef` rather than reusing a sibling effect's.
+- Any user-configured URL rendered as `<a href>` (currently just
+  `Regiment.discord_channel_url`, set via `RegimentConfigModal` and displayed in
+  `RosterBrowserModal`/`RegimentPanel`) must go through `utils/safeUrl.js` first —
+  it returns `null` for anything not `http:`/`https:`, so a `javascript:` URL typed
+  into the config field can't execute when someone else opens the roster.
+- `hooks/useTheme.js` exports two hooks: `useTheme()` (state + `toggleTheme`, used
+  once by `Navbar`) and `useThemeValue()` (read-only, reactive to toggles from
+  elsewhere via a tiny pub/sub). Components that just need to know the current theme
+  to pick a color palette (`DonutChart`, `TrendChart`) should use `useThemeValue()`,
+  not read `document.documentElement.getAttribute("data-theme")` directly — the
+  latter doesn't trigger a re-render when the theme changes elsewhere.
 
 ### Frontend
 React + Vite, `HashRouter` (routes are `#/...`; `?code=` from Discord OAuth is parsed at
