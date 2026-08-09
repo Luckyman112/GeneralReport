@@ -75,14 +75,42 @@ async def list_maps(db: AsyncSession) -> list[EventMap]:
     return list(result.scalars().all())
 
 
-async def create_map(db: AsyncSession, *, name: str) -> EventMap:
-    row = EventMap(name=name)
+async def create_map(
+    db: AsyncSession,
+    *,
+    name: str,
+    url: str | None = None,
+    planet_name: str | None = None,
+    landscape: str | None = None,
+    weather: str | None = None,
+    star_system: str | None = None,
+) -> EventMap:
+    row = EventMap(
+        name=name,
+        url=url,
+        planet_name=planet_name,
+        landscape=landscape,
+        weather=weather,
+        star_system=star_system,
+    )
     db.add(row)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise AppError(f"Карта «{name}» уже есть в списке")
+    await db.refresh(row)
+    return row
+
+
+async def update_map(db: AsyncSession, row: EventMap, **changes) -> EventMap:
+    for key, value in changes.items():
+        setattr(row, key, value)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise AppError(f"Карта «{changes.get('name', row.name)}» уже есть в списке")
     await db.refresh(row)
     return row
 

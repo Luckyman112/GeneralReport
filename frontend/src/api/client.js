@@ -697,7 +697,32 @@ export const api = {
     request(`/api/event-room/${eventId}/reject`, { method: "POST", token, body: { reason } }),
   getEventMemberCandidates: (token) => request("/api/event-room/member-candidates", { token }),
   listEventMaps: (token) => request("/api/event-room/maps/all", { token }),
-  createEventMap: (token, name) => request("/api/event-room/maps", { method: "POST", token, body: { name } }),
+  createEventMap: (token, { name, url, planetName, landscape, weather, starSystem }) =>
+    request("/api/event-room/maps", {
+      method: "POST",
+      token,
+      body: {
+        name,
+        url: url || null,
+        planet_name: planetName || null,
+        landscape: landscape || null,
+        weather: weather || null,
+        star_system: starSystem || null,
+      },
+    }),
+  updateEventMap: (token, mapId, { name, url, planetName, landscape, weather, starSystem }) =>
+    request(`/api/event-room/maps/${mapId}`, {
+      method: "PATCH",
+      token,
+      body: {
+        name,
+        url: url || null,
+        planet_name: planetName || null,
+        landscape: landscape || null,
+        weather: weather || null,
+        star_system: starSystem || null,
+      },
+    }),
   deleteEventMap: (token, mapId) => request(`/api/event-room/maps/${mapId}`, { method: "DELETE", token }),
   getEventRoster: (token) => request("/api/event-room/roster", { token }),
   uploadEventMapImage: (token, file) => {

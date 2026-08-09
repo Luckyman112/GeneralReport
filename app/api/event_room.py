@@ -26,6 +26,7 @@ from app.schemas.event import (
     EventCreate,
     EventMapCreate,
     EventMapRead,
+    EventMapUpdate,
     EventRead,
     EventRejectRequest,
     EventRosterEntry,
@@ -266,11 +267,12 @@ async def update_event(
         app_config = await app_settings_crud.get(db)
         if app_config.event_notify_channel_id:
             try:
-                embed = await _build_event_embed(db, updated)
+                map_row = await _get_selected_map(db, updated)
+                embed = _build_event_embed(updated, map_row)
                 image_bytes = await _render_event_image(
                     db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
                 )
-                content = _ping_content(app_config)
+                content = _message_content(app_config, map_row)
                 if updated.discord_message_id:
                     try:
                         await discord_client.edit_channel_message(
@@ -357,10 +359,19 @@ def _format_audience(value: dict | None, regiments_by_id: dict, *, plain: bool, 
     return None
 
 
-async def _build_event_embed(db: AsyncSession, row) -> dict:
+async def _get_selected_map(db: AsyncSession, row):
+    map_id = (row.payload or {}).get("map_id")
+    if not map_id:
+        return None
+    return await event_crud.get_map_by_id(db, map_id)
+
+
+def _build_event_embed(row, map_row) -> dict:
     """Метаданные операции — живые Discord-поля (упоминания, дата) сверху
     сообщения; содержательная часть (сводка/цель/задача/состав/угроза) —
-    в приложенной картинке-досье, см. render_operation_dossier."""
+    в приложенной картинке-досье, см. render_operation_dossier. Справка о
+    планете сюда НЕ входит — идёт отдельным текстом в content, см.
+    _planet_info_text (решение пользователя)."""
     payload = row.payload or {}
 
     fields = []
@@ -375,12 +386,10 @@ async def _build_event_embed(db: AsyncSession, row) -> dict:
     commander_id = payload.get("commander_discord_id")
     add_field("⭐ Командующий", f"<@{commander_id}>" if commander_id else _COMMANDER_TBD)
 
-    map_name = None
-    map_id = payload.get("map_id")
-    if map_id:
-        map_row = await event_crud.get_map_by_id(db, map_id)
-        map_name = map_row.name if map_row else None
-    add_field("🗺️ Карта", map_name)
+    map_value = None
+    if map_row is not None:
+        map_value = f"[{map_row.name}]({map_row.url})" if map_row.url else map_row.name
+    add_field("🗺️ Карта", map_value)
 
     return {
         "title": row.title,
@@ -388,6 +397,28 @@ async def _build_event_embed(db: AsyncSession, row) -> dict:
         "fields": fields,
         "footer": {"text": f"COLLAPSAR · Ивентрум · Заявка #{row.id}"},
     }
+
+
+def _planet_info_text(map_row) -> str | None:
+    """Справочная информация о планете карты — не для карточки, отдельным
+    текстом в теле сообщения (см. решение пользователя)."""
+    if map_row is None:
+        return None
+    lines = []
+    if map_row.planet_name:
+        lines.append(f"🪐 Планета: {map_row.planet_name}")
+    if map_row.star_system:
+        lines.append(f"Система: {map_row.star_system}")
+    if map_row.landscape:
+        lines.append(f"Ландшафт: {map_row.landscape}")
+    if map_row.weather:
+        lines.append(f"Погодные условия: {map_row.weather}")
+    return "\n".join(lines) if lines else None
+
+
+def _message_content(app_config, map_row) -> str | None:
+    parts = [p for p in (_ping_content(app_config), _planet_info_text(map_row)) if p]
+    return "\n\n".join(parts) if parts else None
 
 
 def _read_map_image(payload: dict) -> bytes | None:
@@ -463,7 +494,8 @@ async def approve_event(
     app_config = await app_settings_crud.get(db)
     if app_config.event_notify_channel_id:
         try:
-            embed = await _build_event_embed(db, updated)
+            map_row = await _get_selected_map(db, updated)
+            embed = _build_event_embed(updated, map_row)
             image_bytes = await _render_event_image(
                 db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
             )
@@ -472,7 +504,7 @@ async def approve_event(
                 embed=embed,
                 file_bytes=image_bytes,
                 filename=f"operation-{updated.id}.png",
-                content=_ping_content(app_config),
+                content=_message_content(app_config, map_row),
             )
             await event_crud.mark_notified(db, updated, discord_message_id=message_id)
         except Exception:
@@ -536,8 +568,36 @@ async def create_map(
 ) -> EventMapRead:
     if not access.can_decide_event:
         raise ForbiddenError("Список карт правят только Ассистент/Куратор ивентологии")
-    row = await event_crud.create_map(db, name=payload.name.strip())
+    row = await event_crud.create_map(
+        db,
+        name=payload.name.strip(),
+        url=(payload.url or "").strip() or None,
+        planet_name=(payload.planet_name or "").strip() or None,
+        landscape=(payload.landscape or "").strip() or None,
+        weather=(payload.weather or "").strip() or None,
+        star_system=(payload.star_system or "").strip() or None,
+    )
     return EventMapRead.model_validate(row)
+
+
+@router.patch("/maps/{map_id}", response_model=EventMapRead)
+async def update_map(
+    map_id: int,
+    payload: EventMapUpdate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventMapRead:
+    if not access.can_decide_event:
+        raise ForbiddenError("Список карт правят только Ассистент/Куратор ивентологии")
+    row = await event_crud.get_map_by_id(db, map_id)
+    if row is None:
+        raise NotFoundError("Карта не найдена")
+    changes = payload.model_dump(exclude_unset=True)
+    for key in ("name", "url", "planet_name", "landscape", "weather", "star_system"):
+        if key in changes and isinstance(changes[key], str):
+            changes[key] = changes[key].strip() or None
+    updated = await event_crud.update_map(db, row, **changes)
+    return EventMapRead.model_validate(updated)
 
 
 @router.delete("/maps/{map_id}", status_code=204)

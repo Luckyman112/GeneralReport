@@ -493,6 +493,70 @@ function RejectInline({ onReject }) {
   );
 }
 
+function emptyMapForm() {
+  return { id: null, name: "", url: "", planetName: "", landscape: "", weather: "", starSystem: "" };
+}
+
+function mapToForm(m) {
+  return {
+    id: m.id,
+    name: m.name,
+    url: m.url || "",
+    planetName: m.planet_name || "",
+    landscape: m.landscape || "",
+    weather: m.weather || "",
+    starSystem: m.star_system || "",
+  };
+}
+
+/** Карта каталога — название+ссылка попадают в карточку операции в Discord
+ * (ссылка гиперссылкой в поле "Карта"), справка о планете — отдельным текстом
+ * в сообщении, не в саму карточку (см. решение пользователя). */
+function MapForm({ initial, onSubmit, onCancel }) {
+  const [form, setForm] = useState(initial);
+
+  function setField(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  return (
+    <div className="picker-row" style={{ flexWrap: "wrap" }}>
+      <input type="text" placeholder="Название карты" value={form.name} onChange={(e) => setField("name", e.target.value)} />
+      <input type="text" placeholder="Ссылка на карту" value={form.url} onChange={(e) => setField("url", e.target.value)} />
+      <input
+        type="text"
+        placeholder="Название планеты"
+        value={form.planetName}
+        onChange={(e) => setField("planetName", e.target.value)}
+      />
+      <input
+        type="text"
+        placeholder="Система"
+        value={form.starSystem}
+        onChange={(e) => setField("starSystem", e.target.value)}
+      />
+      <input
+        type="text"
+        placeholder="Ландшафт"
+        value={form.landscape}
+        onChange={(e) => setField("landscape", e.target.value)}
+      />
+      <input
+        type="text"
+        placeholder="Погодные условия"
+        value={form.weather}
+        onChange={(e) => setField("weather", e.target.value)}
+      />
+      <button type="button" disabled={!form.name.trim()} onClick={() => onSubmit(form)}>
+        {form.id ? "Сохранить" : "Добавить карту"}
+      </button>
+      <button type="button" className="ghost" onClick={onCancel}>
+        Отмена
+      </button>
+    </div>
+  );
+}
+
 function RosterPanel() {
   const { token } = useAuth();
   const [roster, setRoster] = useState([]);
@@ -551,7 +615,8 @@ export function EventRoomPage() {
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [newMapName, setNewMapName] = useState("");
+  const [mapDraft, setMapDraft] = useState(null); // null — форма закрыта, {} — создание, {id,...} — редактирование
+
 
   const canDecide = Boolean(access?.can_decide_event);
   const canSubmit = Boolean(access?.is_event_submitter);
@@ -599,10 +664,22 @@ export function EventRoomPage() {
     load();
   }
 
-  async function handleAddMap() {
-    if (!newMapName.trim()) return;
-    await api.createEventMap(token, newMapName.trim());
-    setNewMapName("");
+  async function handleSaveMap(form) {
+    if (!form.name.trim()) return;
+    const body = {
+      name: form.name.trim(),
+      url: form.url.trim(),
+      planetName: form.planetName.trim(),
+      landscape: form.landscape.trim(),
+      weather: form.weather.trim(),
+      starSystem: form.starSystem.trim(),
+    };
+    if (form.id) {
+      await api.updateEventMap(token, form.id, body);
+    } else {
+      await api.createEventMap(token, body);
+    }
+    setMapDraft(null);
     load();
   }
 
@@ -688,24 +765,23 @@ export function EventRoomPage() {
               {maps.map((m) => (
                 <li key={m.id} className="chip">
                   {m.name}
-                  <button type="button" onClick={() => handleDeleteMap(m.id)}>
+                  <button type="button" onClick={() => setMapDraft(mapToForm(m))} title="Изменить">
+                    ✎
+                  </button>
+                  <button type="button" onClick={() => handleDeleteMap(m.id)} title="Удалить">
                     ×
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          <div className="picker-row">
-            <input
-              type="text"
-              placeholder="Название карты"
-              value={newMapName}
-              onChange={(e) => setNewMapName(e.target.value)}
-            />
-            <button type="button" onClick={handleAddMap} disabled={!newMapName.trim()}>
-              Добавить карту
+          {mapDraft ? (
+            <MapForm initial={mapDraft} onSubmit={handleSaveMap} onCancel={() => setMapDraft(null)} />
+          ) : (
+            <button type="button" className="ghost" onClick={() => setMapDraft(emptyMapForm())}>
+              + Добавить карту
             </button>
-          </div>
+          )}
         </div>
       )}
 
