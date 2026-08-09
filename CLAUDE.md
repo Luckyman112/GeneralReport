@@ -114,10 +114,12 @@ whether it needs handling there too.
   default_self, allow_manual}` — roster fields are multi-select pickers over a
   regiment's live Discord roster, optionally spanning other regiments too).
   `points`/`participant_points` auto-award on approval. Several boolean flags make a
-  category "system" (`is_detention`/`is_promotion`/`is_demotion`/`is_training`) with
-  bespoke, non-editable behavior — these are mutually exclusive with each other and
-  with `is_joint` (see below); `open_to_regiment_leadership` lets commanders/deputies of
-  *other* regiments file into a category that isn't theirs (e.g. Штаб-only categories).
+  category "system" (`is_detention`/`is_promotion`/`is_demotion`/`is_training`/
+  `is_recruit_promotion`) with bespoke, non-editable behavior — these are mutually
+  exclusive with each other and with `is_joint` (see below); `open_to_regiment_leadership`
+  lets commanders/deputies of *other* regiments file into a category that isn't theirs
+  (e.g. Штаб-only categories) — `is_recruit_promotion` goes further still, bypassing
+  regiment membership entirely (see "Recruit pipeline" below).
 - Two independent cross-regiment linking mechanisms on `ReportCategory`, easy to
   confuse:
   - `mirrors_to_category_id` (1:1, static) — every report filed in this category
@@ -152,6 +154,43 @@ changes them. Every `get_by_id`-style crud function in this codebase passes
 `populate_existing=True` to force a real reload; do the same for any new one (comments
 at each existing call site explain why).
 
+### Recruit pipeline ("17-ый Передовой Полк", `Regiment` id=2)
+Every new registrant lands in one holding regiment rather than picking their real
+formation up front — `RECRUIT_REGIMENT_NAME` constant (`app/crud/regiment.py`,
+resolved to an id and cached per-request as `AccessContext.recruit_regiment_id`,
+computed in `_compute_permission_fields`/`app/api/deps.py`). Three places key off it,
+each a narrow carve-out rather than a broad permission change:
+- `POST /me/registration` (`app/api/registration.py`) best-effort assigns the regiment's
+  Discord role via `discord_client.add_member_role` — the only *write* call in
+  `discord_client.py` (everything else there is GET); never blocks registration if it
+  fails (missing bot permission/role hierarchy is a Discord-server config issue, not
+  something to surface as a 500).
+- `ReportCategory.is_recruit_promotion` ("Курс молодого бойца") — any CPL+ (via
+  `min_rank_id`), regardless of their own regiment, can file it against a recruit;
+  auto-approves on submit like `is_training`, but instead of granting a specialization
+  it directly sets the target's `rank_id` to PVT in `_apply_approval_side_effects`
+  (`app/api/reports.py`) — same field-write pattern as `promotion_crud.decide`.
+- `AccessContext.can_decide_promotion`/`app/api/promotions.py::list_promotion_requests`
+  — while a `PromotionRequest.regiment_id` equals `recruit_regiment_id`, any
+  commander/deputy of *any* regiment can decide it (not just 17th's own), so the recruit
+  curator pool isn't limited to whoever happens to command that one regiment. Same
+  exception is applied to `get_members` for that one regiment id (`app/api/regiments.py`)
+  so a non-member commander can actually find the recruit — see `RecruitsPage.jsx`
+  ("Рекрутская"), a read-only search, not a general roster browser.
+
+### Specialization prerequisites ("нужны ВСЕ из")
+`Specialization.parent_id` only expresses "needs exactly one specific specialization
+first". A tier that needs *every* sibling branch at once (e.g. "Старший медик" =
+Вирусология + Дефектология + Хирургия all held together) needed a real many-to-many:
+`SpecializationPrerequisite` (`specialization_id`, `required_specialization_id`) is a
+separate table, checked in `_check_can_grant` (`app/api/specializations.py`) right after
+the `parent_id` check. Deliberately not folded into `parent_id`'s "same-parent siblings"
+— that would silently change an existing tier's requirements if someone later adds a 4th
+sibling under the same parent. Catalog UI: `AdminPanelPage.jsx`'s specialization
+add/edit rows get one more `MultiSelectDropdown` alongside the existing single `parentId`
+`<select>`. Works identically for medic/pilot/engineer — just catalog data, no
+per-discipline code.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
@@ -162,6 +201,10 @@ audit, not removed and not built out; if you land here needing to add a manual
 ### Discord integration (`app/core/discord_client.py`)
 REST API only via `httpx` — no `discord.py`, no gateway connection, no persistent bot
 process. Guild member/role lookups are live HTTP calls, not cached locally (see above).
+Almost everything here is read-only (GET); `add_member_role` (recruit pipeline, see
+above) is the one exception — a bot-token `PUT` that can 403 if the bot lacks
+`MANAGE_ROLES` or sits below the target role in the server's hierarchy, so callers must
+treat it as best-effort (log + continue), never as something that can fail the request.
 
 ### Frontend conventions
 - Every async button/form handler must wrap its `api.*` call in try/catch and surface
