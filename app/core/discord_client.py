@@ -154,6 +154,27 @@ async def _fetch_guild_members_uncached() -> list[dict]:
     return members
 
 
+async def add_member_role(discord_user_id: str, role_id: str) -> bool:
+    """Выдаёт участнику роль на сервере (используется для автовыдачи роли 17-го
+    Передового Полка при регистрации, см. app/api/registration.py). В отличие от
+    остальных функций этого модуля НЕ бросает исключение при неудаче — не хватить
+    прав у бота (MANAGE_ROLES) или роль 17-го полка окажется выше бота в иерархии
+    — это конфигурация Discord-сервера вне контроля бэкенда, и застревать на этом
+    регистрация не должна. Возвращает True/False, вызывающий код только логирует."""
+    url = f"{DISCORD_API_BASE}/guilds/{settings.discord_guild_id}/members/{discord_user_id}/roles/{role_id}"
+
+    async with httpx.AsyncClient() as client:
+        response = await client.put(url, headers=_bot_headers())
+
+    if response.status_code != 204:
+        logger.warning(
+            "Не удалось выдать Discord-роль %s участнику %s: %s %s",
+            role_id, discord_user_id, response.status_code, response.text,
+        )
+        return False
+    return True
+
+
 async def fetch_guild_roles() -> list[dict]:
     """Получает список ролей единственного сервера (id, name) — для выбора роли
     формирования в веб-панели."""

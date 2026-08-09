@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
+from app.core import discord_client
 from app.core.events import event_bus
 from app.crud import audit_log as audit_log_crud
 from app.crud import notification as notification_crud
@@ -78,6 +79,14 @@ async def submit_registration(
         },
     )
     logger.info("Пользователь %s подал заявку на регистрацию", user.username)
+
+    # Единая точка входа для всех новичков — 17-й Передовой Полк (см. решение
+    # пользователя): выдаём Discord-роль сразу при регистрации, независимо от
+    # того, есть ли у бойца уже роль другого формирования. Best-effort — см.
+    # discord_client.add_member_role, регистрация не должна падать из-за этого.
+    recruit_regiment = await regiment_crud.get_by_name(db, regiment_crud.RECRUIT_REGIMENT_NAME)
+    if recruit_regiment is not None and recruit_regiment.discord_role_id not in set(access.user.roles):
+        await discord_client.add_member_role(access.user.discord_id, recruit_regiment.discord_role_id)
 
     regiments = user_regiments
     if regiments:
