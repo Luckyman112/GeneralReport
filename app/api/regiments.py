@@ -377,8 +377,14 @@ async def update_category(
             raise ForbiddenError("Нельзя перенести категорию в дисциплину, которой вы не курируете")
     if "required_squad_id" in changes:
         await _validate_required_squad(db, regiment_id, changes["required_squad_id"])
-    if changes.get("is_joint") and (category.is_detention or category.is_promotion or category.is_demotion or category.is_training):
-        raise AppError("Совместной категорией не может быть системная (задержание/повышение/понижение/обучение)")
+    if changes.get("is_joint") and (
+        category.is_detention
+        or category.is_promotion
+        or category.is_demotion
+        or category.is_training
+        or category.is_recruit_promotion
+    ):
+        raise AppError("Совместной категорией не может быть системная (задержание/повышение/понижение/обучение/КМБ)")
     # is_detention системный, вручную не редактируется (категория задержания заводится
     # автоматически при создании формирования)
     changes.pop("is_detention", None)
@@ -405,7 +411,13 @@ async def delete_category(
     category = await report_category_crud.get_by_id(db, category_id)
     if category is None or category.regiment_id != regiment_id:
         raise NotFoundError("Категория не найдена")
-    if category.is_detention or category.is_promotion or category.is_demotion or category.is_training:
+    if (
+        category.is_detention
+        or category.is_promotion
+        or category.is_demotion
+        or category.is_training
+        or category.is_recruit_promotion
+    ):
         raise ForbiddenError("Это системная категория, её нельзя удалить")
     if not access.can_manage_categories(regiment_id) and not await _can_manage_discipline_category(
         db, access, category.required_specialization_id

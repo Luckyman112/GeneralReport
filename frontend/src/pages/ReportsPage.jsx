@@ -9,6 +9,7 @@ import { EmptyState } from "../components/EmptyState";
 import { HqLeadershipPanel } from "../components/HqLeadershipPanel";
 import { OverflowMenu } from "../components/OverflowMenu";
 import { PageLoading } from "../components/PageLoading";
+import { RecruitPromotionReportForm } from "../components/RecruitPromotionReportForm";
 import { RegimentPanel } from "../components/RegimentPanel";
 import { ReportForm } from "../components/ReportForm";
 import { ReportRow } from "../components/ReportRow";
@@ -55,6 +56,7 @@ export function ReportsPage() {
   const [view, setView] = useState("reports"); // "reports" | "reprimands" | "leave"
   const [showForm, setShowForm] = useState(false);
   const [showDetentionForm, setShowDetentionForm] = useState(false);
+  const [showRecruitForm, setShowRecruitForm] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [categoriesById, setCategoriesById] = useState({});
   const [error, setError] = useState(null);
@@ -279,6 +281,12 @@ export function ReportsPage() {
     await loadReports();
   }
 
+  async function handleCreateRecruitPromotion(payload) {
+    await api.createReport(token, { ...payload, submit: true });
+    setShowRecruitForm(false);
+    await loadReports();
+  }
+
   async function handleSubmitDraft(reportId) {
     try {
       await api.updateReportStatus(token, reportId, { status: "submitted" });
@@ -443,6 +451,10 @@ export function ReportsPage() {
                     danger: true,
                     onClick: () => setShowDetentionForm(true),
                   },
+                !showRecruitForm && {
+                  label: "Курс молодого бойца",
+                  onClick: () => setShowRecruitForm(true),
+                },
                 manageableRegiments.length > 0 && {
                   label: "Категории и поля",
                   onClick: () => setShowCategoryManager(true),
@@ -463,6 +475,14 @@ export function ReportsPage() {
               categoriesById={categoriesById}
               onSubmit={handleCreateDetention}
               onCancel={() => setShowDetentionForm(false)}
+            />
+          )}
+
+          {showRecruitForm && (
+            <RecruitPromotionReportForm
+              categoriesById={categoriesById}
+              onSubmit={handleCreateRecruitPromotion}
+              onCancel={() => setShowRecruitForm(false)}
             />
           )}
 

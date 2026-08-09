@@ -82,3 +82,10 @@ class ReportCategory(Base):
     # app/models/report_regiment_decision.py) — единого "одобрено на весь
     # рапорт" для такой категории нет, см. app/api/reports.py.
     is_joint: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # "Курс молодого бойца" — рапорт о ней подаёт любой Капрал+ (через min_rank_id)
+    # НЕЗАВИСИМО от своего формирования (обходит обычную проверку членства, см.
+    # is_recruit_promotion в app/api/reports.py), auto-approve при отправке как
+    # is_training, но вместо выдачи специализации напрямую меняет rank_id цели на
+    # PVT (см. _apply_approval_side_effects). Не настраивается через обычный API
+    # категорий — системный флаг, как is_promotion/is_demotion/is_training.
+    is_recruit_promotion: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

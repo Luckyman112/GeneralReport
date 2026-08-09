@@ -1,6 +1,7 @@
 """Эндпоинты для работы с рапортами."""
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -326,10 +327,20 @@ async def create_report(
     is_leadership_report = (
         category is not None and category.open_to_regiment_leadership and bool(access.commander_regiment_ids)
     )
+    # "Курс молодого бойца" — подать может любой CPL+ (min_rank_id проверит
+    # _check_category_filing_restrictions ниже), независимо от формирования —
+    # не только командиры/замы, как в is_leadership_report
+    is_recruit_report = category is not None and category.is_recruit_promotion
 
     allowed_regiments = access.commander_regiment_ids | access.soldier_regiment_ids
     if (
-        not (access.is_admin or access.is_high_command or is_instructor_training or is_leadership_report)
+        not (
+            access.is_admin
+            or access.is_high_command
+            or is_instructor_training
+            or is_leadership_report
+            or is_recruit_report
+        )
         and payload.regiment_id not in allowed_regiments
     ):
         raise ForbiddenError("Вы не состоите в этом формировании")
@@ -348,12 +359,16 @@ async def create_report(
         if not access.can_grant_specializations:
             raise ForbiddenError("Подавать рапорт об обучении может только инструктор или администратор")
         target_fields = await _resolve_training_target(db, payload)
+    if category is not None and category.is_recruit_promotion:
+        target_fields = await _resolve_recruit_target(db, payload)
     if category is not None:
         await _check_category_filing_restrictions(db, access, category)
 
-    # training reports auto-approve, no commander review needed
-    auto_approve = category is not None and category.is_training and payload.submit
-    if auto_approve:
+    # training reports (specialization / КМБ) auto-approve, no commander review needed
+    auto_approve = (
+        category is not None and (category.is_training or category.is_recruit_promotion) and payload.submit
+    )
+    if auto_approve and category.is_training:
         # check grant eligibility for EACH specialization before creating the report,
         # not after — a limit violation must block creation, not fail silently later
         trainee = await user_crud.get_by_discord_id(db, target_fields["target_discord_id"])
@@ -364,6 +379,7 @@ async def create_report(
                 specialization = await specialization_crud.get_by_id(db, specialization_id)
                 if specialization is not None:
                     await _check_can_grant(db, trainee, specialization)
+    if auto_approve:
         status = ReportStatus.APPROVED
     else:
         status = ReportStatus.SUBMITTED if payload.submit else ReportStatus.DRAFT
@@ -455,6 +471,30 @@ async def _resolve_training_target(db: AsyncSession, payload: ReportCreate) -> d
     }
 
 
+async def _resolve_recruit_target(db: AsyncSession, payload: ReportCreate) -> dict:
+    """Цель "Курса молодого бойца" — обязательно реальный участник Discord-сервера
+    с ролью 17-го Передового Полка (звание в БД может быть RCT уже и по другой
+    причине, поэтому проверяем именно роль, а не rank_id)."""
+    if not payload.target_discord_id:
+        raise AppError("Укажите, кого обучили")
+
+    recruit_regiment = await regiment_crud.get_by_name(db, regiment_crud.RECRUIT_REGIMENT_NAME)
+    if recruit_regiment is None:
+        raise AppError("17-й Передовой Полк не настроен — обратитесь к администратору")
+
+    members = await discord_client.fetch_guild_members()
+    target = next((m for m in members if m["discord_id"] == payload.target_discord_id), None)
+    if target is None:
+        raise NotFoundError("Участник не найден на сервере")
+    if recruit_regiment.discord_role_id not in target["roles"]:
+        raise AppError(f"{target['username']} не состоит в 17-м Передовом Полку")
+
+    return {
+        "target_discord_id": target["discord_id"],
+        "target_username": target["username"],
+    }
+
+
 def _resolve_punishment(payload: ReportCreate) -> dict:
     if not payload.punishment_type:
         raise AppError("Укажите вид наказания")
@@ -543,6 +583,32 @@ async def _apply_approval_side_effects(db: AsyncSession, updated, category, acto
         # два пути расходились (см. историю этой функции).
         per_spec = category.points if category.points is not None else 1
         updated = await report_crud.set_points(db, updated, points=per_spec * len(granted_names))
+
+    # "Курс молодого бойца" — вместо выдачи специализации напрямую меняет
+    # звание цели на PVT, тем же паттерном, что и promotion_crud.decide (см.
+    # решение пользователя: должен стать PVT одним действием, без отдельного
+    # решения командира по PromotionRequest)
+    if category is not None and category.is_recruit_promotion and updated.target_discord_id is not None:
+        trainee = await user_crud.get_by_discord_id(db, updated.target_discord_id)
+        pvt_rank = await rank_crud.get_by_code(db, "PVT")
+        if trainee is not None and pvt_rank is not None:
+            trainee.rank_id = pvt_rank.id
+            trainee.rank_assigned_at = datetime.now(timezone.utc)
+            trainee.early_promoted_by_username = None
+            trainee.early_promotion_reason = None
+            await db.commit()
+            await notification_crud.create_personal_notification(
+                db,
+                target_user_id=trainee.id,
+                title="Курс молодого бойца пройден",
+                body=f"Вам присвоено звание {pvt_rank.code} — {pvt_rank.name}.",
+                created_by=actor_user_id,
+            )
+            logger.info(
+                "Рапорт КМБ %s одобрен — %s повышен до PVT", updated.id, updated.target_discord_id
+            )
+        elif pvt_rank is None:
+            logger.warning("Рапорт КМБ %s одобрен, но звание PVT не настроено", updated.id)
 
     if category is not None and category.participant_points:
         if updated.participant_discord_ids:
