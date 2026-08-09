@@ -157,7 +157,13 @@ async def list_promotion_requests(
     if access.is_founder or access.is_high_command:
         requests = await promotion_crud.list_pending(db, regiment_ids=None)
     elif access.commander_regiment_ids:
-        requests = await promotion_crud.list_pending(db, regiment_ids=access.commander_regiment_ids)
+        # см. can_decide_promotion — командир/заместитель ЛЮБОГО формирования
+        # решает и по 17-му Передовому Полку, значит должен видеть его заявки
+        # в списке, иначе право есть, а увидеть заявку можно только по прямой ссылке
+        regiment_ids = access.commander_regiment_ids | (
+            {access.recruit_regiment_id} if access.recruit_regiment_id is not None else set()
+        )
+        requests = await promotion_crud.list_pending(db, regiment_ids=regiment_ids)
     else:
         requests = []
     return [PromotionRequestRead.model_validate(r) for r in requests]

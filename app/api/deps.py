@@ -84,6 +84,11 @@ class AccessContext:
     squad_ids: set[int] = field(default_factory=set)
     role_ids: set[str] = field(default_factory=set)
     commander_regiment_ids: set[int] = field(default_factory=set)
+    # id формирования "17-й Передовой Полк" (единая точка входа для рекрутов, см.
+    # app/crud/regiment.py::RECRUIT_REGIMENT_NAME) — None, если оно не настроено.
+    # Используется, чтобы командиры/замы ЛЮБОГО формирования могли решать по
+    # заявкам/повышениям бойцов этого полка, см. can_decide_promotion.
+    recruit_regiment_id: int | None = None
     # subset of commander_regiment_ids where role is specifically "commander"
     # (deputy can't set report points)
     category_manager_regiment_ids: set[int] = field(default_factory=set)
@@ -173,8 +178,21 @@ class AccessContext:
     def can_decide_promotion(self, regiment_id: int) -> bool:
         """Одобрить/отклонить заявку на повышение — у же не(!) обычному
         admin_role_id/admin_user_discord_ids администратору, а только создателю
-        (is_founder), высшему командованию или командиру/заму формирования."""
-        return self.is_founder or self.is_high_command or regiment_id in self.commander_regiment_ids
+        (is_founder), высшему командованию или командиру/заму формирования.
+        Исключение — бойцы 17-го Передового Полка (см. решение пользователя):
+        пока боец числится там, решать может командир/заместитель ЛЮБОГО
+        формирования, не только 17-го — набор кураторов рекрутов не должен
+        зависеть от того, кто именно командует самим 17-м полком."""
+        return (
+            self.is_founder
+            or self.is_high_command
+            or regiment_id in self.commander_regiment_ids
+            or (
+                self.recruit_regiment_id is not None
+                and regiment_id == self.recruit_regiment_id
+                and bool(self.commander_regiment_ids)
+            )
+        )
 
     def can_appeal_report(self, regiment_id: int) -> bool:
         return (
@@ -361,8 +379,11 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
     commander_regiment_ids: set[int] = set()
     category_manager_regiment_ids: set[int] = set()
     soldier_regiment_ids: set[int] = set()
+    recruit_regiment_id: int | None = None
 
     for regiment in await regiment_crud.get_all(db):
+        if regiment.name == regiment_crud.RECRUIT_REGIMENT_NAME:
+            recruit_regiment_id = regiment.id
         if regiment.discord_role_id not in role_ids:
             continue
         soldier_regiment_ids.add(regiment.id)
@@ -393,6 +414,7 @@ async def _compute_permission_fields(db: AsyncSession, user: User, app_config) -
         "commander_regiment_ids": commander_regiment_ids,
         "category_manager_regiment_ids": category_manager_regiment_ids,
         "soldier_regiment_ids": soldier_regiment_ids,
+        "recruit_regiment_id": recruit_regiment_id,
     }
 
 
@@ -424,6 +446,7 @@ def _build_access_context(
         commander_regiment_ids=fields["commander_regiment_ids"],
         category_manager_regiment_ids=fields["category_manager_regiment_ids"],
         soldier_regiment_ids=fields["soldier_regiment_ids"],
+        recruit_regiment_id=fields["recruit_regiment_id"],
         violation_writer_regiment_ids=set(app_config.violation_writer_regiment_ids),
         violation_writer_role_ids=set(app_config.violation_writer_role_ids),
         violation_viewer_regiment_ids=set(app_config.violation_viewer_regiment_ids),
