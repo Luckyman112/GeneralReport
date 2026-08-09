@@ -18,6 +18,7 @@ from app.crud import report as report_crud
 from app.crud import report_category as report_category_crud
 from app.crud import report_image as report_image_crud
 from app.crud import report_participant as report_participant_crud
+from app.crud import report_regiment_decision as report_regiment_decision_crud
 from app.crud import specialization as specialization_crud
 from app.crud import squad as squad_crud
 from app.crud import stats as stats_crud
@@ -26,8 +27,18 @@ from app.crud import violation as violation_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.models.report import ReportStatus
-from app.schemas.report import ReportContentUpdate, ReportCreate, ReportPointsUpdate, ReportRead, ReportStatusUpdate
+from app.models.report_regiment_decision import RegimentDecisionStatus
+from app.schemas.report import (
+    RegimentDecisionUpdate,
+    ReportContentUpdate,
+    ReportCreate,
+    ReportPointsUpdate,
+    ReportRead,
+    ReportRegimentDecisionRead,
+    ReportStatusUpdate,
+)
 from app.schemas.report_image import ReportImageRead
+from app.schemas.user import UserBrief
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +111,35 @@ async def _create_mirror_report(db: AsyncSession, report, category) -> None:
     )
 
 
+async def _create_joint_decisions(db: AsyncSession, report, category) -> None:
+    """См. ReportCategory.is_joint — заводит по одной pending-записи на каждое
+    формирование, реально обнаруженное среди участников (поля "Состав" и т.п.),
+    чтобы их командиры могли одобрить/отклонить свою часть независимо."""
+    regiments_by_discord_id = await regiment_crud.resolve_regiments_for_discord_ids(
+        db, report.participant_discord_ids
+    )
+    participating_regiment_ids = sorted({rid for ids in regiments_by_discord_id.values() for rid in ids})
+    if not participating_regiment_ids:
+        return
+    await report_regiment_decision_crud.create_pending_for_regiments(
+        db, report_id=report.id, regiment_ids=participating_regiment_ids
+    )
+
+
+async def _attach_regiment_decisions(read: ReportRead, decisions: list) -> None:
+    read.regiment_decisions = [
+        ReportRegimentDecisionRead(
+            regiment_id=d.regiment_id,
+            regiment_name=d.regiment.name,
+            status=d.status,
+            decided_by_user=UserBrief.model_validate(d.decided_by_user) if d.decided_by_user else None,
+            decided_at=d.decided_at,
+            rejection_reason=d.rejection_reason,
+        )
+        for d in decisions
+    ]
+
+
 def _attach_training_specializations(read: ReportRead, report, specs_by_id: dict) -> None:
     if report.training_specialization_ids:
         from app.schemas.specialization import SpecializationRead
@@ -127,6 +167,9 @@ async def _to_report_read(db: AsyncSession, report) -> ReportRead:
     if report.training_specialization_ids:
         specs_by_id = {s.id: s for s in await specialization_crud.get_all(db)}
         _attach_training_specializations(read, report, specs_by_id)
+    decisions = await report_regiment_decision_crud.list_for_report(db, report.id)
+    if decisions:
+        await _attach_regiment_decisions(read, decisions)
     return read
 
 
@@ -134,6 +177,9 @@ async def _to_report_reads(db: AsyncSession, reports: list) -> list[ReportRead]:
     # cache per (user_id, regiment_id), reports outnumber unique pairs
     cache: dict[tuple[int, int], ReportRead | None] = {}
     specs_by_id = {s.id: s for s in await specialization_crud.get_all(db)}
+    decisions_by_report_id: dict = {}
+    for d in await report_regiment_decision_crud.list_for_reports(db, [r.id for r in reports]):
+        decisions_by_report_id.setdefault(d.report_id, []).append(d)
     reads = []
     for report in reports:
         key = (report.user_id, report.regiment_id)
@@ -152,6 +198,8 @@ async def _to_report_reads(db: AsyncSession, reports: list) -> list[ReportRead]:
 
                 read.author_rank = RankRead.model_validate(character.rank)
         _attach_training_specializations(read, report, specs_by_id)
+        if report.id in decisions_by_report_id:
+            await _attach_regiment_decisions(read, decisions_by_report_id[report.id])
         reads.append(read)
     return reads
 
@@ -183,6 +231,7 @@ async def list_reports(
         category_is_training = category is not None and category.is_training
 
     visible_target_regiment_ids: set[int] | None = None
+    joint_decision_regiment_ids: set[int] | None = None
     if access.is_admin or access.is_high_command or (category_is_training and access.can_grant_specializations):
         # Администратору/высшему командованию доступны все формирования — фильтр не
         # ограничиваем, если явно не запрошено конкретное формирование; инструктор так же
@@ -191,8 +240,17 @@ async def list_reports(
         user_id_filter = None
     else:
         visible_ids = access.commander_regiment_ids | access.soldier_regiment_ids
+        # Совместные рапорты (см. ReportCategory.is_joint) числятся за
+        # формированием-подателем (обычно Штаб), но командир формирования-участника,
+        # не состоящий там, всё равно должен их видеть — у него есть решение по
+        # ним (см. app/crud/report.py::list_reports joint_decision_regiment_ids)
+        joint_decision_regiment_ids = access.commander_regiment_ids or None
         if regiment_id is not None:
-            if regiment_id not in visible_ids:
+            # Совместные решения проверяются на уровне самого запроса (OR-условие
+            # в report_crud.list_reports) — здесь достаточно не отказывать в
+            # доступе только из-за того, что regiment_id не входит в свои
+            # формирования, если есть хоть какие-то решения формирований-командиров
+            if regiment_id not in visible_ids and not joint_decision_regiment_ids:
                 raise ForbiddenError("Нет доступа к этому формированию")
             visible_regiment_ids = [regiment_id]
         else:
@@ -223,6 +281,7 @@ async def list_reports(
         search=search,
         since=since,
         visible_target_regiment_ids=visible_target_regiment_ids,
+        joint_decision_regiment_ids=joint_decision_regiment_ids,
         limit=limit,
         offset=offset,
     )
@@ -236,6 +295,7 @@ async def list_reports(
             search=search,
             since=since,
             visible_target_regiment_ids=visible_target_regiment_ids,
+            joint_decision_regiment_ids=joint_decision_regiment_ids,
         )
         response.headers["X-Total-Count"] = str(total)
     return await _to_report_reads(db, reports)
@@ -328,6 +388,8 @@ async def create_report(
         report = await _apply_approval_side_effects(db, report, category, access.user.id)
     if status == ReportStatus.SUBMITTED and category is not None and category.mirrors_to_category_id is not None:
         await _create_mirror_report(db, report, category)
+    if status == ReportStatus.SUBMITTED and category is not None and category.is_joint:
+        await _create_joint_decisions(db, report, category)
     event_bus.publish("reports")
     return await _to_report_read(db, report)
 
@@ -535,6 +597,10 @@ async def update_report_status(
         )
     if category is not None and category.is_demotion:
         raise ForbiddenError("Это системная запись о понижении — статус уже окончателен, его нельзя менять")
+    if category is not None and category.is_joint and not is_self_submit:
+        raise ForbiddenError(
+            "Это совместная категория — каждое формирование-участник одобряет свою часть отдельно"
+        )
 
     # only someone who can grant specializations can reject a training report
     if (
@@ -592,6 +658,8 @@ async def update_report_status(
 
     if is_self_submit and category is not None and category.mirrors_to_category_id is not None:
         await _create_mirror_report(db, updated, category)
+    elif is_self_submit and category is not None and category.is_joint:
+        await _create_joint_decisions(db, updated, category)
     else:
         mirror = await report_crud.get_mirror_of(db, updated.id)
         if mirror is not None:
@@ -606,6 +674,115 @@ async def update_report_status(
 
     event_bus.publish("reports")
     return await _to_report_read(db, updated)
+
+
+@router.patch("/{report_id}/regiments/{regiment_id}", response_model=ReportRead)
+async def decide_report_for_regiment(
+    report_id: uuid.UUID,
+    regiment_id: int,
+    payload: RegimentDecisionUpdate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> ReportRead:
+    """Решение ОДНОГО формирования-участника по совместному рапорту (см.
+    ReportCategory.is_joint) — независимо от решений остальных формирований.
+    Одобрение заводит (или переиспользует) read-only копию рапорта в этом
+    формировании и начисляет участникам оттуда их долю баллов; отклонение
+    снимает и то, и другое, сам рапорт при этом остаётся у формирования-подателя."""
+    report = await report_crud.get_by_id(db, report_id)
+    if report is None:
+        raise NotFoundError("Рапорт не найден")
+
+    category = None
+    if report.category_id is not None:
+        category = await report_category_crud.get_by_id(db, report.category_id)
+    if category is None or not category.is_joint:
+        raise ForbiddenError("У этой категории нет отдельных решений по формированиям")
+
+    if not access.can_appeal_report(regiment_id):
+        raise ForbiddenError("Изменять решение может только командир этого формирования")
+
+    decision = await report_regiment_decision_crud.get_by_report_and_regiment(
+        db, report_id=report_id, regiment_id=regiment_id
+    )
+    if decision is None:
+        raise NotFoundError("Это формирование не участвует в рапорте")
+
+    mirror_report_id = decision.mirror_report_id
+
+    if payload.status == "approved":
+        clone_category = await report_category_crud.get_or_create_regiment_clone(
+            db, source_category=category, target_regiment_id=regiment_id
+        )
+        if decision.mirror_report_id is None:
+            mirror = await report_crud.create_report(
+                db,
+                user_id=report.user_id,
+                regiment_id=regiment_id,
+                category_id=clone_category.id,
+                content=report.content,
+                status=ReportStatus.APPROVED,
+                author_rank_id=report.author_rank_id,
+                mirror_of_report_id=report.id,
+            )
+            mirror_report_id = mirror.id
+        else:
+            mirror = await report_crud.get_by_id(db, decision.mirror_report_id)
+            await report_crud.sync_mirror_status(
+                db, mirror, status=ReportStatus.APPROVED, updated_by=access.user.id, updated_by_rank_id=access.user.rank_id
+            )
+
+        # Баллы участникам — только той части, что реально из ЭТОГО формирования
+        # (не всему списку "Состав", как для обычной категории)
+        if category.participant_points and report.participant_discord_ids:
+            regiments_by_discord_id = await regiment_crud.resolve_regiments_for_discord_ids(
+                db, report.participant_discord_ids
+            )
+            member_discord_ids = [
+                discord_id for discord_id, rids in regiments_by_discord_id.items() if regiment_id in rids
+            ]
+            if member_discord_ids:
+                participants = await user_crud.get_by_discord_ids(db, member_discord_ids)
+                for participant in participants:
+                    if participant.id == report.user_id:
+                        continue
+                    await report_participant_crud.award(
+                        db, report_id=mirror_report_id, user_id=participant.id, points=category.participant_points
+                    )
+                    await promotion_crud.check_and_create_promotion_request(db, participant, regiment_id=regiment_id)
+    elif decision.mirror_report_id is not None:
+        # Отклонение (в том числе повторное после одобрения) — снимаем баллы и
+        # статус существующего зеркала; само зеркало не удаляем, чтобы повторное
+        # одобрение переиспользовало его, а не плодило дубль
+        await report_participant_crud.delete_for_report(db, report_id=decision.mirror_report_id)
+        mirror = await report_crud.get_by_id(db, decision.mirror_report_id)
+        await report_crud.sync_mirror_status(
+            db,
+            mirror,
+            status=ReportStatus.REJECTED,
+            updated_by=access.user.id,
+            updated_by_rank_id=access.user.rank_id,
+            rejection_reason=payload.rejection_reason,
+        )
+
+    status = RegimentDecisionStatus.APPROVED if payload.status == "approved" else RegimentDecisionStatus.REJECTED
+    await report_regiment_decision_crud.decide(
+        db,
+        decision,
+        status=status,
+        decided_by=access.user.id,
+        rejection_reason=payload.rejection_reason,
+        mirror_report_id=mirror_report_id,
+    )
+    logger.info(
+        "%s принял решение «%s» по формированию %s для совместного рапорта %s",
+        access.user.username,
+        status.value,
+        regiment_id,
+        report_id,
+    )
+    event_bus.publish("reports")
+    return await _to_report_read(db, report)
 
 
 @router.patch("/{report_id}/content", response_model=ReportRead)
@@ -664,6 +841,12 @@ async def delete_report(
             violation = await violation_crud.get_by_id(db, report.violation_id)
             if violation is not None:
                 await violation_crud.delete(db, violation)
+    elif category is not None and category.is_joint:
+        # решения формирований по совместному рапорту уже приняты независимо —
+        # отменить всё разом может только высшее командование/админ, не любой
+        # командир формирования-подателя
+        if not (access.is_admin or access.is_high_command):
+            raise ForbiddenError("Удалить совместный рапорт может только высшее командование или администратор")
     elif not access.can_appeal_report(report.regiment_id):
         raise ForbiddenError("Удалять рапорт может только командир формирования")
 
@@ -673,8 +856,10 @@ async def delete_report(
         await report_participant_crud.delete_for_report(db, report_id=report.id)
 
     deleted = await report_crud.soft_delete(db, report, updated_by=access.user.id)
-    mirror = await report_crud.get_mirror_of(db, deleted.id)
-    if mirror is not None:
+    # и обычные 1:1 зеркала (mirrors_to_category_id), и совместные per-regiment
+    # зеркала (is_joint) — снимаются все разом вслед за исходным рапортом
+    for mirror in await report_crud.list_mirrors_of(db, deleted.id):
+        await report_participant_crud.delete_for_report(db, report_id=mirror.id)
         await report_crud.sync_mirror_status(
             db, mirror, status=ReportStatus.DELETED, updated_by=access.user.id, updated_by_rank_id=access.user.rank_id
         )

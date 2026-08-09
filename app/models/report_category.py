@@ -76,3 +76,9 @@ class ReportCategory(Base):
     mirrors_to_category_id: Mapped[int | None] = mapped_column(
         ForeignKey("report_categories.id"), nullable=True
     )
+    # Совместная категория (например "Совместная тренировка") — рапорт живёт в
+    # своём формировании (обычно Штаб), но участники набираются из нескольких
+    # формирований, и каждое одобряет свою часть НЕЗАВИСИМО (см.
+    # app/models/report_regiment_decision.py) — единого "одобрено на весь
+    # рапорт" для такой категории нет, см. app/api/reports.py.
+    is_joint: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

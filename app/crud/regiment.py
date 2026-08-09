@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import discord_client
 from app.models.regiment import Regiment
 from app.models.report_category import ReportCategory
 
@@ -186,6 +187,24 @@ async def _ensure_recruit_training_category(db: AsyncSession, regiment: Regiment
         )
     )
     await db.commit()
+
+
+async def resolve_regiments_for_discord_ids(db: AsyncSession, discord_ids: list[str]) -> dict[str, list[int]]:
+    """Для каждого discord_id — список id формирований, в которых он реально
+    состоит (по Discord-роли, живой опрос сервера — участники ростер-поля
+    рапорта могут не иметь актуальной записи User.roles). Используется для
+    совместных категорий (см. ReportCategory.is_joint), чтобы разложить общий
+    список участников по формированиям."""
+    if not discord_ids:
+        return {}
+    wanted = set(discord_ids)
+    members = await discord_client.fetch_guild_members()
+    roles_by_discord_id = {m["discord_id"]: m["roles"] for m in members if m["discord_id"] in wanted}
+    regiments = await get_all(db, include_archived=True)
+    result: dict[str, list[int]] = {discord_id: [] for discord_id in discord_ids}
+    for discord_id, roles in roles_by_discord_id.items():
+        result[discord_id] = [r.id for r in regiments if r.discord_role_id in roles]
+    return result
 
 
 async def update(db: AsyncSession, regiment: Regiment, **changes) -> Regiment:

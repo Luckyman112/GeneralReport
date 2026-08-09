@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.report import ReportStatus
+from app.models.report_regiment_decision import RegimentDecisionStatus
 from app.schemas.rank import RankRead
 from app.schemas.report_image import ReportImageRead
 from app.schemas.specialization import SpecializationRead
@@ -57,6 +58,26 @@ class ReportPointsUpdate(BaseModel):
     points: int
 
 
+class RegimentDecisionUpdate(BaseModel):
+    """Решение формирования-участника по совместному рапорту (см.
+    ReportCategory.is_joint) — approved/rejected, pending выставляется только
+    системой при создании."""
+
+    status: Literal["approved", "rejected"]
+    rejection_reason: str | None = None
+
+
+class ReportRegimentDecisionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    regiment_id: int
+    regiment_name: str
+    status: RegimentDecisionStatus
+    decided_by_user: UserBrief | None = None
+    decided_at: datetime | None = None
+    rejection_reason: str | None = None
+
+
 class ReportRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -98,3 +119,7 @@ class ReportRead(BaseModel):
     # ReportCategory.mirrors_to_category_id) — статус меняется не здесь, а у
     # исходного рапорта (mirror_of_report_id указывает на него)
     mirror_of_report_id: uuid.UUID | None = None
+    # Заполнено только у совместных рапортов (см. ReportCategory.is_joint) — по
+    # одной записи на каждое формирование-участника, статус самого рапорта
+    # (status) в этом случае не отражает решение — см. каждую запись отдельно
+    regiment_decisions: list[ReportRegimentDecisionRead] = []

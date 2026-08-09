@@ -92,6 +92,7 @@ async def create(
     open_to_regiment_leadership: bool = False,
     required_squad_id: int | None = None,
     mirrors_to_category_id: int | None = None,
+    is_joint: bool = False,
 ) -> ReportCategory:
     category = ReportCategory(
         regiment_id=regiment_id,
@@ -106,10 +107,32 @@ async def create(
         open_to_regiment_leadership=open_to_regiment_leadership,
         required_squad_id=required_squad_id,
         mirrors_to_category_id=mirrors_to_category_id,
+        is_joint=is_joint,
     )
     db.add(category)
     await db.commit()
     return await get_by_id(db, category.id)
+
+
+async def get_or_create_regiment_clone(
+    db: AsyncSession, *, source_category: ReportCategory, target_regiment_id: int
+) -> ReportCategory:
+    """Для совместных категорий (is_joint) — при первом одобрении формированием
+    заводит СВОЮ копию категории (имя/поля/баллы), если такой ещё нет, чтобы туда
+    приземлилось зеркало рапорта (см. app/api/reports.py::decide_report_for_regiment).
+    Копируется один раз — дальше это уже отдельная категория, командир может её
+    донастроить как обычную, изменения на исходной категории Штаба не влияют."""
+    existing = await get_by_name(db, regiment_id=target_regiment_id, name=source_category.name)
+    if existing is not None:
+        return existing
+    return await create(
+        db,
+        regiment_id=target_regiment_id,
+        name=source_category.name,
+        fields=source_category.fields,
+        points=source_category.points,
+        participant_points=source_category.participant_points,
+    )
 
 
 async def update(db: AsyncSession, category: ReportCategory, **changes) -> ReportCategory:

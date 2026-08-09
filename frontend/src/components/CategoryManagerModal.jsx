@@ -64,6 +64,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
   );
   const [openToLeadershipDraft, setOpenToLeadershipDraft] = useState(category.open_to_regiment_leadership ?? false);
   const [requiredSquadDraft, setRequiredSquadDraft] = useState(category.required_squad?.id ?? "");
+  const [isJointDraft, setIsJointDraft] = useState(category.is_joint ?? false);
   const [error, setError] = useState(null);
 
   async function handleAddField(e) {
@@ -121,6 +122,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
         required_specialization_id: requiredSpecializationDraft === "" ? null : Number(requiredSpecializationDraft),
         open_to_regiment_leadership: openToLeadershipDraft,
         required_squad_id: requiredSquadDraft === "" ? null : Number(requiredSquadDraft),
+        is_joint: isJointDraft,
       });
       onChanged();
     } catch (e) {
@@ -146,6 +148,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
           {category.is_demotion && <span className="detention-badge">понижение (системная)</span>}
           {category.is_training && <span className="detention-badge">обучение (системная)</span>}
           {category.required_squad && <span className="hint-text"> — отряд «{category.required_squad.name}»</span>}
+          {category.is_joint && <span className="detention-badge">совместная</span>}
         </strong>
         {!isSystemCategory && (
           <button className="ghost" onClick={() => onDeleted(category.id)}>
@@ -311,6 +314,11 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
             <InfoHint text="Категория будет видна в общей форме подачи рапорта только участникам этого отряда (любого уровня) — например «Рапорт о разведке» для отряда «Разведка»." />
           </label>
         )}
+        <label className="points-inline-label">
+          <input type="checkbox" checked={isJointDraft} onChange={(e) => setIsJointDraft(e.target.checked)} />
+          Совместная категория (по формированиям-участникам)
+          <InfoHint text="Рапорт остаётся у формирования-подателя, но каждое формирование, чьи бойцы указаны в составе, одобряет свою часть независимо — если одно одобрило, а остальные нет, баллы получат только участники одобрившего." />
+        </label>
         <button type="button" onClick={handleSaveRestrictions}>
           Сохранить ограничения
         </button>
@@ -343,6 +351,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
   const [newCategoryRequiredSpecializationId, setNewCategoryRequiredSpecializationId] = useState("");
   const [newCategoryOpenToLeadership, setNewCategoryOpenToLeadership] = useState(false);
   const [newCategoryRequiredSquadId, setNewCategoryRequiredSquadId] = useState("");
+  const [newCategoryIsJoint, setNewCategoryIsJoint] = useState(false);
   const [newFieldDraft, setNewFieldDraft] = useState("");
   const [newFieldDraftType, setNewFieldDraftType] = useState("text");
   const [newFieldDraftAllowedRegimentIds, setNewFieldDraftAllowedRegimentIds] = useState([]);
@@ -418,6 +427,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
         requiredSpecializationId: newCategoryRequiredSpecializationId === "" ? null : Number(newCategoryRequiredSpecializationId),
         openToRegimentLeadership: newCategoryOpenToLeadership,
         requiredSquadId: newCategoryRequiredSquadId === "" ? null : Number(newCategoryRequiredSquadId),
+        isJoint: newCategoryIsJoint,
       });
       setNewCategoryName("");
       setNewCategoryFields([]);
@@ -426,6 +436,7 @@ export function CategoryManagerModal({ regiments, onClose }) {
       setNewCategoryRequiredSpecializationId("");
       setNewCategoryOpenToLeadership(false);
       setNewCategoryRequiredSquadId("");
+      setNewCategoryIsJoint(false);
       await load(regimentId);
     } catch (e) {
       setError(e.message);
@@ -613,6 +624,15 @@ export function CategoryManagerModal({ regiments, onClose }) {
                   </select>
                 </label>
               )}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={newCategoryIsJoint}
+                  onChange={(e) => setNewCategoryIsJoint(e.target.checked)}
+                />
+                {" "}Совместная категория (по формированиям-участникам)
+                <InfoHint text="Рапорт остаётся у формирования-подателя, но каждое формирование, чьи бойцы указаны в составе, одобряет свою часть независимо." />
+              </label>
 
               <button type="submit" className="primary">
                 Создать категорию

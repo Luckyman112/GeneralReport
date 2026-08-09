@@ -335,6 +335,7 @@ async def create_category(
         required_specialization_id=payload.required_specialization_id,
         open_to_regiment_leadership=payload.open_to_regiment_leadership,
         required_squad_id=payload.required_squad_id,
+        is_joint=payload.is_joint,
     )
     logger.info("%s добавил категорию '%s' формированию %s", access.user.username, category.name, regiment_id)
     await audit_log_crud.log(
@@ -375,6 +376,8 @@ async def update_category(
             raise ForbiddenError("Нельзя перенести категорию в дисциплину, которой вы не курируете")
     if "required_squad_id" in changes:
         await _validate_required_squad(db, regiment_id, changes["required_squad_id"])
+    if changes.get("is_joint") and (category.is_detention or category.is_promotion or category.is_demotion or category.is_training):
+        raise AppError("Совместной категорией не может быть системная (задержание/повышение/понижение/обучение)")
     # is_detention системный, вручную не редактируется (категория задержания заводится
     # автоматически при создании формирования)
     changes.pop("is_detention", None)

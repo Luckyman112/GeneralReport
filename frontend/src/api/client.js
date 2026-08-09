@@ -143,6 +143,14 @@ export const api = {
       token,
       body: { status, rejection_reason: rejectionReason ?? null },
     }),
+  // Совместные категории (см. ReportCategory.is_joint) — решение ОДНОГО
+  // формирования-участника по рапорту, независимо от остальных
+  decideReportForRegiment: (token, reportId, regimentId, { status, rejectionReason }) =>
+    request(`/api/reports/${reportId}/regiments/${regimentId}`, {
+      method: "PATCH",
+      token,
+      body: { status, rejection_reason: rejectionReason ?? null },
+    }),
   updateReportContent: (token, reportId, content) =>
     request(`/api/reports/${reportId}/content`, { method: "PATCH", token, body: { content } }),
   deleteReport: (token, reportId) => request(`/api/reports/${reportId}`, { method: "DELETE", token }),
@@ -192,7 +200,16 @@ export const api = {
   createCategory: (
     token,
     regimentId,
-    { name, fields, points, participantPoints, requiredSpecializationId, openToRegimentLeadership, requiredSquadId }
+    {
+      name,
+      fields,
+      points,
+      participantPoints,
+      requiredSpecializationId,
+      openToRegimentLeadership,
+      requiredSquadId,
+      isJoint,
+    }
   ) =>
     request(`/api/regiments/${regimentId}/categories`, {
       method: "POST",
@@ -205,6 +222,7 @@ export const api = {
         required_specialization_id: requiredSpecializationId ?? null,
         open_to_regiment_leadership: openToRegimentLeadership ?? false,
         required_squad_id: requiredSquadId ?? null,
+        is_joint: isJoint ?? false,
       },
     }),
   // Передаём только реально переданные поля (без null-заполнителей) — бэкенд

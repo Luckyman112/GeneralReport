@@ -41,6 +41,9 @@ class ReportCategoryRead(BaseModel):
     required_specialization: SpecializationRead | None = None
     open_to_regiment_leadership: bool = False
     required_squad: SquadBrief | None = None
+    # Совместная категория (см. Report.regiment_decisions) — каждое формирование,
+    # обнаруженное среди участников, одобряет свою часть независимо
+    is_joint: bool = False
 
 
 class ReportCategoryCreate(BaseModel):
@@ -58,6 +61,7 @@ class ReportCategoryCreate(BaseModel):
     # Подавать рапорт может только участник этого отряда (например "Рапорт о
     # разведке" -> отряд "Разведка") — None = ограничения нет
     required_squad_id: int | None = None
+    is_joint: bool = False
 
 
 class ReportCategoryUpdate(BaseModel):
@@ -75,3 +79,4 @@ class ReportCategoryUpdate(BaseModel):
     required_specialization_id: int | None = None
     open_to_regiment_leadership: bool | None = None
     required_squad_id: int | None = None
+    is_joint: bool | None = None

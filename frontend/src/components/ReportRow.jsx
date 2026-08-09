@@ -3,10 +3,71 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { StatusBadge } from "./StatusBadge";
 import { CheckIcon, CrossIcon, GearIcon, TrashIcon } from "./icons";
 import { formatMskDate } from "../utils/formatDate";
-import { formatFullNameAtRank } from "../utils/formatName";
+import { formatFullName, formatFullNameAtRank } from "../utils/formatName";
 import { formatDetentionTarget, formatPunishmentType } from "../utils/punishment";
 
 const CONTENT_PREVIEW_LENGTH = 320;
+
+const DECISION_STATUS_LABELS = {
+  pending: "ожидает",
+  approved: "одобрено",
+  rejected: "отклонено",
+};
+
+/** Строка решения одного формирования-участника совместного рапорта (см.
+ * ReportCategory.is_joint) — своя пара одобрить/отклонить, независимая от
+ * остальных формирований. */
+function RegimentDecisionRow({ decision, canDecide, onDecide }) {
+  const [showRejectInput, setShowRejectInput] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+
+  return (
+    <li className="regiment-decision-row">
+      <span className="regiment-decision-name">{decision.regiment_name}</span>
+      <span className={`regiment-decision-status regiment-decision-status-${decision.status}`}>
+        {DECISION_STATUS_LABELS[decision.status] || decision.status}
+      </span>
+      {decision.decided_by_user && (
+        <span className="hint-text">— {formatFullName(decision.decided_by_user)}</span>
+      )}
+      {decision.rejection_reason && <span className="hint-text">({decision.rejection_reason})</span>}
+      {canDecide && (
+        <span className="regiment-decision-actions">
+          {decision.status !== "approved" && (
+            <button type="button" className="icon-button" onClick={() => onDecide("approved")}>
+              <CheckIcon /> Одобрить
+            </button>
+          )}
+          {!showRejectInput ? (
+            decision.status !== "rejected" && (
+              <button type="button" className="icon-button" onClick={() => setShowRejectInput(true)}>
+                <CrossIcon /> Отклонить
+              </button>
+            )
+          ) : (
+            <span className="reject-inline">
+              <input
+                type="text"
+                placeholder="Причина отклонения"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+              />
+              <button
+                onClick={() => {
+                  onDecide("rejected", rejectReason);
+                  setShowRejectInput(false);
+                  setRejectReason("");
+                }}
+              >
+                Подтвердить
+              </button>
+            </span>
+          )}
+        </span>
+      )}
+    </li>
+  );
+}
 
 export function ReportRow({
   report,
@@ -19,9 +80,11 @@ export function ReportRow({
   canDelete,
   canReject = canManage,
   canSetPoints,
+  decidableRegimentIds = [],
   onSubmitDraft,
   onApprove,
   onReject,
+  onDecideRegiment,
   onEditContent,
   onDelete,
   onSetPoints,
@@ -55,6 +118,11 @@ export function ReportRow({
   canReject = canReject && !isMirror;
   canDelete = (canDelete ?? canManage) && !isMirror;
 
+  // Совместная категория (см. ReportCategory.is_joint) — у рапорта нет единого
+  // статуса, каждое формирование-участник решает своё независимо (regiment_decisions)
+  const isJoint = (report.regiment_decisions || []).length > 0;
+  const approvedCount = isJoint ? report.regiment_decisions.filter((d) => d.status === "approved").length : 0;
+
   const detentionTargetName = formatDetentionTarget(report);
   const punishmentLabel = formatPunishmentType(report);
   const canManageImages = canManage;
@@ -71,7 +139,13 @@ export function ReportRow({
         </span>
         {categoryName && <span className="report-category">{categoryName}</span>}
         {isMirror && <span className="hint-text">(зеркало из формирования)</span>}
-        <StatusBadge status={report.status} />
+        {isJoint ? (
+          <span className="hint-text">
+            Совместный: {approvedCount}/{report.regiment_decisions.length} одобрено
+          </span>
+        ) : (
+          <StatusBadge status={report.status} />
+        )}
         <span className="report-date">{formatMskDate(report.created_at)} МСК</span>
 
         {showPointsGear && (
@@ -128,6 +202,19 @@ export function ReportRow({
             {formatFullNameAtRank(report.updated_by_user, report.updated_by_rank)}
           </span>
         </p>
+      )}
+
+      {isJoint && (
+        <ul className="regiment-decision-list">
+          {report.regiment_decisions.map((decision) => (
+            <RegimentDecisionRow
+              key={decision.regiment_id}
+              decision={decision}
+              canDecide={decidableRegimentIds.includes(decision.regiment_id)}
+              onDecide={(status, reason) => onDecideRegiment(decision.regiment_id, status, reason)}
+            />
+          ))}
+        </ul>
       )}
 
       {report.target_regiment_id && (
@@ -212,13 +299,13 @@ export function ReportRow({
           </>
         )}
 
-        {canManage && report.status === "submitted" && (
+        {!isJoint && canManage && report.status === "submitted" && (
           <button className="primary icon-button" onClick={onApprove}>
             <CheckIcon /> Одобрить
           </button>
         )}
 
-        {canReject && (report.status === "submitted" || report.status === "approved") && (
+        {!isJoint && canReject && (report.status === "submitted" || report.status === "approved") && (
           <>
             {!showRejectInput ? (
               <button className="icon-button" onClick={() => setShowRejectInput(true)}>

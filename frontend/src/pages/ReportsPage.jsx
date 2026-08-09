@@ -297,6 +297,20 @@ export function ReportsPage() {
     await loadReports();
   }
 
+  // Совместные категории (см. ReportCategory.is_joint) — какими формированиями
+  // из участников этого рапорта может распоряжаться сам зритель
+  function decidableRegimentIds(report) {
+    if (!report.regiment_decisions?.length) return [];
+    if (access?.is_admin || access?.is_high_command) return report.regiment_decisions.map((d) => d.regiment_id);
+    const commanderIds = access?.commander_regiment_ids || [];
+    return report.regiment_decisions.map((d) => d.regiment_id).filter((id) => commanderIds.includes(id));
+  }
+
+  async function handleDecideRegiment(reportId, regimentId, status, reason) {
+    await api.decideReportForRegiment(token, reportId, regimentId, { status, rejectionReason: reason });
+    await loadReports();
+  }
+
   async function handleDelete(reportId) {
     await api.deleteReport(token, reportId);
     await loadReports();
@@ -435,9 +449,13 @@ export function ReportsPage() {
                   canDelete={canDelete(report)}
                   canReject={canReject(report)}
                   canSetPoints={canSetPoints(report)}
+                  decidableRegimentIds={decidableRegimentIds(report)}
                   onSubmitDraft={() => handleSubmitDraft(report.id)}
                   onApprove={() => handleApprove(report.id)}
                   onReject={(reason) => handleReject(report.id, reason)}
+                  onDecideRegiment={(regimentId, status, reason) =>
+                    handleDecideRegiment(report.id, regimentId, status, reason)
+                  }
                   onEditContent={(content) => handleEditContent(report.id, content)}
                   onDelete={() => handleDelete(report.id)}
                   onSetPoints={(points) => handleSetPoints(report.id, points)}

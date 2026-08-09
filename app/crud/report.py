@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.report import Report, ReportStatus
 from app.models.report_category import ReportCategory
+from app.models.report_regiment_decision import ReportRegimentDecision
 from app.models.user import User
 
 _LOAD_OPTIONS = [
@@ -116,6 +117,7 @@ async def list_reports(
     search: str | None = None,
     since: datetime | None = None,
     visible_target_regiment_ids: set[int] | None = None,
+    joint_decision_regiment_ids: set[int] | None = None,
     limit: int | None = None,
     offset: int = 0,
     include_deleted: bool = False,
@@ -131,6 +133,11 @@ async def list_reports(
     всем бойцам этого формирования, а не только автору/командиру формирования-автора.
     Черновики сюда не попадают (ещё не оформленное обвинение не должно "утекать").
 
+    joint_decision_regiment_ids — дополнительно (через OR) показывает совместные
+    рапорты (см. ReportCategory.is_joint), у которых есть решение одного из этих
+    формирований — иначе командир формирования-участника, не состоящий в
+    формировании-подателе (обычно Штаб), вообще не увидел бы рапорт.
+
     include_deleted — показать и мягко удалённые (аннулированные) рапорты тоже
     (см. app/api/regiments.py::get_member_reports — в личном деле аннулирование
     должно быть видно, а не бесследно исчезать)."""
@@ -142,14 +149,26 @@ async def list_reports(
     if user_id is not None:
         base_conditions.append(Report.user_id == user_id)
 
+    or_clauses = []
+    if base_conditions:
+        or_clauses.append(and_(*base_conditions))
     if visible_target_regiment_ids:
-        target_clause = and_(
-            Report.target_regiment_id.in_(visible_target_regiment_ids),
-            Report.status != ReportStatus.DRAFT,
+        or_clauses.append(
+            and_(
+                Report.target_regiment_id.in_(visible_target_regiment_ids),
+                Report.status != ReportStatus.DRAFT,
+            )
         )
-        query = query.where(or_(and_(*base_conditions), target_clause) if base_conditions else target_clause)
-    elif base_conditions:
-        query = query.where(and_(*base_conditions))
+    if joint_decision_regiment_ids:
+        or_clauses.append(
+            Report.id.in_(
+                select(ReportRegimentDecision.report_id).where(
+                    ReportRegimentDecision.regiment_id.in_(joint_decision_regiment_ids)
+                )
+            )
+        )
+    if or_clauses:
+        query = query.where(or_clauses[0] if len(or_clauses) == 1 else or_(*or_clauses))
 
     if category_id is not None:
         query = query.where(Report.category_id == category_id)
@@ -181,6 +200,7 @@ async def count_reports(
     search: str | None = None,
     since: datetime | None = None,
     visible_target_regiment_ids: set[int] | None = None,
+    joint_decision_regiment_ids: set[int] | None = None,
 ) -> int:
     """Тот же набор фильтров, что и list_reports — для отображения "Показать ещё"
     на фронте (сколько всего рапортов помимо уже загруженных)."""
@@ -192,14 +212,26 @@ async def count_reports(
     if user_id is not None:
         base_conditions.append(Report.user_id == user_id)
 
+    or_clauses = []
+    if base_conditions:
+        or_clauses.append(and_(*base_conditions))
     if visible_target_regiment_ids:
-        target_clause = and_(
-            Report.target_regiment_id.in_(visible_target_regiment_ids),
-            Report.status != ReportStatus.DRAFT,
+        or_clauses.append(
+            and_(
+                Report.target_regiment_id.in_(visible_target_regiment_ids),
+                Report.status != ReportStatus.DRAFT,
+            )
         )
-        query = query.where(or_(and_(*base_conditions), target_clause) if base_conditions else target_clause)
-    elif base_conditions:
-        query = query.where(and_(*base_conditions))
+    if joint_decision_regiment_ids:
+        or_clauses.append(
+            Report.id.in_(
+                select(ReportRegimentDecision.report_id).where(
+                    ReportRegimentDecision.regiment_id.in_(joint_decision_regiment_ids)
+                )
+            )
+        )
+    if or_clauses:
+        query = query.where(or_clauses[0] if len(or_clauses) == 1 else or_(*or_clauses))
 
     if category_id is not None:
         query = query.where(Report.category_id == category_id)
@@ -238,9 +270,19 @@ async def update_status(
 
 async def get_mirror_of(db: AsyncSession, origin_report_id: uuid.UUID) -> Report | None:
     """Зеркальная копия (см. Report.mirror_of_report_id) этого рапорта в другой
-    категории, если она есть — для синхронизации статуса при одобрении/отклонении."""
+    категории, если она есть — для синхронизации статуса при одобрении/отклонении.
+    Только для 1:1 зеркал (см. ReportCategory.mirrors_to_category_id) — у
+    совместных категорий (is_joint) зеркал может быть НЕСКОЛЬКО, см. list_mirrors_of."""
     result = await db.execute(select(Report).where(Report.mirror_of_report_id == origin_report_id))
     return result.scalars().first()
+
+
+async def list_mirrors_of(db: AsyncSession, origin_report_id: uuid.UUID) -> list[Report]:
+    """Все зеркальные копии этого рапорта (см. Report.mirror_of_report_id) — для
+    совместных категорий (is_joint) их может быть несколько, по одной на каждое
+    одобрившее формирование (см. app/api/reports.py::delete_report)."""
+    result = await db.execute(select(Report).where(Report.mirror_of_report_id == origin_report_id))
+    return list(result.scalars().all())
 
 
 async def sync_mirror_status(

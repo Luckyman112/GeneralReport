@@ -17,6 +17,7 @@ from app.models.report import Report, ReportStatus
 from app.models.report_category import ReportCategory
 from app.models.report_image import ReportImage
 from app.models.report_participant import ReportParticipant
+from app.models.report_regiment_decision import ReportRegimentDecision, RegimentDecisionStatus
 from app.models.reprimand import Reprimand
 from app.models.specialization import InstructorRole, Specialization, SpecializationBan, UserSpecialization
 from app.models.squad import Squad, SquadMembership
@@ -57,4 +58,6 @@ __all__ = [
     "WantedEntry",
     "Squad",
     "SquadMembership",
+    "ReportRegimentDecision",
+    "RegimentDecisionStatus",
 ]
