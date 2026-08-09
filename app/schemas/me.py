@@ -35,6 +35,8 @@ class AccessInfo(BaseModel):
     commander_regiment_ids: list[int]
     category_manager_regiment_ids: list[int]
     soldier_regiment_ids: list[int]
+    # id "17-ый Передовой Полк" — None, если не настроен (см. страницу "Рекрутская")
+    recruit_regiment_id: int | None = None
     # extends can_appeal_report beyond commander_regiment_ids
     report_appeal_regiment_ids: list[int] = []
     # отдельная привилегия "отклонить любой рапорт" — не связана с командованием

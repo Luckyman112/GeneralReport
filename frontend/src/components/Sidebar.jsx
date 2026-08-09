@@ -64,6 +64,7 @@ export function Sidebar({ open, onClose }) {
                 )}
                 {hasCommandAccess && <Link to="/registrations" onClick={onClose}>Регистрации</Link>}
                 {hasCommandAccess && <Link to="/transfers" onClick={onClose}>Переводы</Link>}
+                {hasCommandAccess && <Link to="/recruits" onClick={onClose}>Рекрутская</Link>}
                 {isDisciplineDeputy && <Link to="/discipline" onClick={onClose}>Дисциплина</Link>}
                 {isDisciplineDeputy && !access?.is_admin && <Link to="/logs" onClick={onClose}>Журнал</Link>}
               </div>

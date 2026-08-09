@@ -795,8 +795,21 @@ async def get_members(
     """Список участников сервера, состоящих в этом формировании — виден бойцам,
     командирам и администратору этого формирования, а также инструктору (нужен
     состав любого формирования для запрета на обучение). Ник переопределяется
-    веб-ником, если командир его задал (см. PATCH .../members/{discord_id}/nickname)."""
-    if not access.can_grant_specializations:
+    веб-ником, если командир его задал (см. PATCH .../members/{discord_id}/nickname).
+
+    Отдельное исключение для 17-го Передового Полка (см. can_decide_promotion) —
+    его состав виден командиру/заму ЛЮБОГО формирования, не только 17-го,
+    иначе "Рекрутскую" не открыть тому, кто вправе решать по его бойцам, но
+    не состоит там сам (см. решение пользователя). Именно поэтому это узкое
+    исключение прямо здесь, а не расширение _require_regiment_access целиком —
+    та функция используется и там, где такой широты не просили (редактирование
+    категорий/состава и т.д.)."""
+    is_recruit_regiment_viewer = (
+        access.recruit_regiment_id is not None
+        and regiment_id == access.recruit_regiment_id
+        and bool(access.commander_regiment_ids)
+    )
+    if not access.can_grant_specializations and not is_recruit_regiment_viewer:
         _require_regiment_access(access, regiment_id)
     regiment = await _get_regiment_or_404(db, regiment_id)
 

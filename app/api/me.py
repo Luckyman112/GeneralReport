@@ -47,6 +47,7 @@ async def get_me(
             commander_regiment_ids=sorted(access.commander_regiment_ids),
             category_manager_regiment_ids=sorted(access.category_manager_regiment_ids),
             soldier_regiment_ids=sorted(access.soldier_regiment_ids),
+            recruit_regiment_id=access.recruit_regiment_id,
             report_appeal_regiment_ids=sorted(r.id for r in regiments if access.can_appeal_report(r.id)),
             can_reject_any_report=access.can_reject_any_report,
             can_write_violations=access.can_write_violations,
