@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, UploadFile
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
@@ -89,6 +90,21 @@ def _check_rank_matches_regiment(rank, regiment) -> None:
         raise AppError("Этому формированию можно назначить только джедайское звание")
     if not regiment.is_jedi_order and rank.tier.is_jedi:
         raise AppError("Обычному формированию нельзя назначить джедайское звание")
+
+
+async def _check_jedi_title_ceiling(db: AsyncSession, *, rang_rank_id: int | None, jedi_title_id: int) -> None:
+    """Ранг ограничивает потолок звания (не коррелирует с ним напрямую) —
+    Падаван до SCO, Рыцарь до GEN, Мастер до SGEN, Гранд-Мастер до HGEN. См.
+    Rank.max_jedi_title_rank_id, выставлено миграцией 0078 на джедайских рангах."""
+    rang_rank = await rank_crud.get_by_id(db, rang_rank_id) if rang_rank_id is not None else None
+    if rang_rank is None or rang_rank.max_jedi_title_rank_id is None:
+        raise AppError("Звание можно назначить только тому, у кого уже есть джедайский ранг")
+    ordered_ranks = await rank_crud.get_all_ranks_ordered(db)
+    order_index = {r.id: i for i, r in enumerate(ordered_ranks)}
+    if jedi_title_id not in order_index or rang_rank.max_jedi_title_rank_id not in order_index:
+        raise AppError("Звание не найдено")
+    if order_index[jedi_title_id] > order_index[rang_rank.max_jedi_title_rank_id]:
+        raise AppError("Звание выше потолка, допустимого для текущего ранга")
 
 
 @router.get("", response_model=list[RegimentRead])
@@ -774,6 +790,7 @@ def _build_guild_member(
         steam_id=user.steam_id if user else None,
         photo_url=user.photo_url if user else None,
         rank=RankRead.model_validate(user.rank) if user and user.rank else None,
+        jedi_title=RankRead.model_validate(user.jedi_title) if user and user.jedi_title else None,
         days_in_rank=days_in_rank,
         is_inactive=user.is_inactive if user else False,
         early_promoted_by_username=user.early_promoted_by_username if user else None,
@@ -886,19 +903,45 @@ async def update_member_profile(
     early_promotion_reason = changes.pop("early_promotion_reason", None)
     if "callsign" in changes:
         changes["nickname_override"] = changes["callsign"]
+
+    existing_user = await user_crud.get_by_discord_id(db, discord_id)
+    is_admin_or_hc = access.is_admin or access.is_high_command
+
     if "rank_id" in changes and changes["rank_id"] is not None:
         rank = await rank_crud.get_by_id(db, changes["rank_id"])
         if rank is None:
             raise NotFoundError("Звание не найдено")
         _check_rank_matches_regiment(rank, regiment)
+        # Гранд-Мастер — исключение, назначает только админ/высшее командование
+        # (см. миграцию 0078, Rank.jedi_manual_only и партиционный уникальный
+        # индекс uq_users_single_grand_master — только один Гранд-Мастер сразу)
+        if rank.jedi_manual_only and not is_admin_or_hc:
+            raise ForbiddenError("Этот ранг может назначить только администратор или высшее командование")
 
-    existing_user = await user_crud.get_by_discord_id(db, discord_id)
+    if "jedi_title_id" in changes and changes["jedi_title_id"] is not None:
+        if not is_admin_or_hc:
+            raise ForbiddenError("Звание джедая может менять только администратор или высшее командование")
+        title_rank = await rank_crud.get_by_id(db, changes["jedi_title_id"])
+        if title_rank is None:
+            raise NotFoundError("Звание не найдено")
+        if not (title_rank.tier.is_jedi and not title_rank.tier.is_jedi_rank_track):
+            raise AppError("Это поле принимает только джедайское звание (CO/SCO/GEN/SGEN/HGEN)")
+        effective_rang_rank_id = changes.get("rank_id", existing_user.rank_id if existing_user else None)
+        await _check_jedi_title_ceiling(
+            db, rang_rank_id=effective_rang_rank_id, jedi_title_id=changes["jedi_title_id"]
+        )
+    elif "jedi_title_id" in changes and not is_admin_or_hc:
+        raise ForbiddenError("Звание джедая может менять только администратор или высшее командование")
+
     old_rank_id = existing_user.rank_id if existing_user else None
     new_rank_id = changes.get("rank_id")
     rank_changed = "rank_id" in changes and new_rank_id != old_rank_id
-    if rank_changed:
-        # Смена звания вручную (не через обычную заявку) — фиксируем, кто и почему,
-        # чтобы это было видно в личном деле бойца (см. GuildMemberRead)
+    jedi_title_changed = "jedi_title_id" in changes and changes["jedi_title_id"] != (
+        existing_user.jedi_title_id if existing_user else None
+    )
+    if rank_changed or jedi_title_changed:
+        # Смена звания/ранга вручную (не через обычную заявку) — фиксируем, кто и
+        # почему, чтобы это было видно в личном деле бойца (см. GuildMemberRead)
         changes["early_promoted_by_username"] = access.user.username
         changes["early_promotion_reason"] = early_promotion_reason
 
@@ -909,9 +952,13 @@ async def update_member_profile(
         if old_rank_id in order_index and new_rank_id in order_index:
             is_demotion = order_index[new_rank_id] < order_index[old_rank_id]
 
-    user = await user_crud.update_profile(
-        db, discord_id=discord_id, fallback_username=member["username"], changes=changes
-    )
+    try:
+        user = await user_crud.update_profile(
+            db, discord_id=discord_id, fallback_username=member["username"], changes=changes
+        )
+    except IntegrityError:
+        await db.rollback()
+        raise AppError("Гранд-Мастер уже назначен другому бойцу — сначала снимите ранг с текущего")
     logger.info("%s обновил профиль участника %s: %s", access.user.username, discord_id, changes)
 
     if is_demotion:

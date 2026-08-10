@@ -88,7 +88,9 @@ async def get_by_discord_ids(db: AsyncSession, discord_ids: list[str]) -> list[U
     if not discord_ids:
         return []
     result = await db.execute(
-        select(User).where(User.discord_id.in_(discord_ids)).options(selectinload(User.rank))
+        select(User)
+        .where(User.discord_id.in_(discord_ids))
+        .options(selectinload(User.rank), selectinload(User.jedi_title))
     )
     return list(result.scalars().all())
 
@@ -180,9 +182,10 @@ async def update_profile(
         user.nickname_override = None
         user.rank_id = None
         user.rank_assigned_at = None
+        user.jedi_title_id = None
 
     await db.commit()
-    await db.refresh(user, attribute_names=["rank"])
+    await db.refresh(user, attribute_names=["rank", "jedi_title"])
     return user
 
 
@@ -192,5 +195,5 @@ async def set_rank_assigned_at(db: AsyncSession, user: User, *, days_in_rank: in
     и сверяет с требованием по выслуге /me/promotion-status."""
     user.rank_assigned_at = datetime.now(timezone.utc) - timedelta(days=days_in_rank)
     await db.commit()
-    await db.refresh(user, attribute_names=["rank"])
+    await db.refresh(user, attribute_names=["rank", "jedi_title"])
     return user

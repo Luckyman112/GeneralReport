@@ -19,6 +19,7 @@ function profileSnapshot(member) {
     serviceId: member.service_id ?? "",
     callsign: member.callsign ?? "",
     rankId: member.rank?.id ?? "",
+    jediTitleId: member.jedi_title?.id ?? "",
     isInactive: member.is_inactive ?? false,
   };
 }
@@ -32,6 +33,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [serviceId, setServiceId] = useState(baseline.serviceId);
   const [callsign, setCallsign] = useState(baseline.callsign);
   const [rankId, setRankId] = useState(baseline.rankId);
+  const [jediTitleId, setJediTitleId] = useState(baseline.jediTitleId);
   const [isInactive, setIsInactive] = useState(baseline.isInactive);
   const [tiers, setTiers] = useState([]);
   const [reports, setReports] = useState([]);
@@ -170,6 +172,23 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   }
 
   const canDeleteReprimandHistory = access?.is_admin || access?.is_high_command;
+  const isAdminOrHc = Boolean(access?.is_admin || access?.is_high_command);
+
+  // Тот же плоский порядок, что и на бэкенде (get_all_ranks_ordered) — нужен для
+  // клиентской проверки потолка звания по выбранному рангу (ранг ограничивает
+  // максимально допустимое звание, но не коррелирует с ним напрямую)
+  const flatOrderedRankIds = useMemo(
+    () =>
+      tiers
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .flatMap((t) => t.ranks.slice().sort((a, b) => a.order - b.order).map((r) => r.id)),
+    [tiers]
+  );
+  const selectedRangRank = tiers.flatMap((t) => t.ranks).find((r) => String(r.id) === String(rankId));
+  const jediTitleCeilingIndex = selectedRangRank?.max_jedi_title_rank_id
+    ? flatOrderedRankIds.indexOf(selectedRangRank.max_jedi_title_rank_id)
+    : null;
 
   // дисциплинарные категории (медик/пилот/инженер) выдаёт только инструктор
   // соответствующей дисциплины или универсальный (см. Settings -> Инструкторы и
@@ -257,12 +276,17 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     }
   }
 
-  const isDirty = serviceId !== baseline.serviceId || callsign !== baseline.callsign || rankId !== baseline.rankId;
+  const isDirty =
+    serviceId !== baseline.serviceId ||
+    callsign !== baseline.callsign ||
+    rankId !== baseline.rankId ||
+    jediTitleId !== baseline.jediTitleId;
 
   function handleResetProfile() {
     setServiceId(baseline.serviceId);
     setCallsign(baseline.callsign);
     setRankId(baseline.rankId);
+    setJediTitleId(baseline.jediTitleId);
     setEarlyPromotionReason("");
   }
 
@@ -330,13 +354,19 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     setError(null);
     try {
       const rankChanged = rankId !== baseline.rankId;
+      const jediTitleChanged = jediTitleId !== baseline.jediTitleId;
       await api.setMemberProfile(token, regimentId, member.discord_id, {
         service_id: serviceId.trim() || null,
         callsign: callsign.trim() || null,
         rank_id: rankId === "" ? null : Number(rankId),
-        ...(rankChanged ? { early_promotion_reason: earlyPromotionReason.trim() || null } : {}),
+        ...(isAdminOrHc && jediTitleChanged
+          ? { jedi_title_id: jediTitleId === "" ? null : Number(jediTitleId) }
+          : {}),
+        ...(rankChanged || jediTitleChanged
+          ? { early_promotion_reason: earlyPromotionReason.trim() || null }
+          : {}),
       });
-      setBaseline({ serviceId, callsign, rankId, isInactive });
+      setBaseline({ serviceId, callsign, rankId, jediTitleId, isInactive });
       setEarlyPromotionReason("");
       showToast("Профиль сохранён");
       loadPromotionStatus();
@@ -434,27 +464,56 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
               />
             </label>
             <label>
-              Звание
+              {regiment?.is_jedi_order ? "Ранг" : "Звание"}
               <select value={rankId} onChange={(e) => setRankId(e.target.value)}>
                 <option value="">— не назначено —</option>
                 {tiers
-                  .filter((tier) => (regiment?.is_jedi_order ? tier.is_jedi : !tier.is_jedi))
+                  .filter((tier) =>
+                    regiment?.is_jedi_order ? tier.is_jedi_rank_track : !tier.is_jedi
+                  )
                   .map((tier) => (
                     <optgroup key={tier.id} label={tier.name}>
-                      {tier.ranks.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.code} — {r.name}
-                        </option>
-                      ))}
+                      {tier.ranks
+                        .filter((r) => !r.jedi_manual_only || isAdminOrHc)
+                        .map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.code} — {r.name}
+                          </option>
+                        ))}
                     </optgroup>
                   ))}
               </select>
             </label>
+            {regiment?.is_jedi_order && isAdminOrHc && (
+              <label>
+                Звание (CO/SCO/GEN/SGEN/HGEN) — не коррелирует с рангом, только ограничено им сверху
+                <select value={jediTitleId} onChange={(e) => setJediTitleId(e.target.value)}>
+                  <option value="">— без звания —</option>
+                  {tiers
+                    .filter((tier) => tier.is_jedi && !tier.is_jedi_rank_track)
+                    .map((tier) => (
+                      <optgroup key={tier.id} label={tier.name}>
+                        {tier.ranks
+                          .filter(
+                            (r) =>
+                              jediTitleCeilingIndex === null ||
+                              flatOrderedRankIds.indexOf(r.id) <= jediTitleCeilingIndex
+                          )
+                          .map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.code} — {r.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
+                </select>
+              </label>
+            )}
             <label>
               Позывной (он же веб-ник — используется везде, включая рапорты)
               <input type="text" value={callsign} onChange={(e) => setCallsign(e.target.value)} />
             </label>
-            {rankId !== baseline.rankId && (
+            {(rankId !== baseline.rankId || jediTitleId !== baseline.jediTitleId) && (
               <label>
                 Причина досрочного повышения
                 <input
@@ -508,6 +567,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           member.rank && (
             <p className="hint-text">
               {member.rank.code} — {member.rank.name}
+              {member.jedi_title && ` · Звание: ${member.jedi_title.code} — ${member.jedi_title.name}`}
               {member.callsign && ` · ${member.callsign}`}
             </p>
           )

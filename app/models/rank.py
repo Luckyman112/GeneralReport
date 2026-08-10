@@ -33,6 +33,12 @@ class RankTier(Base):
 
     # separate hierarchy for jedi characters, excluded from normal promotion flow
     is_jedi: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Within is_jedi tiers: true only for the "ранг" ladder (Падаван/Рыцарь/
+    # Мастер/Гранд-Мастер) — these DO participate in the normal auto-promotion
+    # pipeline (tenure/points), unlike "звание" tiers (CO/SCO/GEN/SGEN/HGEN,
+    # is_jedi=true, is_jedi_rank_track=false), which stay fully manual as before.
+    # See app/crud/rank.py::get_next_rank.
+    is_jedi_rank_track: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     ranks: Mapped[list["Rank"]] = relationship(back_populates="tier", order_by="Rank.order")
 
@@ -52,3 +58,12 @@ class Rank(Base):
     tenure_days_required: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     tier: Mapped["RankTier"] = relationship(back_populates="ranks")
+
+    # Джедайский ранг только: true исключает переход СЮДА из авто-промо-пайплайна
+    # (сейчас только Гранд-Мастер — переход только вручную, admin/high_command,
+    # см. app/api/regiments.py). См. app/crud/rank.py::get_next_rank.
+    jedi_manual_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Джедайский ранг только: максимально допустимое звание (id другого Rank,
+    # из is_jedi=true/is_jedi_rank_track=false тира) при этом ранге — потолок,
+    # не корреляция. См. app/api/regiments.py::_check_jedi_title_ceiling.
+    max_jedi_title_rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)

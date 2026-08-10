@@ -229,6 +229,7 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
                             <span style={regimentColor ? { color: regimentColor } : undefined}>
                               {formatFullName(m)}
                             </span>
+                            {m.jedi_title && <span className="squad-badge">{m.jedi_title.code}</span>}
                             {m.is_inactive && <span className="member-inactive-badge">разжалован</span>}
                             {m.registration_status === "rejected" && (
                               <span className="member-unregistered-badge">заявка отклонена</span>

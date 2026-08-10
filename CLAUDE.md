@@ -191,6 +191,40 @@ add/edit rows get one more `MultiSelectDropdown` alongside the existing single `
 `<select>`. Works identically for medic/pilot/engineer — just catalog data, no
 per-discipline code.
 
+### Jedi rank track ("ранг" vs "звание", migration 0078)
+Jedi have two independent axes, both ultimately just `Rank` rows under
+`RankTier.is_jedi=true` tiers, distinguished by `RankTier.is_jedi_rank_track`:
+- **Ранг** (personal growth: Падаван → Рыцарь Джедай → Мастер Джедай →
+  Гранд-Мастер) — lives in the normal `User.rank_id`/`rank_assigned_at` fields and
+  goes through the regular auto-promotion pipeline (tenure/points via
+  `PromotionRequirement`, same as any non-jedi regiment) — tier
+  `is_jedi_rank_track=true`. Падаван is meant to be a jedi regiment's
+  `Regiment.starting_rank_id` so new registrants get it automatically (see
+  `override_regiment` in `app/api/registration.py`, unchanged — this is config,
+  not code). Гранд-Мастер (`Rank.jedi_manual_only=true`) is excluded from
+  `rank_crud.get_next_rank` like звание always was — reachable only through the
+  manual-override path below — and is capped at exactly one holder system-wide by
+  a partial unique index (`uq_users_single_grand_master`, `WHERE rank_id =
+  <that row's id>` — same pattern as `PromotionRequest`'s pending-per-user index,
+  migration 0075); `update_member_profile` catches the resulting `IntegrityError`
+  and turns it into a friendly `AppError`.
+- **Звание** (command title: CO/SCO/GEN/SGEN/HGEN, pre-existing) — lives in the
+  separate `User.jedi_title_id` field, independent of ранг, changed only through
+  the same manual-override endpoint but gated to `is_admin or is_high_command`
+  (stricter than the regiment-commander gate that covers ранг). Звание does
+  **not** correlate with ранг — only a ceiling applies: each ранг `Rank` row's
+  `max_jedi_title_rank_id` names the highest звание allowed at that ранг (Падаван
+  → up to SCO, Рыцарь → GEN, Мастер → SGEN, Гранд-Мастер → HGEN), checked by
+  `app/api/regiments.py::_check_jedi_title_ceiling` by comparing positions in
+  `rank_crud.get_all_ranks_ordered`'s flat list — a Гранд-Мастер can hold no
+  звание at all, and a Падаван can already be a Коммандер.
+`rank_crud.get_next_rank` tells ранг from звание via
+`is_jedi_rank_track`: звание tiers stay fully excluded from auto-promotion
+exactly as before; ранг tiers participate normally except for the
+`jedi_manual_only` Гранд-Мастер jump. `_check_rank_matches_regiment` (jedi
+regiment ⇔ jedi-tier rank) still applies to `rank_id` only — `jedi_title_id` gets
+its own tier check inline in `update_member_profile`.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get

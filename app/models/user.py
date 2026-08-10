@@ -31,10 +31,20 @@ class User(Base):
     steam_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # overrides discord avatar in display
     photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Для джедаев (is_jedi_rank_track тир) это личный ранг (Падаван/Рыцарь/Мастер/
+    # Гранд-Мастер), для всех остальных — обычное звание. Джедайское "звание"
+    # (CO/SCO/GEN/SGEN/HGEN) хранится отдельно в jedi_title_id — эти два поля не
+    # коррелируют, только ранг ограничивает потолок звания (Rank.max_jedi_title_rank_id,
+    # см. app/api/regiments.py::_check_jedi_title_ceiling)
     rank_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)
     # Момент назначения текущего звания — для отображения выслуги дней в нём
     rank_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    rank: Mapped["Rank | None"] = relationship()
+    rank: Mapped["Rank | None"] = relationship(foreign_keys=[rank_id])
+    # Джедайское командное звание (CO/SCO/GEN/SGEN/HGEN) — независимо от rank_id
+    # (личного ранга), меняется только вручную админом/высшим командованием, без
+    # выслуги/баллов (см. app/api/regiments.py::update_member_profile)
+    jedi_title_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)
+    jedi_title: Mapped["Rank | None"] = relationship(foreign_keys=[jedi_title_id])
 
     # Неактивный боец не может создавать рапорты и видит блокирующий экран вместо
     # интерфейса — переключается командиром/заместителем формирования

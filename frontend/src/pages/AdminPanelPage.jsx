@@ -16,6 +16,7 @@ function profileSnapshot(member) {
     callsign: member?.callsign || "",
     steamId: member?.steam_id || "",
     rankId: member?.rank?.id ?? "",
+    jediTitleId: member?.jedi_title?.id ?? "",
   };
 }
 
@@ -39,6 +40,7 @@ export function AdminPanelPage() {
   const [callsign, setCallsign] = useState("");
   const [steamId, setSteamId] = useState("");
   const [rankId, setRankId] = useState("");
+  const [jediTitleId, setJediTitleId] = useState("");
   const [earlyPromotionReason, setEarlyPromotionReason] = useState("");
   const [daysInRank, setDaysInRank] = useState("");
 
@@ -327,6 +329,7 @@ export function AdminPanelPage() {
     setCallsign(snapshot.callsign);
     setSteamId(snapshot.steamId);
     setRankId(snapshot.rankId);
+    setJediTitleId(snapshot.jediTitleId);
     setDaysInRank(member.days_in_rank ?? "");
   }, [member]);
 
@@ -334,13 +337,15 @@ export function AdminPanelPage() {
     serviceId !== profileBaseline.serviceId ||
     callsign !== profileBaseline.callsign ||
     steamId !== profileBaseline.steamId ||
-    rankId !== profileBaseline.rankId;
+    rankId !== profileBaseline.rankId ||
+    jediTitleId !== profileBaseline.jediTitleId;
 
   function handleResetProfile() {
     setServiceId(profileBaseline.serviceId);
     setCallsign(profileBaseline.callsign);
     setSteamId(profileBaseline.steamId);
     setRankId(profileBaseline.rankId);
+    setJediTitleId(profileBaseline.jediTitleId);
     setEarlyPromotionReason("");
   }
 
@@ -361,14 +366,16 @@ export function AdminPanelPage() {
 
   const handleSaveProfile = report(async () => {
     const rankChanged = rankId !== profileBaseline.rankId;
+    const jediTitleChanged = jediTitleId !== profileBaseline.jediTitleId;
     await api.setMemberProfile(token, regimentId, discordId, {
       service_id: serviceId.trim() || null,
       callsign: callsign.trim() || null,
       steam_id: steamId.trim() || null,
       rank_id: rankId === "" ? null : Number(rankId),
-      ...(rankChanged ? { early_promotion_reason: earlyPromotionReason.trim() || null } : {}),
+      ...(jediTitleChanged ? { jedi_title_id: jediTitleId === "" ? null : Number(jediTitleId) } : {}),
+      ...(rankChanged || jediTitleChanged ? { early_promotion_reason: earlyPromotionReason.trim() || null } : {}),
     });
-    setProfileBaseline({ serviceId, callsign, steamId, rankId });
+    setProfileBaseline({ serviceId, callsign, steamId, rankId, jediTitleId });
     setEarlyPromotionReason("");
   });
 
@@ -458,11 +465,13 @@ export function AdminPanelPage() {
               <input type="text" value={steamId} onChange={(e) => setSteamId(e.target.value)} />
             </label>
             <label>
-              Звание
+              {currentRegiment?.is_jedi_order ? "Ранг" : "Звание"}
               <select value={rankId} onChange={(e) => setRankId(e.target.value)}>
                 <option value="">— не назначено —</option>
                 {tiers
-                  .filter((tier) => (currentRegiment?.is_jedi_order ? tier.is_jedi : !tier.is_jedi))
+                  .filter((tier) =>
+                    currentRegiment?.is_jedi_order ? tier.is_jedi_rank_track : !tier.is_jedi
+                  )
                   .map((tier) => (
                     <optgroup key={tier.id} label={tier.name}>
                       {tier.ranks.map((r) => (
@@ -474,7 +483,36 @@ export function AdminPanelPage() {
                   ))}
               </select>
             </label>
-            {rankId !== profileBaseline.rankId && (
+            {currentRegiment?.is_jedi_order && (
+              <label>
+                Звание (CO/SCO/GEN/SGEN/HGEN) — не коррелирует с рангом, только ограничено им сверху
+                <select value={jediTitleId} onChange={(e) => setJediTitleId(e.target.value)}>
+                  <option value="">— без звания —</option>
+                  {tiers
+                    .filter((tier) => tier.is_jedi && !tier.is_jedi_rank_track)
+                    .map((tier) => (
+                      <optgroup key={tier.id} label={tier.name}>
+                        {tier.ranks.map((r) => {
+                          const rangRank = ranksById[rankId];
+                          const ceilingIndex = rangRank?.max_jedi_title_rank_id
+                            ? tiers
+                                .flatMap((t) => t.ranks)
+                                .findIndex((rr) => rr.id === rangRank.max_jedi_title_rank_id)
+                            : null;
+                          const thisIndex = tiers.flatMap((t) => t.ranks).findIndex((rr) => rr.id === r.id);
+                          const disabled = ceilingIndex !== null && thisIndex > ceilingIndex;
+                          return (
+                            <option key={r.id} value={r.id} disabled={disabled}>
+                              {r.code} — {r.name}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    ))}
+                </select>
+              </label>
+            )}
+            {(rankId !== profileBaseline.rankId || jediTitleId !== profileBaseline.jediTitleId) && (
               <label>
                 Причина досрочного повышения
                 <input

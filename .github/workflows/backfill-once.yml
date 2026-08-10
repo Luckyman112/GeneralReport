@@ -16,7 +16,7 @@ jobs:
       - name: Insert "Курс молодого бойца" category for 17th Regiment
         run: |
           set -e
-          docker exec -i collapsar-postgres psql -U postgres -d collapsar -v ON_ERROR_STOP=1 -c "
+          docker exec -i collapsar-postgres psql -U collapsar -d collapsar -v ON_ERROR_STOP=1 -c "
           INSERT INTO report_categories (regiment_id, name, fields, is_recruit_promotion, min_rank_id)
           SELECT r.id, 'Курс молодого бойца', '[]', true, (SELECT id FROM ranks WHERE code = 'CPL')
           FROM regiments r
@@ -26,7 +26,7 @@ jobs:
               WHERE rc.regiment_id = r.id AND rc.is_recruit_promotion = true
             );
           "
-          docker exec -i collapsar-postgres psql -U postgres -d collapsar -c "
+          docker exec -i collapsar-postgres psql -U collapsar -d collapsar -c "
           SELECT rc.id, rc.name, rc.regiment_id, rc.is_recruit_promotion, rc.min_rank_id
           FROM report_categories rc
           JOIN regiments r ON r.id = rc.regiment_id

@@ -46,6 +46,9 @@ class GuildMemberRead(BaseModel):
     # overrides discord avatar_url if set
     photo_url: str | None = None
     rank: RankRead | None = None
+    # Джедайское командное звание (CO/SCO/GEN/SGEN/HGEN) — независимо от rank_id
+    # (личного ранга джедая), см. app/models/user.py::jedi_title_id
+    jedi_title: RankRead | None = None
     # Сколько дней участник в текущем звании — для сверки с требованием по выслуге
     days_in_rank: int | None = None
     is_inactive: bool = False
@@ -118,9 +121,12 @@ class MemberProfileUpdate(BaseModel):
     callsign: str | None = None
     steam_id: str | None = None
     rank_id: int | None = None
+    # Джедайское командное звание — отдельно от rank_id (личного ранга), меняет
+    # только admin/high_command (см. app/api/regiments.py::update_member_profile)
+    jedi_title_id: int | None = None
     is_inactive: bool | None = None
-    # Причина досрочного повышения — учитывается, только если rank_id реально
-    # меняется (см. app/api/regiments.py::update_member_profile)
+    # Причина досрочного повышения — учитывается, если rank_id или jedi_title_id
+    # реально меняются (см. app/api/regiments.py::update_member_profile)
     early_promotion_reason: str | None = None
 
     @field_validator("service_id")

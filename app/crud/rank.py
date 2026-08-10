@@ -61,14 +61,24 @@ async def get_all_ranks_ordered(db: AsyncSession) -> list[Rank]:
     return list(result.scalars().all())
 
 
+def _is_jedi_title_tier(rank: Rank) -> bool:
+    # "звание" tiers (CO/SCO/GEN/SGEN/HGEN) — fully manual, never auto-promoted.
+    # The jedi "ранг" tier (Падаван/Рыцарь/Мастер/Гранд-Мастер) is_jedi=true too,
+    # but is_jedi_rank_track=true marks it as participating in this pipeline.
+    return rank.tier.is_jedi and not rank.tier.is_jedi_rank_track
+
+
 async def get_next_rank(db: AsyncSession, current_rank_id: int) -> Rank | None:
-    # jedi ranks are excluded from auto-promotion entirely
     ranks = await get_all_ranks_ordered(db)
     for index, rank in enumerate(ranks):
         if rank.id == current_rank_id:
-            if rank.tier.is_jedi:
+            if _is_jedi_title_tier(rank):
                 return None
-            if index + 1 < len(ranks) and not ranks[index + 1].tier.is_jedi:
-                return ranks[index + 1]
+            if index + 1 < len(ranks):
+                next_rank = ranks[index + 1]
+                # звание tiers stay excluded as before; jedi_manual_only blocks
+                # a specific rank from being reached automatically (Гранд-Мастер)
+                if not _is_jedi_title_tier(next_rank) and not next_rank.jedi_manual_only:
+                    return next_rank
             return None
     return None
