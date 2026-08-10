@@ -89,3 +89,7 @@ class ReportCategory(Base):
     # PVT (см. _apply_approval_side_effects). Не настраивается через обычный API
     # категорий — системный флаг, как is_promotion/is_demotion/is_training.
     is_recruit_promotion: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Не более N рапортов этой категории в день на одного бойца (например
+    # "Деятельность специализации" у джедаев — не чаще 2 раз) — None: без лимита.
+    # Проверяется в app/api/reports.py::_check_category_filing_restrictions.
+    max_per_day: Mapped[int | None] = mapped_column(nullable=True, default=None)

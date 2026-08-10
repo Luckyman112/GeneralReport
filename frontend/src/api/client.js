@@ -209,6 +209,7 @@ export const api = {
       openToRegimentLeadership,
       requiredSquadId,
       isJoint,
+      maxPerDay,
     }
   ) =>
     request(`/api/regiments/${regimentId}/categories`, {
@@ -223,6 +224,7 @@ export const api = {
         open_to_regiment_leadership: openToRegimentLeadership ?? false,
         required_squad_id: requiredSquadId ?? null,
         is_joint: isJoint ?? false,
+        max_per_day: maxPerDay ?? null,
       },
     }),
   // Передаём только реально переданные поля (без null-заполнителей) — бэкенд

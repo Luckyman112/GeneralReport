@@ -93,6 +93,16 @@ async def _check_category_filing_restrictions(db: AsyncSession, access: AccessCo
             squad_label = category.required_squad.name if category.required_squad else "нужный отряд"
             raise ForbiddenError(f"Подавать рапорт категории «{category.name}» может только участник отряда «{squad_label}»")
 
+    if category.max_per_day is not None:
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        count_today = await report_crud.count_reports(
+            db, user_id=access.user.id, category_id=category.id, since=today_start
+        )
+        if count_today >= category.max_per_day:
+            raise ForbiddenError(
+                f"Рапорт категории «{category.name}» можно подавать не чаще {category.max_per_day} раз(а) в день"
+            )
+
 
 async def _create_mirror_report(db: AsyncSession, report, category) -> None:
     """См. ReportCategory.mirrors_to_category_id — read-only копия рапорта в

@@ -65,6 +65,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
   const [openToLeadershipDraft, setOpenToLeadershipDraft] = useState(category.open_to_regiment_leadership ?? false);
   const [requiredSquadDraft, setRequiredSquadDraft] = useState(category.required_squad?.id ?? "");
   const [isJointDraft, setIsJointDraft] = useState(category.is_joint ?? false);
+  const [maxPerDayDraft, setMaxPerDayDraft] = useState(category.max_per_day ?? "");
   const [error, setError] = useState(null);
 
   async function handleAddField(e) {
@@ -123,6 +124,7 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
         open_to_regiment_leadership: openToLeadershipDraft,
         required_squad_id: requiredSquadDraft === "" ? null : Number(requiredSquadDraft),
         is_joint: isJointDraft,
+        max_per_day: maxPerDayDraft === "" ? null : Number(maxPerDayDraft),
       });
       onChanged();
     } catch (e) {
@@ -318,6 +320,18 @@ function CategoryRow({ category, tiers, allRegiments, specializations, squads, o
           <input type="checkbox" checked={isJointDraft} onChange={(e) => setIsJointDraft(e.target.checked)} />
           Совместная категория (по формированиям-участникам)
           <InfoHint text="Рапорт остаётся у формирования-подателя, но каждое формирование, чьи бойцы указаны в составе, одобряет свою часть независимо — если одно одобрило, а остальные нет, баллы получат только участники одобрившего." />
+        </label>
+        <label className="points-inline-label">
+          Лимит в день
+          <input
+            type="number"
+            min={1}
+            style={{ width: "5rem" }}
+            value={maxPerDayDraft}
+            onChange={(e) => setMaxPerDayDraft(e.target.value)}
+            placeholder="без лимита"
+          />
+          <InfoHint text="Не более скольких рапортов этой категории один боец может подать за день — оставьте пустым, если ограничения нет." />
         </label>
         <button type="button" onClick={handleSaveRestrictions}>
           Сохранить ограничения

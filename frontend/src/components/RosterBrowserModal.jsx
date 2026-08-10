@@ -95,14 +95,25 @@ export function RosterBrowserModal({ onClose }) {
       });
   }, [token, regimentId]);
 
+  // Только реальные должности — командир/зам формирования, командир/зам отряда.
+  // Обычный боец без должности — пустая ячейка, не "Рядовой" (см. решение
+  // пользователя). Отрядный командир/зам — только по tier (2/3), tier_label —
+  // произвольный текст на усмотрение командира отряда, по нему не определить.
   const positionByDiscordId = useMemo(() => {
     const map = new Map();
+    for (const m of members) {
+      const squadLead = (m.squads || []).find((s) => s.tier >= 2);
+      if (squadLead) {
+        map.set(m.discord_id, squadLead.tier === 3 ? `Командир отряда «${squadLead.squad_name}»` : `Заместитель отряда «${squadLead.squad_name}»`);
+      }
+    }
     for (const c of commanders) {
-      const label = c.role_type === "mentor" ? "Наставник" : c.role_type === "deputy" ? "Заместитель" : "Командир";
+      if (c.role_type === "mentor") continue;
+      const label = c.role_type === "deputy" ? "Заместитель" : "Командир";
       map.set(c.discord_id, label);
     }
     return map;
-  }, [commanders]);
+  }, [members, commanders]);
 
   const activeReprimandCountByDiscordId = useMemo(() => {
     const map = new Map();
@@ -199,7 +210,7 @@ export function RosterBrowserModal({ onClose }) {
                         <td>{m.callsign || m.username}</td>
                         <td>{m.joined_at ? formatMskDate(m.joined_at) : "—"}</td>
                         <td>{m.rank_assigned_at ? formatMskDate(m.rank_assigned_at) : "—"}</td>
-                        <td>{positionByDiscordId.get(m.discord_id) || "Рядовой"}</td>
+                        <td>{positionByDiscordId.get(m.discord_id) || "—"}</td>
                         <td>
                           {(m.squads || []).length > 0
                             ? m.squads.map((s) => (

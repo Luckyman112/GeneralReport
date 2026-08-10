@@ -24,6 +24,9 @@ class RegimentCommanderCreate(BaseModel):
 class SquadBadge(BaseModel):
     squad_name: str
     tier_label: str
+    # SQUAD_TIER_* (app/models/squad.py) — tier_label — произвольный текст на
+    # усмотрение командира, по нему нельзя понять, командир это отряда или нет
+    tier: int
 
 
 class GuildMemberRead(BaseModel):

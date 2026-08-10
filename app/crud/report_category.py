@@ -95,6 +95,7 @@ async def create(
     required_squad_id: int | None = None,
     mirrors_to_category_id: int | None = None,
     is_joint: bool = False,
+    max_per_day: int | None = None,
 ) -> ReportCategory:
     category = ReportCategory(
         regiment_id=regiment_id,
@@ -110,6 +111,7 @@ async def create(
         required_squad_id=required_squad_id,
         mirrors_to_category_id=mirrors_to_category_id,
         is_joint=is_joint,
+        max_per_day=max_per_day,
     )
     db.add(category)
     await db.commit()

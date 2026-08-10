@@ -44,6 +44,8 @@ class ReportCategoryRead(BaseModel):
     # Совместная категория (см. Report.regiment_decisions) — каждое формирование,
     # обнаруженное среди участников, одобряет свою часть независимо
     is_joint: bool = False
+    # Не более N рапортов этой категории в день на бойца — None: без лимита
+    max_per_day: int | None = None
 
 
 class ReportCategoryCreate(BaseModel):
@@ -62,6 +64,7 @@ class ReportCategoryCreate(BaseModel):
     # разведке" -> отряд "Разведка") — None = ограничения нет
     required_squad_id: int | None = None
     is_joint: bool = False
+    max_per_day: int | None = None
 
 
 class ReportCategoryUpdate(BaseModel):
@@ -80,3 +83,4 @@ class ReportCategoryUpdate(BaseModel):
     open_to_regiment_leadership: bool | None = None
     required_squad_id: int | None = None
     is_joint: bool | None = None
+    max_per_day: int | None = None

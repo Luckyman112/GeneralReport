@@ -353,6 +353,7 @@ async def create_category(
         open_to_regiment_leadership=payload.open_to_regiment_leadership,
         required_squad_id=payload.required_squad_id,
         is_joint=payload.is_joint,
+        max_per_day=payload.max_per_day,
     )
     logger.info("%s добавил категорию '%s' формированию %s", access.user.username, category.name, regiment_id)
     await audit_log_crud.log(
@@ -861,7 +862,7 @@ async def get_members(
     for membership, squad in await squad_crud.list_memberships_for_regiment(db, regiment_id=regiment_id):
         label = squad.tier_labels[membership.tier] if membership.tier < len(squad.tier_labels) else squad.name
         squad_badges_by_discord_id.setdefault(membership.discord_id, []).append(
-            SquadBadge(squad_name=squad.name, tier_label=label)
+            SquadBadge(squad_name=squad.name, tier_label=label, tier=membership.tier)
         )
 
     return [
