@@ -21,6 +21,13 @@ async def get_by_discord_id(db: AsyncSession, discord_id: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def get_by_discord_id_with_rank(db: AsyncSession, discord_id: str) -> User | None:
+    result = await db.execute(
+        select(User).where(User.discord_id == discord_id).options(selectinload(User.rank))
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_by_steam_id(db: AsyncSession, steam_id: str) -> User | None:
     result = await db.execute(select(User).where(User.steam_id == steam_id))
     return result.scalars().first()

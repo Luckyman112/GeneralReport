@@ -60,6 +60,8 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [newBanUntilDate, setNewBanUntilDate] = useState("");
   const [newBanPermanent, setNewBanPermanent] = useState(false);
   const [newBanReason, setNewBanReason] = useState("");
+  const [jediTrials, setJediTrials] = useState(null);
+  const [passingTrials, setPassingTrials] = useState(false);
 
   // Баллы за рапорт (Report.points) относятся к автору рапорта — для рапортов, где
   // боец лишь указан участником, здесь этой суммы нет (баллы участника хранятся
@@ -119,6 +121,13 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
       .catch(() => setSpecializationBans([]));
   }
 
+  function loadJediTrials() {
+    api
+      .getMemberJediTrials(token, regimentId, member.discord_id)
+      .then(setJediTrials)
+      .catch(() => setJediTrials(null));
+  }
+
   useEffect(() => {
     api
       .getMemberReports(token, regimentId, member.discord_id)
@@ -134,8 +143,24 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     loadSpecializations();
     loadSpecializationBans();
     api.listSpecializations(token).then(setSpecializationCatalog).catch(() => setSpecializationCatalog([]));
+    if (regiment?.is_jedi_order && canEdit) loadJediTrials();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, regimentId, member.discord_id]);
+
+  async function handlePassJediTrial() {
+    setPassingTrials(true);
+    setError(null);
+    try {
+      const updated = await api.passMemberJediTrial(token, regimentId, member.discord_id);
+      setJediTrials(updated);
+      showToast(`Испытание ${updated.trials[updated.trials.length - 1]?.trial_number} отмечено сданным`);
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    } finally {
+      setPassingTrials(false);
+    }
+  }
 
   useEffect(() => {
     api.getRanks(token).then(setTiers).catch(() => setTiers([]));
@@ -573,6 +598,52 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           )
         )}
         {error && <p className="error-text">{error}</p>}
+
+        {jediTrials && (
+          <div className="regiment-panel fade-in-up">
+            <h4>Испытания Падавана</h4>
+            <ul className="requirement-checklist">
+              {[1, 2, 3, 4, 5].map((n) => {
+                const passedEntry = jediTrials.trials.find((t) => t.trial_number === n);
+                return (
+                  <li
+                    key={n}
+                    className={passedEntry ? "requirement-item requirement-item-done" : "requirement-item"}
+                  >
+                    <span className="requirement-check">{passedEntry && "✓"}</span>
+                    <span className="requirement-label">
+                      Испытание {n}
+                      {passedEntry &&
+                        ` — сдано ${formatMskDate(passedEntry.passed_at)} МСК (${formatFullName(passedEntry.passed_by)})`}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {jediTrials.next_trial_number != null ? (
+              <>
+                {jediTrials.next_trial_available_at &&
+                new Date(jediTrials.next_trial_available_at) > new Date() ? (
+                  <p className="hint-text">
+                    Испытание {jediTrials.next_trial_number} доступно с{" "}
+                    {formatMskDate(jediTrials.next_trial_available_at)} МСК
+                  </p>
+                ) : (
+                  <button type="button" disabled={passingTrials} onClick={handlePassJediTrial}>
+                    Отметить испытание {jediTrials.next_trial_number} сданным
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="hint-text">
+                Все 5 испытаний сданы.
+                {jediTrials.graduation_available_at && new Date(jediTrials.graduation_available_at) > new Date()
+                  ? ` Аттестация на Рыцаря доступна с ${formatMskDate(jediTrials.graduation_available_at)} МСК.`
+                  : " Аттестация на Рыцаря доступна — можно менять ранг выше."}
+              </p>
+            )}
+          </div>
+        )}
 
         <h4>Специализации</h4>
         {specializations.length === 0 ? (

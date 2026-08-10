@@ -303,6 +303,10 @@ export const api = {
     }),
   getMemberHistory: (token, regimentId, discordId) =>
     request(`/api/regiments/${regimentId}/members/${discordId}/history`, { token }),
+  getMemberJediTrials: (token, regimentId, discordId) =>
+    request(`/api/regiments/${regimentId}/members/${discordId}/jedi-trials`, { token }),
+  passMemberJediTrial: (token, regimentId, discordId) =>
+    request(`/api/regiments/${regimentId}/members/${discordId}/jedi-trials/pass`, { method: "POST", token }),
   uploadMemberPhoto: (token, regimentId, discordId, file) => {
     const formData = new FormData();
     formData.append("file", file);

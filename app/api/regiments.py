@@ -15,6 +15,7 @@ from app.core.uploads import read_image_upload
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import character as character_crud
+from app.crud import jedi_trial as jedi_trial_crud
 from app.crud import points_adjustment as points_adjustment_crud
 from app.crud import promotion as promotion_crud
 from app.crud import rank as rank_crud
@@ -38,6 +39,7 @@ _PHOTO_UPLOAD_ROOT = Path(__file__).resolve().parent.parent.parent / "uploads" /
 _ALLOWED_PHOTO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 _MAX_PHOTO_SIZE = 5 * 1024 * 1024  # 5 МБ
 from app.schemas.audit_log import AuditLogRead
+from app.schemas.jedi_trial import JediTrialProgressRead, JediTrialRead
 from app.schemas.promotion import PointsAdjustmentRead
 from app.schemas.rank import RankRead
 from app.schemas.regiment import DiscordRoleOption, RegimentCreate, RegimentRead, RegimentUpdate
@@ -105,6 +107,21 @@ async def _check_jedi_title_ceiling(db: AsyncSession, *, rang_rank_id: int | Non
         raise AppError("Звание не найдено")
     if order_index[jedi_title_id] > order_index[rang_rank.max_jedi_title_rank_id]:
         raise AppError("Звание выше потолка, допустимого для текущего ранга")
+
+
+async def _check_padawan_trials_complete(db: AsyncSession, target_user) -> None:
+    """Смена ранга на Рыцаря требует все 5 испытаний сданными + разрыв
+    GRADUATION_GAP_DAYS после пятого (см. app/crud/jedi_trial.py)."""
+    passed = await jedi_trial_crud.list_for_user(db, user_id=target_user.id)
+    if jedi_trial_crud.next_trial_number(passed) is not None:
+        raise AppError("Нельзя аттестовать на Рыцаря — сданы не все 5 испытаний")
+    available_at = jedi_trial_crud.graduation_available_at(passed)
+    now = datetime.now(timezone.utc)
+    if available_at is not None and now < available_at:
+        raise AppError(
+            f"Аттестация на Рыцаря доступна не раньше {available_at.strftime('%d.%m.%Y %H:%M')} МСК "
+            f"(разрыв после 5-го испытания)"
+        )
 
 
 @router.get("", response_model=list[RegimentRead])
@@ -918,6 +935,10 @@ async def update_member_profile(
         # индекс uq_users_single_grand_master — только один Гранд-Мастер сразу)
         if rank.jedi_manual_only and not is_admin_or_hc:
             raise ForbiddenError("Этот ранг может назначить только администратор или высшее командование")
+        # Аттестация на Рыцаря — все 5 испытаний должны быть сданы (см.
+        # app/crud/jedi_trial.py), проверяем только когда рангом реально меняем
+        if rank.code == "KNT" and existing_user is not None and existing_user.rank_id != rank.id:
+            await _check_padawan_trials_complete(db, existing_user)
 
     if "jedi_title_id" in changes and changes["jedi_title_id"] is not None:
         if not is_admin_or_hc:
@@ -1183,3 +1204,82 @@ async def get_member_reports(
         reports_by_id.setdefault(r.id, r)
     reports = sorted(reports_by_id.values(), key=lambda r: r.created_at, reverse=True)
     return [ReportRead.model_validate(r) for r in reports]
+
+
+async def _build_jedi_trial_progress(db: AsyncSession, target_user) -> JediTrialProgressRead:
+    passed = await jedi_trial_crud.list_for_user(db, user_id=target_user.id)
+    padawan_since = target_user.rank_assigned_at if target_user.rank and target_user.rank.code == "PDW" else None
+    return JediTrialProgressRead(
+        trials=[JediTrialRead.model_validate(t) for t in passed],
+        next_trial_number=jedi_trial_crud.next_trial_number(passed),
+        next_trial_available_at=jedi_trial_crud.earliest_available_at(passed, padawan_since=padawan_since),
+        graduation_available_at=jedi_trial_crud.graduation_available_at(passed),
+    )
+
+
+@router.get("/{regiment_id}/members/{discord_id}/jedi-trials", response_model=JediTrialProgressRead)
+async def get_member_jedi_trials(
+    regiment_id: int,
+    discord_id: str,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> JediTrialProgressRead:
+    """Прогресс по пяти испытаниям Падавана — см. app/crud/jedi_trial.py."""
+    if not access.is_commander_of(regiment_id):
+        raise ForbiddenError("Испытания видит только командир/заместитель формирования")
+    regiment = await _get_regiment_or_404(db, regiment_id)
+    if not regiment.is_jedi_order:
+        raise AppError("Испытания есть только у джедайских формирований")
+    target_user = await user_crud.get_by_discord_id_with_rank(db, discord_id)
+    if target_user is None:
+        raise NotFoundError("Участник не найден")
+    return await _build_jedi_trial_progress(db, target_user)
+
+
+@router.post("/{regiment_id}/members/{discord_id}/jedi-trials/pass", response_model=JediTrialProgressRead)
+async def pass_member_jedi_trial(
+    regiment_id: int,
+    discord_id: str,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> JediTrialProgressRead:
+    """Отмечает СЛЕДУЮЩЕЕ по порядку испытание сданным — отказывает, если все 5
+    уже сданы или ещё не прошёл обязательный разрыв в днях с предыдущего этапа
+    (TRIAL_GAP_DAYS, см. app/crud/jedi_trial.py)."""
+    if not access.is_commander_of(regiment_id):
+        raise ForbiddenError("Отмечать испытания может только командир/заместитель формирования")
+    regiment = await _get_regiment_or_404(db, regiment_id)
+    if not regiment.is_jedi_order:
+        raise AppError("Испытания есть только у джедайских формирований")
+    target_user = await user_crud.get_by_discord_id_with_rank(db, discord_id)
+    if target_user is None:
+        raise NotFoundError("Участник не найден")
+    if target_user.rank is None or target_user.rank.code != "PDW":
+        raise AppError("Испытания сдаёт только Падаван")
+
+    passed = await jedi_trial_crud.list_for_user(db, user_id=target_user.id)
+    trial_number = jedi_trial_crud.next_trial_number(passed)
+    if trial_number is None:
+        raise AppError("Все 5 испытаний уже сданы")
+    available_at = jedi_trial_crud.earliest_available_at(passed, padawan_since=target_user.rank_assigned_at)
+    now = datetime.now(timezone.utc)
+    if available_at is not None and now < available_at:
+        raise AppError(
+            f"Испытание {trial_number} доступно не раньше {available_at.strftime('%d.%m.%Y %H:%M')} МСК"
+        )
+
+    await jedi_trial_crud.mark_passed(
+        db, user_id=target_user.id, trial_number=trial_number, passed_by_user_id=access.user.id
+    )
+    logger.info(
+        "%s отметил испытание %s сданным для участника %s", access.user.username, trial_number, discord_id
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="jedi_trial_passed",
+        details=f"Отметил испытание {trial_number}/5 сданным участнику {discord_id}",
+        target_user_id=target_user.id,
+    )
+    return await _build_jedi_trial_progress(db, target_user)

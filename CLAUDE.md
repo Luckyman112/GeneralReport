@@ -225,6 +225,46 @@ exactly as before; ранг tiers participate normally except for the
 regiment ⇔ jedi-tier rank) still applies to `rank_id` only — `jedi_title_id` gets
 its own tier check inline in `update_member_profile`.
 
+**Падаван → Рыцарь: five gated trials** (migration 0080, `app/models/jedi_trial.py`,
+`app/crud/jedi_trial.py`). `JediTrial(user_id, trial_number 1-5, passed_at,
+passed_by_user_id)`, unique per `(user_id, trial_number)`. Each trial has a
+mandatory gap in days before it becomes markable — `TRIAL_GAP_DAYS = {1: 0, 2: 1,
+3: 2, 4: 1, 5: 2}`, counted from `User.rank_assigned_at` (trial 1) or the
+previous trial's `passed_at`; a further `GRADUATION_GAP_DAYS = 1` gates the
+Рыцарь promotion itself after trial 5. Commander/deputy of the jedi regiment
+marks the next trial via `POST .../jedi-trials/pass` (always advances
+sequentially, never picks a specific number) — rejected if the gap hasn't
+elapsed or all 5 are already done. `update_member_profile`
+(`app/api/regiments.py`) blocks setting `rank_id` to the `KNT` (Рыцарь) rank
+until `_check_padawan_trials_complete` passes — same friendly-`AppError`
+pattern as everywhere else in this file; trials are otherwise pure
+data/audit-trail, no relation to `PromotionRequest`.
+
+**Jedi specialization branches** (Защитники/Консулы/Стражи —
+`CATEGORY_JEDI_GUARDIAN`/`_CONSULAR`/`_SENTINEL`, `app/models/specialization.py`)
+reuse the existing `Specialization` catalog (min_rank/required_regiment/
+instructor-granted) exactly like medic/pilot/engineer, but are deliberately
+**not** added to `DISCIPLINE_CATEGORIES` — that constant is wired to fixed
+`RankTier.<category>_limit` columns and the `InstructorDiscipline` Literal
+(medic/pilot/engineer only), so any instructor can grant a jedi branch
+specialization today (gating this to a "Совет Ордена" role is planned as a
+separate feature, not built yet). Hard rule enforced in
+`_check_can_grant` (`app/api/specializations.py`): a specialization from one
+branch can't be granted to someone who already holds a specialization from a
+*different* branch — branches don't mix, checked via `JEDI_BRANCH_CATEGORIES`.
+The specializations themselves (Фехтовальщик/Целитель/Хранитель/etc., plus the
+branch-agnostic Ас/Конструктор/Библиотекарь) are catalog data added through the
+existing Admin Panel UI, not a migration.
+
+**Report category daily cap** (`ReportCategory.max_per_day`, migration 0079) —
+generic, not jedi-specific: caps how many times one author can file a given
+category per calendar day (checked in
+`_check_category_filing_restrictions`/`app/api/reports.py` via
+`report_crud.count_reports(since=<start of today UTC>)`). `None` = unlimited,
+as before. Configured per-category in `CategoryManagerModal.jsx`'s
+"restrictions" panel (same place as `min_rank`/`commander_only`), not
+available at category-creation time — same convention as those two fields.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
