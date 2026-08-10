@@ -10,6 +10,8 @@ export const SPECIALIZATION_CATEGORIES = [
   { value: "jedi_guardian", label: "Джедаи — Защитники" },
   { value: "jedi_consular", label: "Джедаи — Консулы" },
   { value: "jedi_sentinel", label: "Джедаи — Стражи" },
+  { value: "jedi_force_ability", label: "Джедаи — способность Силы" },
+  { value: "jedi_saber_form", label: "Джедаи — стойка меча" },
 ];
 
 // категории-дисциплины: выдаёт только инструктор соответствующей роли

@@ -356,7 +356,7 @@ export const api = {
     request(`/api/admin/health?stale_days=${staleDays}`, { token }),
   createSpecialization: (
     token,
-    { code, name, category, minRankId, requiredRegimentId, parentId, prerequisiteSpecializationIds }
+    { code, name, category, minRankId, requiredRegimentId, parentId, prerequisiteSpecializationIds, isSingleton }
   ) =>
     request("/api/specializations", {
       method: "POST",
@@ -369,12 +369,13 @@ export const api = {
         required_regiment_id: requiredRegimentId ?? null,
         parent_id: parentId ?? null,
         prerequisite_specialization_ids: prerequisiteSpecializationIds ?? [],
+        is_singleton: isSingleton ?? false,
       },
     }),
   updateSpecialization: (
     token,
     specializationId,
-    { code, name, category, minRankId, requiredRegimentId, parentId, prerequisiteSpecializationIds }
+    { code, name, category, minRankId, requiredRegimentId, parentId, prerequisiteSpecializationIds, isSingleton }
   ) =>
     request(`/api/specializations/${specializationId}`, {
       method: "PATCH",
@@ -387,6 +388,7 @@ export const api = {
         required_regiment_id: requiredRegimentId,
         parent_id: parentId,
         prerequisite_specialization_ids: prerequisiteSpecializationIds,
+        is_singleton: isSingleton,
       },
     }),
   deleteSpecialization: (token, specializationId) =>

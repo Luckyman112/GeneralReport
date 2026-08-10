@@ -18,6 +18,8 @@ SpecializationCategory = Literal[
     "jedi_guardian",
     "jedi_consular",
     "jedi_sentinel",
+    "jedi_force_ability",
+    "jedi_saber_form",
 ]
 
 
@@ -34,6 +36,8 @@ class SpecializationRead(BaseModel):
     # "Нужны ВСЕ из" (ступень "Старший" — см. SpecializationPrerequisite), в
     # отличие от parent_id — "нужна ровно одна конкретная"
     prerequisite_specialization_ids: list[int] = []
+    # Держать может только один боец сразу (например стойка "Ваапад")
+    is_singleton: bool = False
 
 
 class SpecializationCreate(BaseModel):
@@ -46,6 +50,7 @@ class SpecializationCreate(BaseModel):
     # Подспециализация — выдать её можно только тем, у кого уже есть родительская
     parent_id: int | None = None
     prerequisite_specialization_ids: list[int] = []
+    is_singleton: bool = False
 
 
 class SpecializationUpdate(BaseModel):
@@ -61,6 +66,7 @@ class SpecializationUpdate(BaseModel):
     required_regiment_id: int | None = None
     parent_id: int | None = None
     prerequisite_specialization_ids: list[int] | None = None
+    is_singleton: bool | None = None
 
 
 class UserSpecializationRead(BaseModel):

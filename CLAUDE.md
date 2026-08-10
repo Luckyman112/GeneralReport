@@ -265,6 +265,41 @@ as before. Configured per-category in `CategoryManagerModal.jsx`'s
 "restrictions" panel (same place as `min_rank`/`commander_only`), not
 available at category-creation time — same convention as those two fields.
 
+**Jedi Council** (`User.jedi_council_seat`, migration 0081) — 4 branch-head
+titles (Консулы/Защитники/Стражи/Ученичество), plain `unique=True` string
+column (not partial — NULL is exempt from uniqueness in standard SQL, so this
+alone guarantees at most one holder per seat value without needing a Grand-
+Master-style partial index). Deliberately carries **zero** permissions —
+`AccessContext`/`_compute_permission_fields` never reads it; unlike
+`RegimentCommander`, which grants full deputy-level access on ANY `role_type`
+assignment (see `commander_regiment_ids` in `app/api/deps.py`), so Council
+titles intentionally do NOT go through that table. Changed only by
+`is_admin`/`is_high_command` via the same `update_member_profile` endpoint as
+`jedi_title_id`, same `IntegrityError`→friendly-`AppError` pattern for a seat
+that's already taken.
+
+**Jedi "trained a padawan" promotion gate** — Рыцарь→Мастер additionally
+requires having mentored at least one padawan through to Рыцарь, checked via
+`jedi_trial_crud.has_trained_a_padawan` (any `JediTrial` row with
+`trial_number=5` where this user is `passed_by_user_id`) — wired into both
+`promotion_crud.check_and_create_promotion_request` (blocks the auto-fire) and
+`PromotionStatusRead.jedi_needs_trained_padawan` (UI hint), gated on
+`regiment.is_jedi_order and next_rank.code == "MST"` so it's invisible to
+every non-jedi promotion path.
+
+**Singleton specializations** (`Specialization.is_singleton`, migration
+0082) — for one-of-a-kind grants (e.g. the "Ваапад" saber form): at most one
+user may hold it at a time, checked in `_check_can_grant`
+(`get_singleton_holder_id`). Deliberately **application-level only**, no DB
+constraint — unlike the Grand-Master/Council patterns above, the specific
+specialization row doesn't exist yet at migration time (specializations are
+catalog data added through the Admin Panel UI, not migrations), so a partial
+unique index naming its id can't be written upfront; the race window is
+accepted as low-risk (instructor-driven, infrequent, manual grants).
+Force-ability/saber-form catalog data (`jedi_force_ability`/`jedi_saber_form`
+categories) is added the same way — through the Admin Panel, not migrations —
+same as jedi branch specializations above.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get

@@ -87,6 +87,11 @@ async def _check_can_grant(db: AsyncSession, target: User, specialization: Speci
             regiment_label = specialization.required_regiment.name if specialization.required_regiment else "формирования"
             raise AppError(f"Эта специализация доступна только бойцам формирования «{regiment_label}»")
 
+    if specialization.is_singleton:
+        holder_id = await specialization_crud.get_singleton_holder_id(db, specialization_id=specialization.id)
+        if holder_id is not None and holder_id != target.id:
+            raise AppError(f"«{specialization.name}» — исключение, одновременно может держать только один боец")
+
     # Ветки джедаев (Защитники/Консулы/Стражи) — выбор одной ветки раз и
     # навсегда, специализацию из другой ветки выдать нельзя (см. решение
     # пользователя), JEDI_BRANCH_CATEGORIES
@@ -260,6 +265,7 @@ async def create_specialization(
         required_regiment_id=payload.required_regiment_id,
         parent_id=payload.parent_id,
         prerequisite_specialization_ids=payload.prerequisite_specialization_ids,
+        is_singleton=payload.is_singleton,
     )
     logger.info("%s добавил специализацию %s (%s)", access.user.username, specialization.code, specialization.name)
     return await _to_specialization_read(db, specialization)

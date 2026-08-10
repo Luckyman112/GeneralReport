@@ -80,6 +80,7 @@ async def create(
     required_regiment_id: int | None = None,
     parent_id: int | None = None,
     prerequisite_specialization_ids: list[int] | None = None,
+    is_singleton: bool = False,
 ) -> Specialization:
     specialization = Specialization(
         code=code,
@@ -88,6 +89,7 @@ async def create(
         min_rank_id=min_rank_id,
         required_regiment_id=required_regiment_id,
         parent_id=parent_id,
+        is_singleton=is_singleton,
     )
     db.add(specialization)
     try:
@@ -147,6 +149,15 @@ async def list_prerequisites(db: AsyncSession, specialization_id: int) -> list[S
         .order_by(Specialization.name)
     )
     return list(result.scalars().all())
+
+
+async def get_singleton_holder_id(db: AsyncSession, *, specialization_id: int) -> int | None:
+    """user_id текущего держателя специализации-исключения (is_singleton) —
+    None, если её ещё никто не держит. См. _check_can_grant."""
+    result = await db.execute(
+        select(UserSpecialization.user_id).where(UserSpecialization.specialization_id == specialization_id)
+    )
+    return result.scalars().first()
 
 
 async def has_specialization(db: AsyncSession, *, user_id: int, specialization_id: int) -> bool:

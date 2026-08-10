@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -38,6 +38,13 @@ CATEGORY_JEDI_CONSULAR = "jedi_consular"
 CATEGORY_JEDI_SENTINEL = "jedi_sentinel"
 JEDI_BRANCH_CATEGORIES = [CATEGORY_JEDI_GUARDIAN, CATEGORY_JEDI_CONSULAR, CATEGORY_JEDI_SENTINEL]
 
+# Способности Силы и стойки светового меча у джедаев — не эксклюзивны между
+# собой (можно знать сколько угодно техник/стоек разом, в отличие от веток),
+# просто отдельные категории каталога для удобной фильтрации. Стойка "Ваапад"
+# помечается is_singleton=true через каталог (не здесь — это данные, не код).
+CATEGORY_JEDI_FORCE_ABILITY = "jedi_force_ability"
+CATEGORY_JEDI_SABER_FORM = "jedi_saber_form"
+
 # Иерархия внутри дисциплины — тот же принцип, что у командования формирования
 # (командир/зам/боец), только по ветке (медик/пилот/инженер), не по формированию.
 # Права нарастают по ступеням (см. AccessContext.is_discipline_deputy/_curator).
@@ -60,6 +67,8 @@ SPECIALIZATION_CATEGORIES = [
     CATEGORY_ELITE_SPECIALIZATION,
     *DISCIPLINE_CATEGORIES,
     *JEDI_BRANCH_CATEGORIES,
+    CATEGORY_JEDI_FORCE_ABILITY,
+    CATEGORY_JEDI_SABER_FORM,
 ]
 # Специализация с этим кодом освобождает бойца от всех лимитов на обучение по
 # составу (см. вики: "ЭРК [ARC] - Без ограничений")
@@ -97,6 +106,12 @@ class Specialization(Base):
     # пока у бойца нет родительской (см. _check_can_grant)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("specializations.id"), nullable=True)
     parent: Mapped["Specialization | None"] = relationship(remote_side=[id])
+    # Специализация-исключение — держать может только один боец сразу (например
+    # стойка меча "Ваапад" у джедаев). Проверяется в _check_can_grant при выдаче
+    # (application-level, без partial unique index — id специализации не
+    # известен заранее, заводится через каталог в админ-панели, не миграцией;
+    # выдача — редкое ручное действие инструктора, риск гонки принят).
+    is_singleton: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class SpecializationPrerequisite(Base):

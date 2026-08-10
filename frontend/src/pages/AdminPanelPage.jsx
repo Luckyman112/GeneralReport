@@ -79,6 +79,7 @@ export function AdminPanelPage() {
   const [newSpecParentId, setNewSpecParentId] = useState("");
   const [newSpecRequiredRegimentId, setNewSpecRequiredRegimentId] = useState("");
   const [newSpecPrerequisiteIds, setNewSpecPrerequisiteIds] = useState([]);
+  const [newSpecIsSingleton, setNewSpecIsSingleton] = useState(false);
   const [editingSpecId, setEditingSpecId] = useState(null);
   const [editSpecCode, setEditSpecCode] = useState("");
   const [editSpecName, setEditSpecName] = useState("");
@@ -86,6 +87,7 @@ export function AdminPanelPage() {
   const [editSpecParentId, setEditSpecParentId] = useState("");
   const [editSpecRequiredRegimentId, setEditSpecRequiredRegimentId] = useState("");
   const [editSpecPrerequisiteIds, setEditSpecPrerequisiteIds] = useState([]);
+  const [editSpecIsSingleton, setEditSpecIsSingleton] = useState(false);
 
   const [systemHealth, setSystemHealth] = useState(null);
   const [healthStaleDays, setHealthStaleDays] = useState(3);
@@ -141,6 +143,7 @@ export function AdminPanelPage() {
         requiredRegimentId: newSpecRequiredRegimentId === "" ? null : Number(newSpecRequiredRegimentId),
         parentId: newSpecParentId === "" ? null : Number(newSpecParentId),
         prerequisiteSpecializationIds: newSpecPrerequisiteIds,
+        isSingleton: newSpecIsSingleton,
       });
       setNewSpecCode("");
       setNewSpecName("");
@@ -148,6 +151,7 @@ export function AdminPanelPage() {
       setNewSpecParentId("");
       setNewSpecRequiredRegimentId("");
       setNewSpecPrerequisiteIds([]);
+      setNewSpecIsSingleton(false);
       loadSpecializations();
       showToast("Специализация добавлена");
     } catch (e) {
@@ -164,6 +168,7 @@ export function AdminPanelPage() {
     setEditSpecParentId(s.parent_id ?? "");
     setEditSpecRequiredRegimentId(s.required_regiment_id ?? "");
     setEditSpecPrerequisiteIds(s.prerequisite_specialization_ids ?? []);
+    setEditSpecIsSingleton(s.is_singleton ?? false);
   }
 
   function cancelEditSpecialization() {
@@ -180,6 +185,7 @@ export function AdminPanelPage() {
         requiredRegimentId: editSpecRequiredRegimentId === "" ? null : Number(editSpecRequiredRegimentId),
         parentId: editSpecParentId === "" ? null : Number(editSpecParentId),
         prerequisiteSpecializationIds: editSpecPrerequisiteIds,
+        isSingleton: editSpecIsSingleton,
       });
       setEditingSpecId(null);
       loadSpecializations();
@@ -905,6 +911,14 @@ export function AdminPanelPage() {
                         onChange={setEditSpecPrerequisiteIds}
                         placeholder="Требуются все — выбрать"
                       />
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={editSpecIsSingleton}
+                          onChange={(e) => setEditSpecIsSingleton(e.target.checked)}
+                        />
+                        Исключение (один боец на весь сервер)
+                      </label>
                       <button type="button" onClick={() => handleSaveSpecialization(s.id)}>
                         Сохранить
                       </button>
@@ -938,6 +952,7 @@ export function AdminPanelPage() {
                           )
                         </span>
                       )}
+                      {s.is_singleton && <span className="tag-mandatory">исключение — 1 боец</span>}
                       <button type="button" title="Редактировать" onClick={() => startEditSpecialization(s)}>
                         ✎
                       </button>
@@ -1004,6 +1019,14 @@ export function AdminPanelPage() {
             onChange={setNewSpecPrerequisiteIds}
             placeholder="Требуются все — выбрать"
           />
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={newSpecIsSingleton}
+              onChange={(e) => setNewSpecIsSingleton(e.target.checked)}
+            />
+            Исключение (один боец на весь сервер)
+          </label>
           <button type="button" disabled={!newSpecCode.trim() || !newSpecName.trim()} onClick={handleAddSpecialization}>
             Добавить
           </button>
