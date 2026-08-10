@@ -3,6 +3,8 @@ from app.models.app_settings import AppSettings
 from app.models.audit_log import AuditLog
 from app.models.character import Character
 from app.models.event import Event, EventMap, EventStatus
+from app.models.event_activity_report import EventActivityReport, EventActivityReportStatus
+from app.models.event_booking import EventBooking, EventBookingStatus
 from app.models.jedi_trial import JediTrial
 from app.models.leave_request import LeaveRequest
 from app.models.notification import Notification, NotificationRead

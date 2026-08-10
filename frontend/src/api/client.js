@@ -779,6 +779,40 @@ export const api = {
     return response.blob();
   },
 
+  listEventActivityReports: (token) => request("/api/event-activity-reports", { token }),
+  createEventActivityReport: (token, { eventType, payload }) =>
+    request("/api/event-activity-reports", { method: "POST", token, body: { event_type: eventType, payload } }),
+  decideEventActivityReport: (token, reportId, { status, rejectionReason }) =>
+    request(`/api/event-activity-reports/${reportId}`, {
+      method: "PATCH",
+      token,
+      body: { status, rejection_reason: rejectionReason || null },
+    }),
+  uploadEventActivityReportAttachment: (token, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request("/api/event-activity-reports/attachments", { method: "POST", token, body: formData });
+  },
+  getEventActivitySummary: (token) => request("/api/event-activity-reports/activity-summary", { token }),
+
+  listEventBookings: (token, { rangeStart, rangeEnd }) =>
+    request(
+      `/api/event-bookings?range_start=${encodeURIComponent(rangeStart)}&range_end=${encodeURIComponent(rangeEnd)}`,
+      { token }
+    ),
+  createEventBooking: (token, { title, startsAt, endsAt }) =>
+    request("/api/event-bookings", {
+      method: "POST",
+      token,
+      body: { title, starts_at: startsAt, ends_at: endsAt },
+    }),
+  decideEventBooking: (token, bookingId, { status, rejectionReason }) =>
+    request(`/api/event-bookings/${bookingId}`, {
+      method: "PATCH",
+      token,
+      body: { status, rejection_reason: rejectionReason || null },
+    }),
+
   listAdminReports: (token) => request("/api/admin-reports", { token }),
   createAdminReport: (token, { reportType, payload }) =>
     request("/api/admin-reports", { method: "POST", token, body: { report_type: reportType, payload } }),

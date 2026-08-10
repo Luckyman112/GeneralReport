@@ -79,7 +79,14 @@ class AppSettings(Base):
     # Ивентрум — независимая от INS/DEP/CU ролевая система: Ивентолог подаёт заявку
     # на ивент, Куратор/Ассистент ивентологии одобряют/отклоняют (см.
     # AccessContext.is_event_submitter/_assistant/_curator в app/api/deps.py)
+    # Лестница допуска к подаче заявок/отчётов — 5 ступеней (Младший/Обычный/
+    # Старший Ивентолог -> Ассистент -> Куратор), но только последние две
+    # (assistant/curator) имеют право ОДОБРЯТЬ (см. is_event_submitter/
+    # can_decide_event в app/api/deps.py) — младшие три ступени дают только
+    # допуск к подаче, без доп. прав (решение пользователя)
+    event_junior_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     event_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    event_senior_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     event_assistant_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     event_curator_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Discord-канал, куда бот шлёт сообщение об одобренном ивенте (Bot API, не

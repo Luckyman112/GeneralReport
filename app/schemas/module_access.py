@@ -18,7 +18,9 @@ class ModuleAccessRead(BaseModel):
     mentor_source_regiment_ids: list[int]
     report_appeal_regiment_ids: list[int]
     report_appeal_role_ids: list[str]
+    event_junior_role_id: str | None
     event_role_id: str | None
+    event_senior_role_id: str | None
     event_assistant_role_id: str | None
     event_curator_role_id: str | None
     event_notify_channel_id: str | None
@@ -47,7 +49,9 @@ class ModuleAccessUpdate(BaseModel):
     report_appeal_regiment_ids: list[int] | None = None
     report_appeal_role_ids: list[str] | None = None
     mentor_source_regiment_ids: list[int] | None = None
+    event_junior_role_id: str | None = None
     event_role_id: str | None = None
+    event_senior_role_id: str | None = None
     event_assistant_role_id: str | None = None
     event_curator_role_id: str | None = None
     event_notify_channel_id: str | None = None

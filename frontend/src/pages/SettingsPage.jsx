@@ -262,12 +262,41 @@ function ModuleAccessSettings() {
 
       <h4>Ивентрум</h4>
       <p className="hint-text">
-        Независимая от инструкторской ролевая система: Ивентолог подаёт заявку на ивент, Ассистент/Куратор
-        ивентологии одобряют — при одобрении бот отправляет сообщение в выбранный канал.
+        Независимая от инструкторской ролевая система: 5 ступеней (Младший/Обычный/Старший Ивентолог подают
+        заявки/отчёты, только Ассистент/Куратор одобряют) — при одобрении заявки на ивент бот отправляет сообщение в
+        выбранный канал.
       </p>
       <label>
-        Discord-роль «Ивентолог» (подаёт заявки):
+        Discord-роль «Младший Ивентолог» (подаёт заявки/отчёты):
+        <select
+          value={access.event_junior_role_id || ""}
+          onChange={(e) => setSingleField("event_junior_role_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Discord-роль «Ивентолог» (подаёт заявки/отчёты):
         <select value={access.event_role_id || ""} onChange={(e) => setSingleField("event_role_id", e.target.value)}>
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Discord-роль «Старший Ивентолог» (подаёт заявки/отчёты):
+        <select
+          value={access.event_senior_role_id || ""}
+          onChange={(e) => setSingleField("event_senior_role_id", e.target.value)}
+        >
           <option value="">— не выбрано —</option>
           {roles.map((r) => (
             <option key={r.id} value={r.id}>

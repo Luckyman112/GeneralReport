@@ -17,6 +17,8 @@ from app.api.auth import router as auth_router
 from app.api.backups import router as backups_router
 from app.api.backups import sessions_router as sessions_router
 from app.api.characters import router as characters_router
+from app.api.event_activity_reports import router as event_activity_reports_router
+from app.api.event_bookings import router as event_bookings_router
 from app.api.event_room import router as event_room_router
 from app.api.events import router as events_router
 from app.api.health import router as health_router
@@ -105,6 +107,8 @@ app.include_router(maintenance_router, prefix="/api")
 app.include_router(specializations_router, prefix="/api")
 app.include_router(steam_router, prefix="/api")
 app.include_router(event_room_router, prefix="/api")
+app.include_router(event_activity_reports_router, prefix="/api")
+app.include_router(event_bookings_router, prefix="/api")
 app.include_router(admin_reports_router, prefix="/api")
 
 

@@ -311,6 +311,42 @@ Force-ability/saber-form catalog data (`jedi_force_ability`/`jedi_saber_form`
 categories) is added the same way — through the Admin Panel, not migrations —
 same as jedi branch specializations above.
 
+### Ивентрум extensions (5-tier ladder, activity reports, booking calendar)
+The original 2-role approval system (`event_assistant_role_id`/
+`event_curator_role_id`) is unchanged — `can_decide_event` still means
+Assistant+/Curator only. What's new is 3 more nullable `AppSettings` columns
+(`event_junior_role_id`, `event_senior_role_id`, plus the pre-existing
+`event_role_id` renamed in spirit to "regular") that only widen who counts as
+`is_event_submitter` — junior/regular/senior confer zero additional
+permissions, by explicit user decision.
+
+`EventActivityReport` (`app/models/event_activity_report.py`) — completion
+reports for a conducted event ("Мини-ивент"/"Боевой вылет"), distinct from
+`Event` (a booking/request made *before* the event, with location/plot). Same
+freeform-JSON-payload shape as `Event`/`AdminReport`; approval is
+`can_decide_event` (unchanged 2-role gate), submission is
+`is_event_submitter` (all 5 tiers). Activity summary
+(`GET /event-activity-reports/activity-summary`) is a near-duplicate of
+`admin_report_crud.activity_summary_for_user_ids` — if a third domain needs
+this shape, consider extracting the aggregation into a shared helper instead
+of copying a third time.
+
+`EventBooking` (`app/models/event_booking.py`) — date/time slot reservation
+ahead of running an event, so two Ивентологи can't double-book the same
+window; `app/api/event_bookings.py::create_booking` rejects on overlap with
+any non-rejected booking (`event_booking_crud.list_in_range` — half-open
+interval overlap check, `starts_at < range_end AND ends_at > range_start`).
+Same `can_decide_event`/`is_event_submitter` gates. Frontend
+`EventBookingCalendar.jsx` is a hand-rolled month grid (no date library in
+this project) — click a day to open a prefilled (18:00–20:00) booking form.
+
+Both new features render as extra sections appended to the existing
+`EventRoomPage.jsx` (`<EventBookingCalendar />`, `<EventActivityReports />`)
+rather than new routes/sidebar entries — they're part of Ивентрум, not
+sibling features (contrast with Администрация below, which got its own page
+because it's a wholly new non-RP concept, not an extension of something
+already on a page).
+
 ### Administration (non-RP staff role, separate from is_admin)
 "Администрация" (game moderation staff — bans/mutes/item grants) is
 deliberately **not** a `Regiment` — membership doesn't correlate with RP

@@ -111,7 +111,9 @@ class AccessContext:
     report_reject_user_discord_ids: set[str] = field(default_factory=set)
     # Ивентрум — независимая от INS/DEP/CU ролевая система, см.
     # app/models/app_settings.py::event_role_id/event_assistant_role_id/event_curator_role_id
+    event_junior_role_id: str | None = None
     event_role_id: str | None = None
+    event_senior_role_id: str | None = None
     event_assistant_role_id: str | None = None
     event_curator_role_id: str | None = None
     # Администрация — нон-РП должность, независимая от Regiment (см.
@@ -136,12 +138,17 @@ class AccessContext:
 
     @property
     def is_event_submitter(self) -> bool:
-        """Роль Ивентолога, а также Ассистент/Куратор ивентологии и создатель
-        (is_founder — включает и локального админа, см. его определение) — все
-        они тоже могут подавать заявки, не только рядовой Ивентолог (см.
-        решение пользователя)."""
+        """Любая из 5 ступеней лестницы (Младший/Обычный/Старший Ивентолог,
+        Ассистент, Куратор) может подавать заявки/отчёты — младшие три ступени
+        дают ТОЛЬКО это, никаких доп. прав (решение пользователя, см.
+        app/models/app_settings.py::event_junior_role_id/event_senior_role_id).
+        Плюс создатель (is_founder — включает и локального админа)."""
+        junior_or_senior = (self.event_junior_role_id and self.event_junior_role_id in self.role_ids) or (
+            self.event_senior_role_id and self.event_senior_role_id in self.role_ids
+        )
         return bool(
             (self.event_role_id and self.event_role_id in self.role_ids)
+            or junior_or_senior
             or self.is_event_assistant
             or self.is_event_curator
             or self.is_founder
@@ -509,7 +516,9 @@ def _build_access_context(
         report_appeal_role_ids=set(app_config.report_appeal_role_ids),
         report_reject_role_ids=set(app_config.report_reject_role_ids),
         report_reject_user_discord_ids=set(app_config.report_reject_user_discord_ids),
+        event_junior_role_id=app_config.event_junior_role_id,
         event_role_id=app_config.event_role_id,
+        event_senior_role_id=app_config.event_senior_role_id,
         event_assistant_role_id=app_config.event_assistant_role_id,
         event_curator_role_id=app_config.event_curator_role_id,
         admin_staff_junior_role_id=app_config.admin_staff_junior_role_id,

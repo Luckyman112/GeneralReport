@@ -53,7 +53,9 @@ async def update_module_access(
     # списки, где "" не бывает) — пустая строка из <select> "не выбрано" должна
     # стать NULL, а не буквально сохранённой пустой строкой
     for key in (
+        "event_junior_role_id",
         "event_role_id",
+        "event_senior_role_id",
         "event_assistant_role_id",
         "event_curator_role_id",
         "event_notify_channel_id",

@@ -3,6 +3,8 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { DateTimePicker } from "../components/DateTimePicker";
 import { EmptyState } from "../components/EmptyState";
+import { EventActivityReports } from "../components/EventActivityReports";
+import { EventBookingCalendar } from "../components/EventBookingCalendar";
 import { InlineSpinner } from "../components/InlineSpinner";
 import { MemberSearchPicker } from "../components/MemberSearchPicker";
 import { formatFullName } from "../utils/formatName";
@@ -849,6 +851,9 @@ export function EventRoomPage() {
       </div>
 
       {canDecide && <RosterPanel />}
+
+      <EventBookingCalendar />
+      <EventActivityReports />
     </div>
   );
 }
