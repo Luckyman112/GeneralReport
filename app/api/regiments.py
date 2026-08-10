@@ -417,8 +417,9 @@ async def update_category(
         or category.is_demotion
         or category.is_training
         or category.is_recruit_promotion
+        or category.is_jedi_trial_report
     ):
-        raise AppError("Совместной категорией не может быть системная (задержание/повышение/понижение/обучение/КМБ)")
+        raise AppError("Совместной категорией не может быть системная (задержание/повышение/понижение/обучение/КМБ/наставничество)")
     # is_detention системный, вручную не редактируется (категория задержания заводится
     # автоматически при создании формирования)
     changes.pop("is_detention", None)
@@ -451,6 +452,7 @@ async def delete_category(
         or category.is_demotion
         or category.is_training
         or category.is_recruit_promotion
+        or category.is_jedi_trial_report
     ):
         raise ForbiddenError("Это системная категория, её нельзя удалить")
     if not access.can_manage_categories(regiment_id) and not await _can_manage_discipline_category(
@@ -1249,50 +1251,7 @@ async def get_member_jedi_trials(
     return await _build_jedi_trial_progress(db, target_user)
 
 
-@router.post("/{regiment_id}/members/{discord_id}/jedi-trials/pass", response_model=JediTrialProgressRead)
-async def pass_member_jedi_trial(
-    regiment_id: int,
-    discord_id: str,
-    db: AsyncSession = Depends(get_db),
-    access: AccessContext = Depends(get_access_context),
-) -> JediTrialProgressRead:
-    """Отмечает СЛЕДУЮЩЕЕ по порядку испытание сданным — отказывает, если все 5
-    уже сданы или ещё не прошёл обязательный разрыв в днях с предыдущего этапа
-    (TRIAL_GAP_DAYS, см. app/crud/jedi_trial.py)."""
-    if not access.is_commander_of(regiment_id):
-        raise ForbiddenError("Отмечать испытания может только командир/заместитель формирования")
-    regiment = await _get_regiment_or_404(db, regiment_id)
-    if not regiment.is_jedi_order:
-        raise AppError("Испытания есть только у джедайских формирований")
-    target_user = await user_crud.get_by_discord_id_with_rank(db, discord_id)
-    if target_user is None:
-        raise NotFoundError("Участник не найден")
-    if target_user.rank is None or target_user.rank.code != "PDW":
-        raise AppError("Испытания сдаёт только Падаван")
-
-    passed = await jedi_trial_crud.list_for_user(db, user_id=target_user.id)
-    trial_number = jedi_trial_crud.next_trial_number(passed)
-    if trial_number is None:
-        raise AppError("Все 5 испытаний уже сданы")
-    available_at = jedi_trial_crud.earliest_available_at(passed, padawan_since=target_user.rank_assigned_at)
-    now = datetime.now(timezone.utc)
-    if available_at is not None and now < available_at:
-        raise AppError(
-            f"Испытание {trial_number} доступно не раньше {available_at.strftime('%d.%m.%Y %H:%M')} МСК"
-        )
-
-    await jedi_trial_crud.mark_passed(
-        db, user_id=target_user.id, trial_number=trial_number, passed_by_user_id=access.user.id
-    )
-    logger.info(
-        "%s отметил испытание %s сданным для участника %s", access.user.username, trial_number, discord_id
-    )
-    await audit_log_crud.log(
-        db,
-        actor_user_id=access.user.id,
-        actor_is_admin=access.is_admin,
-        action="jedi_trial_passed",
-        details=f"Отметил испытание {trial_number}/5 сданным участнику {discord_id}",
-        target_user_id=target_user.id,
-    )
-    return await _build_jedi_trial_progress(db, target_user)
+# Испытания отмечаются одобрением рапорта категории "Наставничество"
+# (is_jedi_trial_report, см. app/api/reports.py::_apply_approval_side_effects),
+# не отдельной ручкой — раньше здесь был POST .../jedi-trials/pass, убран по
+# решению пользователя в пользу рапортов (баллы наставнику + видно в истории).

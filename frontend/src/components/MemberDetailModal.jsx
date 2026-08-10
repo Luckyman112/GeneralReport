@@ -72,7 +72,6 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [newBanPermanent, setNewBanPermanent] = useState(false);
   const [newBanReason, setNewBanReason] = useState("");
   const [jediTrials, setJediTrials] = useState(null);
-  const [passingTrials, setPassingTrials] = useState(false);
 
   // Баллы за рапорт (Report.points) относятся к автору рапорта — для рапортов, где
   // боец лишь указан участником, здесь этой суммы нет (баллы участника хранятся
@@ -158,20 +157,6 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, regimentId, member.discord_id]);
 
-  async function handlePassJediTrial() {
-    setPassingTrials(true);
-    setError(null);
-    try {
-      const updated = await api.passMemberJediTrial(token, regimentId, member.discord_id);
-      setJediTrials(updated);
-      showToast(`Испытание ${updated.trials[updated.trials.length - 1]?.trial_number} отмечено сданным`);
-    } catch (e) {
-      setError(e.message);
-      showToast(e.message, "error");
-    } finally {
-      setPassingTrials(false);
-    }
-  }
 
   useEffect(() => {
     api.getRanks(token).then(setTiers).catch(() => setTiers([]));
@@ -652,19 +637,11 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
               })}
             </ul>
             {jediTrials.next_trial_number != null ? (
-              <>
-                {jediTrials.next_trial_available_at &&
-                new Date(jediTrials.next_trial_available_at) > new Date() ? (
-                  <p className="hint-text">
-                    Испытание {jediTrials.next_trial_number} доступно с{" "}
-                    {formatMskDate(jediTrials.next_trial_available_at)} МСК
-                  </p>
-                ) : (
-                  <button type="button" disabled={passingTrials} onClick={handlePassJediTrial}>
-                    Отметить испытание {jediTrials.next_trial_number} сданным
-                  </button>
-                )}
-              </>
+              <p className="hint-text">
+                {jediTrials.next_trial_available_at && new Date(jediTrials.next_trial_available_at) > new Date()
+                  ? `Испытание ${jediTrials.next_trial_number} доступно с ${formatMskDate(jediTrials.next_trial_available_at)} МСК`
+                  : `Испытание ${jediTrials.next_trial_number} доступно — наставник подаёт рапорт «Наставничество»`}
+              </p>
             ) : (
               <p className="hint-text">
                 Все 5 испытаний сданы.

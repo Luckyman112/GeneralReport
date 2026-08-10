@@ -231,14 +231,25 @@ passed_by_user_id)`, unique per `(user_id, trial_number)`. Each trial has a
 mandatory gap in days before it becomes markable — `TRIAL_GAP_DAYS = {1: 0, 2: 1,
 3: 2, 4: 1, 5: 2}`, counted from `User.rank_assigned_at` (trial 1) or the
 previous trial's `passed_at`; a further `GRADUATION_GAP_DAYS = 1` gates the
-Рыцарь promotion itself after trial 5. Commander/deputy of the jedi regiment
-marks the next trial via `POST .../jedi-trials/pass` (always advances
-sequentially, never picks a specific number) — rejected if the gap hasn't
-elapsed or all 5 are already done. `update_member_profile`
+Рыцарь promotion itself after trial 5. `update_member_profile`
 (`app/api/regiments.py`) blocks setting `rank_id` to the `KNT` (Рыцарь) rank
 until `_check_padawan_trials_complete` passes — same friendly-`AppError`
-pattern as everywhere else in this file; trials are otherwise pure
-data/audit-trail, no relation to `PromotionRequest`.
+pattern as everywhere else in this file.
+
+Trials are marked via **report approval, not a direct button** (migration
+0083, `ReportCategory.is_jedi_trial_report`, system flag like
+`is_recruit_promotion`) — the mentor files a "Наставничество" report
+targeting the padawan (`_resolve_jedi_trial_target` validates gate/eligibility
+at submission so it fails fast), a commander/deputy of the jedi regiment
+decides it normally (not auto-approved, unlike `is_training`/
+`is_recruit_promotion`), and *approval* is what calls
+`jedi_trial_crud.mark_passed` in `_apply_approval_side_effects` — re-checking
+the same gate there gracefully (log + skip, matching every other branch in
+that function) rather than raising, since the report's status has already
+committed by that point. `passed_by_user_id` = the report's author (the
+mentor), which is what `jedi_trial_crud.has_trained_a_padawan` (the Мастер
+promotion gate, see below) keys off. An earlier direct-button version
+(`POST .../jedi-trials/pass`) was replaced by this — don't reintroduce it.
 
 **Jedi specialization branches** (Защитники/Консулы/Стражи —
 `CATEGORY_JEDI_GUARDIAN`/`_CONSULAR`/`_SENTINEL`, `app/models/specialization.py`)

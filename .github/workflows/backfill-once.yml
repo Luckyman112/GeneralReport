@@ -1,11 +1,9 @@
 name: Backfill (one-off, manual)
 
-# Ручной one-off бэкфилл для 17-го Передового Полка ("Курс молодого бойца",
-# см. CLAUDE.md / раздел "Recruit pipeline"). Миграция 0076 добавила только
-# колонку is_recruit_promotion, саму строку категории завести нужно отдельно
-# по конвенции проекта (бэкфиллы — не в миграциях). Идемпотентно (WHERE NOT
-# EXISTS) — безопасно перезапускать. Запускать вручную через
-# workflow_dispatch, удалить файл после успешного запуска.
+# Ручные one-off бэкфиллы, не завязанные на миграции (конвенция проекта —
+# бэкфиллы отдельно от схемы). Все шаги идемпотентны, безопасно перезапускать.
+# Запускать вручную через workflow_dispatch, удалить шаг/файл после успешного
+# разового запуска.
 on:
   workflow_dispatch: {}
 
@@ -31,4 +29,20 @@ jobs:
           FROM report_categories rc
           JOIN regiments r ON r.id = rc.regiment_id
           WHERE r.name = '17-ый Передовой Полк';
+          "
+      - name: Insert/convert "Наставничество" category into is_jedi_trial_report
+        run: |
+          set -e
+          docker exec -i collapsar-postgres psql -U collapsar -d collapsar -v ON_ERROR_STOP=1 -c "
+          INSERT INTO report_categories (regiment_id, name, fields, points, is_jedi_trial_report, commander_only)
+          SELECT r.id, 'Наставничество', '[]', 10, true, true
+          FROM regiments r
+          WHERE r.is_jedi_order = true
+          ON CONFLICT (regiment_id, name) DO UPDATE SET is_jedi_trial_report = true, commander_only = true;
+          "
+          docker exec -i collapsar-postgres psql -U collapsar -d collapsar -c "
+          SELECT rc.id, rc.name, rc.regiment_id, rc.points, rc.is_jedi_trial_report, rc.commander_only
+          FROM report_categories rc
+          JOIN regiments r ON r.id = rc.regiment_id
+          WHERE r.is_jedi_order = true;
           "

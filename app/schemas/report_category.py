@@ -36,6 +36,10 @@ class ReportCategoryRead(BaseModel):
     is_promotion: bool = False
     is_demotion: bool = False
     is_training: bool = False
+    # Не были выставлены здесь раньше — фронт (RecruitPromotionReportForm)
+    # ссылался на is_recruit_promotion, но всегда получал undefined
+    is_recruit_promotion: bool = False
+    is_jedi_trial_report: bool = False
     min_rank: RankRead | None = None
     commander_only: bool = False
     required_specialization: SpecializationRead | None = None

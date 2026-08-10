@@ -89,6 +89,12 @@ class ReportCategory(Base):
     # PVT (см. _apply_approval_side_effects). Не настраивается через обычный API
     # категорий — системный флаг, как is_promotion/is_demotion/is_training.
     is_recruit_promotion: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # "Наставничество" — одобрение рапорта отмечает СЛЕДУЮЩЕЕ по порядку
+    # испытание Падавана сданным (см. app/crud/jedi_trial.py — 5 испытаний,
+    # обязательный разрыв в днях между ними), target_discord_id = падаван,
+    # автор рапорта = наставник (получает баллы + зачёт "обучил падавана" для
+    # своего перехода в Мастера). См. _apply_approval_side_effects.
+    is_jedi_trial_report: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Не более N рапортов этой категории в день на одного бойца (например
     # "Деятельность специализации" у джедаев — не чаще 2 раз) — None: без лимита.
     # Проверяется в app/api/reports.py::_check_category_filing_restrictions.

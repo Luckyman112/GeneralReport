@@ -12,6 +12,7 @@ from app.core.events import event_bus
 from app.core.uploads import read_image_upload
 from app.crud import audit_log as audit_log_crud
 from app.crud import character as character_crud
+from app.crud import jedi_trial as jedi_trial_crud
 from app.crud import notification as notification_crud
 from app.crud import promotion as promotion_crud
 from app.crud import rank as rank_crud
@@ -371,6 +372,8 @@ async def create_report(
         target_fields = await _resolve_training_target(db, payload)
     if category is not None and category.is_recruit_promotion:
         target_fields = await _resolve_recruit_target(db, payload)
+    if category is not None and category.is_jedi_trial_report:
+        target_fields = await _resolve_jedi_trial_target(db, payload)
     if category is not None:
         await _check_category_filing_restrictions(db, access, category)
 
@@ -505,6 +508,41 @@ async def _resolve_recruit_target(db: AsyncSession, payload: ReportCreate) -> di
     }
 
 
+async def _resolve_jedi_trial_target(db: AsyncSession, payload: ReportCreate) -> dict:
+    """Цель рапорта "Наставничество" — падаван, у которого сейчас доступно
+    следующее по порядку испытание (сдана проверка разрыва в днях, см.
+    jedi_trial_crud.TRIAL_GAP_DAYS) — валидируем при ПОДАЧЕ, чтобы отклонить
+    рано, а не когда командир уже одобрил; на одобрении то же самое
+    перепроверяется мягко (см. _apply_approval_side_effects)."""
+    if not payload.target_discord_id:
+        raise AppError("Укажите падавана")
+
+    members = await discord_client.fetch_guild_members()
+    target_member = next((m for m in members if m["discord_id"] == payload.target_discord_id), None)
+    if target_member is None:
+        raise NotFoundError("Участник не найден на сервере")
+
+    target_user = await user_crud.get_by_discord_id_with_rank(db, payload.target_discord_id)
+    if target_user is None or target_user.rank is None or target_user.rank.code != "PDW":
+        raise AppError(f"{target_member['username']} не в ранге Падавана")
+
+    passed = await jedi_trial_crud.list_for_user(db, user_id=target_user.id)
+    trial_number = jedi_trial_crud.next_trial_number(passed)
+    if trial_number is None:
+        raise AppError(f"У {target_member['username']} уже сданы все 5 испытаний")
+    available_at = jedi_trial_crud.earliest_available_at(passed, padawan_since=target_user.rank_assigned_at)
+    if available_at is not None and datetime.now(timezone.utc) < available_at:
+        raise AppError(
+            f"Испытание {trial_number} для {target_member['username']} доступно не раньше "
+            f"{available_at.strftime('%d.%m.%Y %H:%M')} МСК"
+        )
+
+    return {
+        "target_discord_id": target_member["discord_id"],
+        "target_username": target_member["username"],
+    }
+
+
 def _resolve_punishment(payload: ReportCreate) -> dict:
     if not payload.punishment_type:
         raise AppError("Укажите вид наказания")
@@ -619,6 +657,42 @@ async def _apply_approval_side_effects(db: AsyncSession, updated, category, acto
             )
         elif pvt_rank is None:
             logger.warning("Рапорт КМБ %s одобрен, но звание PVT не настроено", updated.id)
+
+    # "Наставничество" — одобрение отмечает СЛЕДУЮЩЕЕ по порядку испытание
+    # падавана сданным; автор рапорта = наставник, получает зачёт в jedi_trials
+    # (см. jedi_trial_crud.has_trained_a_padawan — условие для перехода в
+    # Мастера). Мягкая перепроверка гейта — статус рапорта уже закоммичен
+    # выше, поэтому при несовпадении просто пропускаем и логируем, как и в
+    # остальных ветках этой функции, а не роняем весь запрос одобрения.
+    if category is not None and category.is_jedi_trial_report and updated.target_discord_id is not None:
+        trainee = await user_crud.get_by_discord_id_with_rank(db, updated.target_discord_id)
+        if trainee is not None and trainee.rank is not None and trainee.rank.code == "PDW":
+            passed = await jedi_trial_crud.list_for_user(db, user_id=trainee.id)
+            trial_number = jedi_trial_crud.next_trial_number(passed)
+            available_at = jedi_trial_crud.earliest_available_at(passed, padawan_since=trainee.rank_assigned_at)
+            now = datetime.now(timezone.utc)
+            if trial_number is not None and (available_at is None or now >= available_at):
+                await jedi_trial_crud.mark_passed(
+                    db, user_id=trainee.id, trial_number=trial_number, passed_by_user_id=updated.user_id
+                )
+                await notification_crud.create_personal_notification(
+                    db,
+                    target_user_id=trainee.id,
+                    title="Испытание засчитано",
+                    body=f"Испытание {trial_number}/5 отмечено сданным.",
+                    created_by=actor_user_id,
+                )
+                logger.info(
+                    "Рапорт наставничества %s одобрен — испытание %s засчитано %s",
+                    updated.id, trial_number, updated.target_discord_id,
+                )
+            else:
+                logger.warning(
+                    "Рапорт наставничества %s одобрен, но испытание уже нельзя отметить (не ко времени/все сданы)",
+                    updated.id,
+                )
+        else:
+            logger.warning("Рапорт наставничества %s одобрен, но цель уже не Падаван", updated.id)
 
     if category is not None and category.participant_points:
         if updated.participant_discord_ids:
