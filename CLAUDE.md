@@ -347,6 +347,50 @@ sibling features (contrast with Администрация below, which got its 
 because it's a wholly new non-RP concept, not an extension of something
 already on a page).
 
+### Ивентрум roster — merged состав+activity table, split mini/combat
+`GET /event-room/roster` (`app/api/event_room.py::get_roster`) is one merged
+table (roster + activity summary used to be two separate tables/endpoints —
+see git history, `EventActivityReports.jsx`'s old "Сводка активности" section
+was removed once this merge landed) with a single period selector
+(`week`/`month`/`all`) driving **both** the table's Мини-ивент/Боевой вылет
+columns and the two `HorizontalBarChart`s below it (`EventRoomPage.jsx`'s
+`RosterPanel`) — there's no separate "chart period" vs "table period" state.
+Mini-event and combat counts are tracked as fully separate fields
+(`EventRosterEntry.mini_count_*`/`combat_count_*`, populated from
+`event_activity_report_crud.activity_summary_for_user_ids`'s per-`event_type`
+breakdown) rather than one combined number, by explicit user decision.
+Clicking a roster row opens `EventMemberDetailModal.jsx`, backed by
+`GET /event-room/roster/{discord_id}` — this endpoint independently re-derives
+the member's role from live Discord roles (same `role_labels` dict pattern as
+`get_roster`) rather than trusting a role param from the client, and 404s if
+the discord_id isn't currently a live member or doesn't hold one of the 5
+Ивентрум roles. Returns the member's rank plus their full `Event`/
+`EventActivityReport` lists (not just aggregate counts) via
+`event_crud.list_all`/`activity_report_crud.list_all` filtered by
+`submitted_by_user_id`.
+
+### Stale PromotionRequest cleanup — `promotion_crud.cancel_pending_for_user`
+`User.rank_id` can change through two paths that bypass `promotion_crud.decide()`
+entirely: `update_member_profile`'s manual rank override
+(`app/api/regiments.py`) and `is_recruit_promotion`'s auto-approval side effect
+(`_apply_approval_side_effects` in `app/api/reports.py`, sets `rank_id`
+directly to PVT). Either one left a pre-existing pending `PromotionRequest`
+behind with a now-stale `from_rank`, visibly stuck on the Promotions page with
+a transition that no longer makes sense (e.g. a Jedi Padawan still showing a
+leftover "RCT → PVT" recruit-era request). Both call sites now call
+`cancel_pending_for_user(db, user_id=..., reason=...)` right after the
+rank-changing commit, which flips that pending row to a new `"cancelled"`
+status (not `"rejected"` — a genuine decision vs. an administrative
+housekeeping cleanup) and rejects its mirror `Report` row (category
+"Повышение") the same way `decide()` would. `PromotionRequest` has no
+`rejection_reason` column, so the reason string is logged, not persisted.
+**`"cancelled"` is deliberately excluded from
+`list_decided_for_user`** (personal "История повышений" on `HomePage.jsx`) —
+that endpoint's frontend only renders `approved`/`rejected` labels, and a
+cancelled row would otherwise misleadingly show as "отклонено" (rejected).
+Existing stale rows from before this fix aren't backfilled — an admin/commander
+resolves them manually via the normal Отклонить button.
+
 ### Administration (non-RP staff role, separate from is_admin)
 "Администрация" (game moderation staff — bans/mutes/item grants) is
 deliberately **not** a `Regiment` — membership doesn't correlate with RP
