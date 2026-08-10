@@ -776,6 +776,7 @@ def _build_guild_member(
     user: User | None,
     character: Character | None = None,
     squads: list[SquadBadge] | None = None,
+    last_report_at: datetime | None = None,
 ) -> GuildMemberRead:
     # character overrides profile fields if user has one in this regiment
     days_in_rank = None
@@ -798,6 +799,7 @@ def _build_guild_member(
             is_inactive=character.is_inactive,
             rank_assigned_at=rank_assigned_at,
             squads=squads or [],
+            last_report_at=last_report_at,
         )
 
     return GuildMemberRead(
@@ -821,6 +823,7 @@ def _build_guild_member(
         rank_assigned_at=rank_assigned_at,
         registration_status=user.registration_status if user else None,
         squads=squads or [],
+        last_report_at=last_report_at,
     )
 
 
@@ -885,12 +888,19 @@ async def get_members(
             SquadBadge(squad_name=squad.name, tier_label=label, tier=membership.tier)
         )
 
+    last_report_at_by_user_id = await report_crud.last_report_at_by_user_ids(
+        db, [u.id for u in users_by_discord_id.values()]
+    )
+
     return [
         _build_guild_member(
             m,
             users_by_discord_id.get(m["discord_id"]),
             characters_by_discord_id.get(m["discord_id"]),
             squad_badges_by_discord_id.get(m["discord_id"]),
+            last_report_at_by_user_id.get(users_by_discord_id[m["discord_id"]].id)
+            if m["discord_id"] in users_by_discord_id
+            else None,
         )
         for m in roster
     ]

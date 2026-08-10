@@ -25,6 +25,12 @@ class ModuleAccessRead(BaseModel):
     event_notify_ping_role_id: str | None
     report_reject_role_ids: list[str]
     report_reject_user_discord_ids: list[str]
+    admin_staff_junior_role_id: str | None
+    admin_staff_middle_role_id: str | None
+    admin_staff_warden_role_id: str | None
+    admin_staff_assistant_role_id: str | None
+    admin_staff_curator_role_id: str | None
+    admin_staff_responsible_middle_discord_ids: list[str]
 
 
 class ModuleAccessUpdate(BaseModel):
@@ -48,3 +54,9 @@ class ModuleAccessUpdate(BaseModel):
     event_notify_ping_role_id: str | None = None
     report_reject_role_ids: list[str] | None = None
     report_reject_user_discord_ids: list[str] | None = None
+    admin_staff_junior_role_id: str | None = None
+    admin_staff_middle_role_id: str | None = None
+    admin_staff_warden_role_id: str | None = None
+    admin_staff_assistant_role_id: str | None = None
+    admin_staff_curator_role_id: str | None = None
+    admin_staff_responsible_middle_discord_ids: list[str] | None = None

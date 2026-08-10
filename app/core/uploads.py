@@ -42,3 +42,26 @@ async def read_image_upload(file: UploadFile, *, allowed_types: dict[str, str], 
         raise AppError("Файл повреждён или не является изображением")
 
     return content, ext
+
+
+async def read_file_upload(file: UploadFile, *, allowed_types: dict[str, str], max_size: int) -> tuple[bytes, str]:
+    """Тот же чанкованный приём с обрывом по превышению лимита, но БЕЗ
+    Pillow-валидации байт — для файлов, которые не картинка (например видео-
+    доказательство в отчёте Администрации). Доверяет Content-Type от клиента
+    (в отличие от read_image_upload), поэтому используется только там, где
+    последствия подмены типа файла не критичны (просто вложение к отчёту)."""
+    ext = allowed_types.get(file.content_type)
+    if ext is None:
+        raise AppError("Недопустимый тип файла: " + ", ".join(sorted(allowed_types)))
+
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(_CHUNK_SIZE)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_size:
+            raise AppError(f"Файл слишком большой (максимум {max_size // (1024 * 1024)} МБ)")
+        chunks.append(chunk)
+    return b"".join(chunks), ext

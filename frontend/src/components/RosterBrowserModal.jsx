@@ -193,6 +193,7 @@ export function RosterBrowserModal({ onClose }) {
                       <th>Позывной</th>
                       <th>Дата вступления</th>
                       <th>Дата повышения</th>
+                      <th>Последний рапорт</th>
                       <th>Должность</th>
                       <th>Отряд</th>
                       <th>Специализации</th>
@@ -210,6 +211,7 @@ export function RosterBrowserModal({ onClose }) {
                         <td>{m.callsign || m.username}</td>
                         <td>{m.joined_at ? formatMskDate(m.joined_at) : "—"}</td>
                         <td>{m.rank_assigned_at ? formatMskDate(m.rank_assigned_at) : "—"}</td>
+                        <td>{m.last_report_at ? formatMskDate(m.last_report_at) : "—"}</td>
                         <td>{positionByDiscordId.get(m.discord_id) || "—"}</td>
                         <td>
                           {(m.squads || []).length > 0

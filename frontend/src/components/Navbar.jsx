@@ -13,7 +13,7 @@ function buildPositionLabel(access, regiments) {
 
   const parts = [];
   if (access.is_high_command) parts.push("Высшее командование");
-  if (access.is_admin && !access.is_password_login) parts.push("Администратор");
+  if (access.is_admin && !access.is_password_login) parts.push("Высшая администрация");
 
   for (const regiment of regiments) {
     let role = null;

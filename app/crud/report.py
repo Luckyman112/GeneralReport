@@ -190,6 +190,20 @@ async def list_reports(
     return list(result.scalars().all())
 
 
+async def last_report_at_by_user_ids(db: AsyncSession, user_ids: list[int]) -> dict[int, datetime]:
+    """Дата последнего рапорта каждого бойца (любой статус кроме DELETED) —
+    для колонки "Последний рапорт" в ростере (см. решение пользователя: удобно
+    видеть активность). Один GROUP BY запрос на весь список сразу, не N+1."""
+    if not user_ids:
+        return {}
+    result = await db.execute(
+        select(Report.user_id, func.max(Report.created_at))
+        .where(Report.user_id.in_(user_ids), Report.status != ReportStatus.DELETED)
+        .group_by(Report.user_id)
+    )
+    return dict(result.all())
+
+
 async def count_reports(
     db: AsyncSession,
     *,

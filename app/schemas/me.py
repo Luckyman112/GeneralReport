@@ -54,6 +54,12 @@ class AccessInfo(BaseModel):
     is_event_curator: bool = False
     can_decide_event: bool = False
     can_access_event_room: bool = False
+    # Администрация — независимая от РП-формирований должность (см.
+    # app/api/deps.py::AccessContext.admin_staff_rank_code)
+    admin_staff_rank_code: str | None = None
+    admin_staff_tier: str | None = None
+    is_admin_staff: bool = False
+    can_decide_admin_report: bool = False
     active_transfer: TransferRequestRead | None = None
     characters: list[CharacterRead] = []
 

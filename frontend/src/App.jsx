@@ -44,6 +44,7 @@ const DisciplineRosterPage = lazy(() =>
 );
 const EventRoomPage = lazy(() => import("./pages/EventRoomPage").then((m) => ({ default: m.EventRoomPage })));
 const RecruitsPage = lazy(() => import("./pages/RecruitsPage").then((m) => ({ default: m.RecruitsPage })));
+const AdminStaffPage = lazy(() => import("./pages/AdminStaffPage").then((m) => ({ default: m.AdminStaffPage })));
 
 function Layout({ children }) {
   const { isAuthenticated, user, access } = useAuth();
@@ -229,6 +230,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute eventRoomOnly>
               <EventRoomPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin-staff"
+          element={
+            <ProtectedRoute adminStaffOnly>
+              <AdminStaffPage />
             </ProtectedRoute>
           }
         />

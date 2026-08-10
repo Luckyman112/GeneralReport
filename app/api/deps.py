@@ -114,6 +114,15 @@ class AccessContext:
     event_role_id: str | None = None
     event_assistant_role_id: str | None = None
     event_curator_role_id: str | None = None
+    # Администрация — нон-РП должность, независимая от Regiment (см.
+    # app/models/app_settings.py::admin_staff_*_role_id). Порядок важен —
+    # используется, чтобы взять СТАРШУЮ роль, если у человека их несколько.
+    admin_staff_junior_role_id: str | None = None
+    admin_staff_middle_role_id: str | None = None
+    admin_staff_warden_role_id: str | None = None
+    admin_staff_assistant_role_id: str | None = None
+    admin_staff_curator_role_id: str | None = None
+    admin_staff_responsible_middle_discord_ids: set[str] = field(default_factory=set)
     # None = password login open to anyone who knows the password
     password_login_owner_discord_id: str | None = None
 
@@ -147,6 +156,47 @@ class AccessContext:
     @property
     def can_access_event_room(self) -> bool:
         return self.is_event_submitter or self.can_decide_event
+
+    @property
+    def admin_staff_rank_code(self) -> str | None:
+        """Какая из 5 ступеней Администрации есть у пользователя сейчас — если
+        несколько ролей одновременно (не должно, но на всякий случай), берём
+        старшую. Не РП-должность, не связана с regiment/rank_id (см. решение
+        пользователя — можно одновременно быть сержантом полка и Куратором
+        администрации)."""
+        ladder = [
+            ("curator", self.admin_staff_curator_role_id),
+            ("assistant", self.admin_staff_assistant_role_id),
+            ("warden", self.admin_staff_warden_role_id),
+            ("middle", self.admin_staff_middle_role_id),
+            ("junior", self.admin_staff_junior_role_id),
+        ]
+        for code, role_id in ladder:
+            if role_id and role_id in self.role_ids:
+                return code
+        return None
+
+    @property
+    def admin_staff_tier(self) -> str | None:
+        """junior/middle/senior — senior = Варден+ (см. решение пользователя:
+        Senior принимает отчёты Администрации, либо отдельные "ответственные"
+        Middle)."""
+        code = self.admin_staff_rank_code
+        if code is None:
+            return None
+        if code in ("warden", "assistant", "curator"):
+            return "senior"
+        return code  # "middle" or "junior"
+
+    @property
+    def is_admin_staff(self) -> bool:
+        return self.admin_staff_rank_code is not None
+
+    @property
+    def can_decide_admin_report(self) -> bool:
+        if self.is_admin or self.admin_staff_tier == "senior":
+            return True
+        return self.admin_staff_tier == "middle" and self.user.discord_id in self.admin_staff_responsible_middle_discord_ids
 
     @property
     def can_escalate_password_login(self) -> bool:
@@ -462,6 +512,12 @@ def _build_access_context(
         event_role_id=app_config.event_role_id,
         event_assistant_role_id=app_config.event_assistant_role_id,
         event_curator_role_id=app_config.event_curator_role_id,
+        admin_staff_junior_role_id=app_config.admin_staff_junior_role_id,
+        admin_staff_middle_role_id=app_config.admin_staff_middle_role_id,
+        admin_staff_warden_role_id=app_config.admin_staff_warden_role_id,
+        admin_staff_assistant_role_id=app_config.admin_staff_assistant_role_id,
+        admin_staff_curator_role_id=app_config.admin_staff_curator_role_id,
+        admin_staff_responsible_middle_discord_ids=set(app_config.admin_staff_responsible_middle_discord_ids),
         password_login_owner_discord_id=settings.password_login_owner_discord_id
         or app_config.password_login_authorized_discord_id,
     )

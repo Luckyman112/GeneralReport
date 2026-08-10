@@ -778,6 +778,22 @@ export const api = {
     }
     return response.blob();
   },
+
+  listAdminReports: (token) => request("/api/admin-reports", { token }),
+  createAdminReport: (token, { reportType, payload }) =>
+    request("/api/admin-reports", { method: "POST", token, body: { report_type: reportType, payload } }),
+  decideAdminReport: (token, reportId, { status, rejectionReason }) =>
+    request(`/api/admin-reports/${reportId}`, {
+      method: "PATCH",
+      token,
+      body: { status, rejection_reason: rejectionReason || null },
+    }),
+  uploadAdminReportAttachment: (token, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request("/api/admin-reports/attachments", { method: "POST", token, body: formData });
+  },
+  getAdminActivitySummary: (token) => request("/api/admin-reports/activity-summary", { token }),
 };
 
 export { ApiError };

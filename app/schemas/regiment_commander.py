@@ -69,6 +69,9 @@ class GuildMemberRead(BaseModel):
     registration_status: str | None = None
     # Отряды — только ярлык в составе, см. app/models/squad.py
     squads: list[SquadBadge] = []
+    # Дата последнего рапорта (любого статуса кроме удалённого) — колонка
+    # "активности" в составе, см. report_crud.last_report_at_by_user_ids
+    last_report_at: datetime | None = None
 
 
 class DiscordChannelRead(BaseModel):

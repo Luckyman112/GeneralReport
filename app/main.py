@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
+from app.api.admin_reports import router as admin_reports_router
 from app.api.app_settings import router as app_settings_router
 from app.api.audit_log import router as audit_log_router
 from app.api.auth import router as auth_router
@@ -104,6 +105,7 @@ app.include_router(maintenance_router, prefix="/api")
 app.include_router(specializations_router, prefix="/api")
 app.include_router(steam_router, prefix="/api")
 app.include_router(event_room_router, prefix="/api")
+app.include_router(admin_reports_router, prefix="/api")
 
 
 @app.get("/health", tags=["health"])

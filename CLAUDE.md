@@ -311,6 +311,53 @@ Force-ability/saber-form catalog data (`jedi_force_ability`/`jedi_saber_form`
 categories) is added the same way — through the Admin Panel, not migrations —
 same as jedi branch specializations above.
 
+### Administration (non-RP staff role, separate from is_admin)
+"Администрация" (game moderation staff — bans/mutes/item grants) is
+deliberately **not** a `Regiment` — membership doesn't correlate with RP
+formation membership at all (someone can be a Guard sergeant AND Curator of
+Administration simultaneously). Modeled after the Ивентрум precedent
+(`app/models/event.py`/`app/api/event_room.py`): a 5-role ladder as flat
+nullable `AppSettings` columns (`admin_staff_junior_role_id` →
+`admin_staff_curator_role_id`, migration 0084) rather than a table, since it's
+a small fixed catalog (unlike `InstructorRole`, the one precedent for a
+*table-driven* N-roles-to-tier mapping, which exists because
+medic/pilot/engineer disciplines are genuinely more open-ended). Resolved live
+per-request in `AccessContext.admin_staff_rank_code`/`_tier`
+(`app/api/deps.py`) — same as every other role check in this codebase, no
+membership stored in the DB. `admin_staff_tier`: junior/middle/senior (senior
+= Варден+). `can_decide_admin_report` = admin, senior, or an individually
+whitelisted "responsible" middle (`admin_staff_responsible_middle_discord_ids`,
+same one-off-override pattern as `admin_user_discord_ids`).
+
+Reports ("Отчёт деятельности"/"Отчёт наказаний") are `AdminReport`
+(`app/models/admin_report.py`) — copies the `Event` shape exactly (freeform
+`payload: JSON`, frontend-only field validation, no `regiment_id`) rather than
+`Report`/`ReportCategory`, which carries RP-specific baggage (rank snapshots,
+points/promotion-pipeline wiring, `regiment_id` FK) that doesn't apply here.
+Activity summary (`GET /admin-reports/activity-summary`) resolves the live
+Discord roster against the 5 role ids (same pattern as
+`event_room.py::get_roster`) and aggregates `AdminReport` counts (7d/30d/all-
+time + last) via `admin_report_crud.activity_summary_for_user_ids`.
+
+`app/core/uploads.py::read_file_upload` — new sibling to `read_image_upload`,
+same chunked-read-with-cap discipline but **no** Pillow byte validation
+(added for video evidence attachments, which aren't images); only use it
+where a spoofed Content-Type has low stakes (an attachment, not something
+security-sensitive).
+
+`GuildMemberRead.last_report_at` (any regiment, not Administration-specific)
+— last `Report.created_at` for the user, bulk-computed via
+`report_crud.last_report_at_by_user_ids` (one `GROUP BY` for the whole
+roster, not N+1) and mixed into `_build_guild_member` only from
+`get_members`'s roster-list call site — the single-member endpoints
+(photo upload/delete, tenure override, profile update) don't bother, since
+their `GuildMemberRead` response isn't rendered anywhere that shows it.
+
+"Администратор" → "Высшая администрация": **label-only** rename (`Navbar.jsx`
+position badge, `SettingsPage.jsx` role-config card header) to avoid clashing
+with the new "Администрация" name — `is_admin`/`admin_role_id`/error-message
+strings deliberately untouched (explicit user decision, minimal-diff option).
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get

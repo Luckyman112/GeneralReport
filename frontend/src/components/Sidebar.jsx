@@ -81,10 +81,13 @@ export function Sidebar({ open, onClose }) {
               )}
             </div>
 
-            {(access?.is_admin || access?.can_access_event_room) && (
+            {(access?.is_admin || access?.can_access_event_room || access?.is_admin_staff) && (
               <div className="sidebar-links-group">
                 <span className="sidebar-links-group-label">Администрирование</span>
                 {access?.can_access_event_room && <Link to="/event-room" onClick={onClose}>Ивентрум</Link>}
+                {(access?.is_admin_staff || access?.is_admin) && (
+                  <Link to="/admin-staff" onClick={onClose}>Администрация</Link>
+                )}
                 {access?.is_admin && <Link to="/regiments" onClick={onClose}>Формирования</Link>}
                 {access?.is_admin && <Link to="/admin-panel" onClick={onClose}>Админ-панель</Link>}
                 {access?.is_admin && <Link to="/backups" onClick={onClose}>Резервные копии</Link>}

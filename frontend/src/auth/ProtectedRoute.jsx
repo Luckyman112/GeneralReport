@@ -9,6 +9,7 @@ export function ProtectedRoute({
   reviewerOnly = false,
   disciplineDeputyOnly = false,
   eventRoomOnly = false,
+  adminStaffOnly = false,
 }) {
   const { isAuthenticated, access, loading } = useAuth();
 
@@ -23,6 +24,7 @@ export function ProtectedRoute({
   )
     return <Navigate to="/main" replace />;
   if (eventRoomOnly && !access?.can_access_event_room) return <Navigate to="/main" replace />;
+  if (adminStaffOnly && !access?.is_admin_staff && !access?.is_admin) return <Navigate to="/main" replace />;
   if (
     reviewerOnly &&
     !access?.is_admin &&

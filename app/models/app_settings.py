@@ -94,3 +94,19 @@ class AppSettings(Base):
     # конкретными людьми, как detention_report_role_ids выше
     report_reject_role_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     report_reject_user_discord_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+    # Администрация — нон-РП должность (модерация сервера: баны/муты/выдача
+    # предметов), НЕ привязана к РП-формированию (боец может одновременно
+    # состоять в полку и быть, например, Куратором администрации) — та же
+    # независимая от Regiment ролевая система, что у Ивентрума выше, но с 5
+    # ступенями вместо 2. См. AccessContext.admin_staff_rank_code/_tier в
+    # app/api/deps.py.
+    admin_staff_junior_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    admin_staff_middle_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    admin_staff_warden_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    admin_staff_assistant_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    admin_staff_curator_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Middle-должность (admin_staff_middle_role_id), которой точечно дали право
+    # одобрять отчёты Администрации наравне с Senior (Варден+) — см. решение
+    # пользователя ("ответственный Middle")
+    admin_staff_responsible_middle_discord_ids: Mapped[list[str]] = mapped_column(JSON, default=list)

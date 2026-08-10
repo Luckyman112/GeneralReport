@@ -18,6 +18,7 @@ function ModuleAccessSettings() {
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
   const [addRejectId, setAddRejectId] = useState("");
+  const [addResponsibleMiddleId, setAddResponsibleMiddleId] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -63,6 +64,28 @@ function ModuleAccessSettings() {
     setAccess((prev) => ({
       ...prev,
       report_reject_user_discord_ids: prev.report_reject_user_discord_ids.filter((id) => id !== discordId),
+    }));
+  }
+
+  function handleAddResponsibleMiddle() {
+    if (!addResponsibleMiddleId || access.admin_staff_responsible_middle_discord_ids.includes(addResponsibleMiddleId))
+      return;
+    setAccess((prev) => ({
+      ...prev,
+      admin_staff_responsible_middle_discord_ids: [
+        ...prev.admin_staff_responsible_middle_discord_ids,
+        addResponsibleMiddleId,
+      ],
+    }));
+    setAddResponsibleMiddleId("");
+  }
+
+  function handleRemoveResponsibleMiddle(discordId) {
+    setAccess((prev) => ({
+      ...prev,
+      admin_staff_responsible_middle_discord_ids: prev.admin_staff_responsible_middle_discord_ids.filter(
+        (id) => id !== discordId
+      ),
     }));
   }
 
@@ -310,6 +333,104 @@ function ModuleAccessSettings() {
           ))}
         </select>
       </label>
+
+      <h4>Администрация</h4>
+      <p className="hint-text">
+        Нон-РП должность (модерация сервера) — независима от РП-формирований, боец может одновременно состоять в
+        полку и быть, например, Куратором Администрации. Одобряет отчёты Администрации Senior+ (Варден и выше),
+        либо отдельные "ответственные" из Middle (Администратор).
+      </p>
+      <label>
+        Discord-роль «Младший Администратор» (Junior):
+        <select
+          value={access.admin_staff_junior_role_id || ""}
+          onChange={(e) => setSingleField("admin_staff_junior_role_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Discord-роль «Администратор» (Middle):
+        <select
+          value={access.admin_staff_middle_role_id || ""}
+          onChange={(e) => setSingleField("admin_staff_middle_role_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Discord-роль «Варден Администратор» (Senior):
+        <select
+          value={access.admin_staff_warden_role_id || ""}
+          onChange={(e) => setSingleField("admin_staff_warden_role_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Discord-роль «Ассистент Администрации» (Senior):
+        <select
+          value={access.admin_staff_assistant_role_id || ""}
+          onChange={(e) => setSingleField("admin_staff_assistant_role_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Discord-роль «Куратор Администрации» (Senior):
+        <select
+          value={access.admin_staff_curator_role_id || ""}
+          onChange={(e) => setSingleField("admin_staff_curator_role_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Ответственные Middle (могут одобрять отчёты наравне с Senior):
+        <span className="picker-row">
+          <MemberSearchPicker members={members} selectedId={addResponsibleMiddleId} onSelect={setAddResponsibleMiddleId} />
+          <button type="button" onClick={handleAddResponsibleMiddle} disabled={!addResponsibleMiddleId}>
+            Добавить
+          </button>
+        </span>
+      </label>
+      {access.admin_staff_responsible_middle_discord_ids.length > 0 && (
+        <ul className="chip-list">
+          {access.admin_staff_responsible_middle_discord_ids.map((discordId) => (
+            <li key={discordId} className="chip">
+              {membersById[discordId]?.username || discordId}
+              <button type="button" onClick={() => handleRemoveResponsibleMiddle(discordId)}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="report-form-actions">
         <button className="primary" onClick={handleSave} disabled={saving}>
@@ -630,7 +751,7 @@ export function SettingsPage() {
             </div>
 
             <div className="regiment-panel fade-in-up settings-role-card">
-              <h4>Администратор</h4>
+              <h4>Высшая администрация</h4>
               <label>
                 Discord-роль
                 <RoleSelect value={adminRoleId} onChange={setAdminRoleId} />

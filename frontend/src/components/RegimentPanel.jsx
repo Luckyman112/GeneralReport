@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
+import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
 import { safeUrl } from "../utils/safeUrl";
 import { EmptyState } from "./EmptyState";
@@ -212,6 +213,7 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
                       <th></th>
                       <th>Участник</th>
                       <th>Дней в звании</th>
+                      <th>Последний рапорт</th>
                       {canEditHere && <th></th>}
                     </tr>
                   </thead>
@@ -245,6 +247,7 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
                           </span>
                         </td>
                         <td className="mono-num">{m.days_in_rank ?? "—"}</td>
+                        <td className="hint-text">{m.last_report_at ? formatMskDate(m.last_report_at) : "—"}</td>
                         {canEditHere && (
                           <td>
                             {pendingRequestByDiscordId[m.discord_id] != null && (
