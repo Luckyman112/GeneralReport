@@ -31,14 +31,3 @@ class EventActivityReportCreate(BaseModel):
 class EventActivityReportDecide(BaseModel):
     status: Literal["approved", "rejected"]
     rejection_reason: str | None = None
-
-
-class EventActivitySummaryEntry(BaseModel):
-    discord_id: str
-    username: str
-    rank_code: str
-    rank_label: str
-    count_week: int
-    count_month: int
-    count_all_time: int
-    last_report_at: datetime | None = None

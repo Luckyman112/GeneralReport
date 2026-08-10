@@ -18,7 +18,6 @@ export function EventActivityReports() {
   const { token, access } = useAuth();
   const showToast = useToast();
   const [reports, setReports] = useState([]);
-  const [summary, setSummary] = useState([]);
   const [members, setMembers] = useState([]);
   const [error, setError] = useState(null);
 
@@ -37,14 +36,9 @@ export function EventActivityReports() {
   }
 
   useEffect(() => {
-    Promise.all([
-      api.listEventActivityReports(token),
-      api.getEventActivitySummary(token),
-      api.getEventMemberCandidates(token),
-    ])
-      .then(([reportsData, summaryData, membersData]) => {
+    Promise.all([api.listEventActivityReports(token), api.getEventMemberCandidates(token)])
+      .then(([reportsData, membersData]) => {
         setReports(reportsData);
-        setSummary(summaryData);
         setMembers(membersData);
       })
       .catch((e) => setError(e.message));
@@ -200,38 +194,6 @@ export function EventActivityReports() {
               )}
             </div>
           ))}
-        </div>
-      )}
-
-      <h3>Сводка активности</h3>
-      {summary.length === 0 ? (
-        <EmptyState text="Состав Ивентрума не настроен или пуст." />
-      ) : (
-        <div className="roster-table-wrap">
-          <table className="roster-table">
-            <thead>
-              <tr>
-                <th>Боец</th>
-                <th>Должность</th>
-                <th>За неделю</th>
-                <th>За месяц</th>
-                <th>Всего</th>
-                <th>Последний отчёт</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.map((s) => (
-                <tr key={s.discord_id}>
-                  <td>{s.username}</td>
-                  <td>{s.rank_label}</td>
-                  <td className="mono-num">{s.count_week}</td>
-                  <td className="mono-num">{s.count_month}</td>
-                  <td className="mono-num">{s.count_all_time}</td>
-                  <td>{s.last_report_at ? `${formatMskDate(s.last_report_at)} МСК` : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
     </>

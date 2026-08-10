@@ -5,8 +5,10 @@ import { DateTimePicker } from "../components/DateTimePicker";
 import { EmptyState } from "../components/EmptyState";
 import { EventActivityReports } from "../components/EventActivityReports";
 import { EventBookingCalendar } from "../components/EventBookingCalendar";
+import { HorizontalBarChart } from "../components/HorizontalBarChart";
 import { InlineSpinner } from "../components/InlineSpinner";
 import { MemberSearchPicker } from "../components/MemberSearchPicker";
+import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
 
 const STATUS_LABELS = {
@@ -18,8 +20,16 @@ const STATUS_LABELS = {
 const ROLE_LABELS = {
   куратор: "Куратор",
   ассистент: "Ассистент",
+  "старший ивентолог": "Старший Ивентолог",
   ивентолог: "Ивентолог",
+  "младший ивентолог": "Младший Ивентолог",
 };
+
+const PERIOD_OPTIONS = [
+  { key: "week", label: "Неделя", field: "activity_count_week" },
+  { key: "month", label: "Месяц", field: "activity_count_month" },
+  { key: "all", label: "Всё время", field: "activity_count_all_time" },
+];
 
 function emptyAudience() {
   return { mode: "role", regiment_id: null, custom_name: "", discord_ids: [] };
@@ -581,6 +591,7 @@ function RosterPanel() {
   const { token } = useAuth();
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState("week");
 
   useEffect(() => {
     api.getEventRoster(token).then(setRoster).catch(() => setRoster([])).finally(() => setLoading(false));
@@ -588,34 +599,64 @@ function RosterPanel() {
 
   if (loading) return <InlineSpinner />;
 
+  const periodField = PERIOD_OPTIONS.find((p) => p.key === period)?.field ?? "activity_count_week";
+  const chartData = roster.map((r) => ({ id: r.discord_id, label: r.username, value: r[periodField] ?? 0 }));
+
   return (
     <div className="regiment-panel">
       <h3>Состав Ивентрума</h3>
       {roster.length === 0 ? (
         <EmptyState text="Роли Ивентрума ещё не настроены или никто их не занимает." />
       ) : (
-        <table className="roster-table roster-table-wide">
-          <thead>
-            <tr>
-              <th>Участник</th>
-              <th>Роль</th>
-              <th>Подано</th>
-              <th>Одобрено</th>
-              <th>Отклонено</th>
-            </tr>
-          </thead>
-          <tbody>
-            {roster.map((r) => (
-              <tr key={r.discord_id}>
-                <td>{r.username}</td>
-                <td>{ROLE_LABELS[r.role] || r.role}</td>
-                <td>{r.submitted_count}</td>
-                <td>{r.approved_count}</td>
-                <td>{r.rejected_count}</td>
-              </tr>
+        <>
+          <div className="roster-table-wrap-full">
+            <table className="roster-table roster-table-wide roster-table-full">
+              <thead>
+                <tr>
+                  <th>Участник</th>
+                  <th>Роль</th>
+                  <th>Заявок подано</th>
+                  <th>Одобрено</th>
+                  <th>Отклонено</th>
+                  <th>Мероприятий за неделю</th>
+                  <th>За месяц</th>
+                  <th>Всего</th>
+                  <th>Последний отчёт</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roster.map((r) => (
+                  <tr key={r.discord_id}>
+                    <td>{r.username}</td>
+                    <td>{ROLE_LABELS[r.role] || r.role}</td>
+                    <td className="mono-num">{r.submitted_count}</td>
+                    <td className="mono-num">{r.approved_count}</td>
+                    <td className="mono-num">{r.rejected_count}</td>
+                    <td className="mono-num">{r.activity_count_week}</td>
+                    <td className="mono-num">{r.activity_count_month}</td>
+                    <td className="mono-num">{r.activity_count_all_time}</td>
+                    <td>{r.activity_last_report_at ? formatMskDate(r.activity_last_report_at) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h4>Проведено мероприятий за период</h4>
+          <div className="report-form-actions">
+            {PERIOD_OPTIONS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                className={p.key === period ? "primary" : "ghost"}
+                onClick={() => setPeriod(p.key)}
+              >
+                {p.label}
+              </button>
             ))}
-          </tbody>
-        </table>
+          </div>
+          <HorizontalBarChart data={chartData} />
+        </>
       )}
     </div>
   );

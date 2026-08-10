@@ -2801,7 +2801,8 @@ input[type="file"]::-webkit-file-upload-button:hover {
   color: var(--text-muted);
 }
 
-.status-submitted {
+.status-submitted,
+.status-pending {
   background: var(--accent-glow);
   color: var(--accent);
 }
@@ -3326,6 +3327,138 @@ input[type="file"]::-webkit-file-upload-button:hover {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* Горизонтальная столбчатая диаграмма (см. HorizontalBarChart.jsx) — один
+ * акцентный цвет, без категориальной палитры (единственная серия). */
+.hbar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hbar-chart-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 12rem) 1fr 2.5rem;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+}
+
+.hbar-chart-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.hbar-chart-track {
+  background: var(--surface-2);
+  border-radius: 4px;
+  height: 0.65rem;
+  overflow: hidden;
+}
+
+.hbar-chart-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.hbar-chart-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* Календарь броней (см. EventBookingCalendar.jsx) — своя сетка, НЕ .roster-table
+ * (та рассчитана на узкую первую колонку-иконку, ломает 7 равных колонок дней —
+ * см. баг-репорт с .roster-table-wide). */
+.booking-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 0.25rem;
+}
+
+.booking-calendar-weekday {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.booking-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.booking-calendar-day {
+  background: var(--surface);
+  min-height: 5.5rem;
+  padding: 0.35rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transition: background 0.15s ease;
+}
+
+.booking-calendar-day:hover {
+  background: var(--surface-2);
+}
+
+.booking-calendar-day-outside {
+  opacity: 0.4;
+}
+
+.booking-calendar-daynum {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.booking-calendar-day-today .booking-calendar-daynum {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.booking-calendar-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.booking-calendar-chip {
+  font-size: 0.66rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booking-calendar-chip-pending {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.booking-calendar-chip-approved {
+  background: rgba(59, 165, 92, 0.15);
+  color: var(--success);
+}
+
+.booking-calendar-chip-rejected {
+  background: rgba(237, 66, 69, 0.15);
+  color: var(--danger);
 }
 
 .audit-log-filters {

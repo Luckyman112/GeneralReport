@@ -72,13 +72,20 @@ class EventMapUpdate(BaseModel):
 
 
 class EventRosterEntry(BaseModel):
-    """Строка ростера Ивентрума — участник с ролью Ивентолог/Ассистент/Куратор
-    и его статистика по заявкам (см. решение пользователя)."""
+    """Строка ростера Ивентрума — участник с одной из 5 ступеней лестницы и
+    статистикой и по заявкам на ивент (submitted/approved/rejected), и по
+    отчётам о проведённых мероприятиях (activity_*, см.
+    app/models/event_activity_report.py) — единая таблица, не две разные
+    (см. решение пользователя)."""
 
     discord_id: str
     username: str
     avatar_url: str | None = None
-    role: str  # "ивентолог" | "ассистент" | "куратор"
+    role: str  # "младший ивентолог" | "ивентолог" | "старший ивентолог" | "ассистент" | "куратор"
     submitted_count: int
     approved_count: int
     rejected_count: int
+    activity_count_week: int = 0
+    activity_count_month: int = 0
+    activity_count_all_time: int = 0
+    activity_last_report_at: datetime | None = None

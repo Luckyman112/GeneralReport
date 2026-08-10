@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { DateTimePicker } from "./DateTimePicker";
 import { useToast } from "./ToastContext";
 import { formatMskDate } from "../utils/formatDate";
 
 const STATUS_LABELS = { pending: "ожидает", approved: "одобрено", rejected: "отклонено" };
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const MONTH_NAMES = [
+  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+];
 
 function startOfMonth(d) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -16,9 +21,13 @@ function startOfNextMonth(d) {
 function toDateKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function toLocalInputValue(d) {
+// Формат, который понимает DateTimePicker (совпадает со старым datetime-local)
+function toPickerValue(d) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function formatDayLabel(d) {
+  return `${d.getDate()} ${MONTH_NAMES[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
 }
 
 /** Календарь бронирования дат/времени под ивенты — до проведения слот нужно
@@ -83,8 +92,8 @@ export function EventBookingCalendar() {
     start.setHours(18, 0, 0, 0);
     const end = new Date(start);
     end.setHours(start.getHours() + 2);
-    setStartsAt(toLocalInputValue(start));
-    setEndsAt(toLocalInputValue(end));
+    setStartsAt(toPickerValue(start));
+    setEndsAt(toPickerValue(end));
     setTitle("");
   }
 
@@ -138,56 +147,63 @@ export function EventBookingCalendar() {
         </button>
       </div>
 
-      <table className="roster-table event-booking-calendar">
-        <thead>
-          <tr>
-            {WEEKDAYS.map((w) => (
-              <th key={w}>{w}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {weeks.map((week, i) => (
-            <tr key={i}>
-              {week.map((day) => {
-                const key = toDateKey(day);
-                const inMonth = day.getMonth() === month.getMonth();
-                const dayBookings = bookingsByDateKey.get(key) || [];
-                return (
-                  <td
-                    key={key}
-                    className="clickable-row"
-                    style={{ opacity: inMonth ? 1 : 0.4, cursor: "pointer", verticalAlign: "top" }}
-                    onClick={() => openBookingForm(day)}
-                  >
-                    <div className={key === today ? "hint-text" : undefined}>{day.getDate()}</div>
+      <div className="booking-calendar-weekdays">
+        {WEEKDAYS.map((w) => (
+          <div key={w} className="booking-calendar-weekday">{w}</div>
+        ))}
+      </div>
+      <div className="booking-calendar-grid">
+        {weeks.flatMap((week) =>
+          week.map((day) => {
+            const key = toDateKey(day);
+            const inMonth = day.getMonth() === month.getMonth();
+            const dayBookings = bookingsByDateKey.get(key) || [];
+            return (
+              <div
+                key={key}
+                className={[
+                  "booking-calendar-day",
+                  !inMonth && "booking-calendar-day-outside",
+                  key === today && "booking-calendar-day-today",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => openBookingForm(day)}
+              >
+                <span className="booking-calendar-daynum">{day.getDate()}</span>
+                {dayBookings.length > 0 && (
+                  <div className="booking-calendar-chips">
                     {dayBookings.map((b) => (
-                      <div key={b.id} className={`status-badge status-${b.status}`} style={{ display: "block", marginTop: "0.2rem" }}>
-                        {b.title} ({STATUS_LABELS[b.status]})
-                      </div>
+                      <span
+                        key={b.id}
+                        className={`booking-calendar-chip booking-calendar-chip-${b.status}`}
+                        title={`${b.title} (${STATUS_LABELS[b.status]})`}
+                      >
+                        {b.title}
+                      </span>
                     ))}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
 
       {selectedDate && (
         <form className="report-form fade-in-up" onSubmit={handleSubmitBooking}>
-          <h4>Забронировать {formatMskDate(selectedDate)}</h4>
+          <h4>Забронировать {formatDayLabel(selectedDate)}</h4>
           <label>
             Название ивента
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <label>
             Начало
-            <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
+            <DateTimePicker value={startsAt} onChange={setStartsAt} />
           </label>
           <label>
             Окончание
-            <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+            <DateTimePicker value={endsAt} onChange={setEndsAt} />
           </label>
           <div className="report-form-actions">
             <button className="primary" type="submit" disabled={submitting}>

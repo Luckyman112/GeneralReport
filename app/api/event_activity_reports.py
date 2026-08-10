@@ -1,6 +1,8 @@
 """Отчёты Ивентологов о проведённых мероприятиях (Мини-ивент / Боевой вылет) —
 отдельная от Event (заявка/бронь ДО ивента) сущность, тот же принцип freeform
-payload, что у Event/AdminReport (см. app/models/event_activity_report.py)."""
+payload, что у Event/AdminReport (см. app/models/event_activity_report.py).
+Сводка активности по составу — не здесь, а в GET /event-room/roster (единая
+таблица состава + статистики, см. решение пользователя)."""
 import logging
 import uuid
 from pathlib import Path
@@ -9,16 +11,12 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
-from app.core import discord_client
 from app.core.uploads import read_image_upload
-from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import event_activity_report as activity_report_crud
-from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
 from app.schemas.event_activity_report import (
-    EventActivitySummaryEntry,
     EventActivityReportCreate,
     EventActivityReportDecide,
     EventActivityReportRead,
@@ -31,15 +29,6 @@ router = APIRouter(prefix="/event-activity-reports", tags=["event-activity-repor
 _UPLOAD_ROOT = Path(__file__).resolve().parent.parent.parent / "uploads" / "event-activity-reports"
 _ALLOWED_IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 _MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 МБ
-
-# Порядок важен — старшая ступень побеждает, если у человека несколько ролей разом
-_RANK_LABELS = [
-    ("curator", "Куратор ивентологии"),
-    ("assistant", "Ассистент ивентологии"),
-    ("senior", "Старший Ивентолог"),
-    ("regular", "Ивентолог"),
-    ("junior", "Младший Ивентолог"),
-]
 
 
 def _require_submitter(access: AccessContext) -> None:
@@ -115,60 +104,3 @@ async def upload_activity_report_attachment(
     filename = f"{uuid.uuid4()}{ext}"
     (_UPLOAD_ROOT / filename).write_bytes(content)
     return {"url": f"/uploads/event-activity-reports/{filename}"}
-
-
-@router.get("/activity-summary", response_model=list[EventActivitySummaryEntry])
-async def get_activity_summary(
-    db: AsyncSession = Depends(get_db),
-    access: AccessContext = Depends(get_access_context),
-) -> list[EventActivitySummaryEntry]:
-    """Кол-во одобренных отчётов за 7д/30д/всё время + дата последнего — для
-    каждого текущего носителя одной из 5 ступеней лестницы Ивентрума (живой
-    ростер, как везде в проекте)."""
-    _require_submitter(access)
-
-    app_config = await app_settings_crud.get(db)
-    role_ids_by_rank = {
-        "junior": app_config.event_junior_role_id,
-        "regular": app_config.event_role_id,
-        "senior": app_config.event_senior_role_id,
-        "assistant": app_config.event_assistant_role_id,
-        "curator": app_config.event_curator_role_id,
-    }
-    rank_label_by_code = dict(_RANK_LABELS)
-
-    members = await discord_client.fetch_guild_members()
-    staff_members = []
-    for member in members:
-        member_role_ids = set(member.get("roles") or [])
-        rank_code = next(
-            (code for code, _ in _RANK_LABELS if role_ids_by_rank.get(code) in member_role_ids), None
-        )
-        if rank_code is not None:
-            staff_members.append((member, rank_code))
-    if not staff_members:
-        return []
-
-    users = await user_crud.get_by_discord_ids(db, [m["discord_id"] for m, _ in staff_members])
-    user_by_discord_id = {u.discord_id: u for u in users}
-
-    user_ids = [user_by_discord_id[m["discord_id"]].id for m, _ in staff_members if m["discord_id"] in user_by_discord_id]
-    stats_by_user_id = await activity_report_crud.activity_summary_for_user_ids(db, user_ids)
-
-    entries = []
-    for member, rank_code in staff_members:
-        user = user_by_discord_id.get(member["discord_id"])
-        stats = stats_by_user_id.get(user.id) if user else None
-        entries.append(
-            EventActivitySummaryEntry(
-                discord_id=member["discord_id"],
-                username=member["username"],
-                rank_code=rank_code,
-                rank_label=rank_label_by_code[rank_code],
-                count_week=stats["count_week"] if stats else 0,
-                count_month=stats["count_month"] if stats else 0,
-                count_all_time=stats["count_all_time"] if stats else 0,
-                last_report_at=stats["last_report_at"] if stats else None,
-            )
-        )
-    return entries

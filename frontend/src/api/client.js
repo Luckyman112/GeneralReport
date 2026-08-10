@@ -793,7 +793,6 @@ export const api = {
     formData.append("file", file);
     return request("/api/event-activity-reports/attachments", { method: "POST", token, body: formData });
   },
-  getEventActivitySummary: (token) => request("/api/event-activity-reports/activity-summary", { token }),
 
   listEventBookings: (token, { rangeStart, rangeEnd }) =>
     request(

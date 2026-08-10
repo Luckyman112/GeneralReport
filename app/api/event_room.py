@@ -20,7 +20,9 @@ from app.core.uploads import read_image_upload
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import event as event_crud
+from app.crud import event_activity_report as activity_report_crud
 from app.crud import regiment as regiment_crud
+from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.schemas.event import (
@@ -106,16 +108,21 @@ async def get_roster(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> list[EventRosterEntry]:
-    """Состав Ивентрума (Ивентолог/Ассистент/Куратор) с их статистикой по
-    заявкам — сколько подал/одобрено/отклонено (см. решение пользователя)."""
+    """Состав Ивентрума (5 ступеней) с их статистикой — и по заявкам на ивент
+    (сколько подал/одобрено/отклонено), и по отчётам о проведённых
+    мероприятиях (за неделю/месяц/всё время + дата последнего) — единая
+    таблица (см. решение пользователя, было две разные)."""
     if not access.can_access_event_room:
         raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
 
     app_config = await app_settings_crud.get(db)
+    # старше по списку — побеждает, если роли совмещены (см. ниже next())
     role_labels = {
         app_config.event_curator_role_id: "куратор",
         app_config.event_assistant_role_id: "ассистент",
+        app_config.event_senior_role_id: "старший ивентолог",
         app_config.event_role_id: "ивентолог",
+        app_config.event_junior_role_id: "младший ивентолог",
     }
     role_labels.pop(None, None)
     if not role_labels:
@@ -133,14 +140,26 @@ async def get_roster(
         elif ev.status == "rejected":
             bucket["rejected"] += 1
 
-    entries: list[EventRosterEntry] = []
+    matched_members = []
     for member in members:
         member_role_ids = set(member.get("roles") or [])
-        # куратор > ассистент > ивентолог — если роли совмещены, показываем старшую
         role = next((label for role_id, label in role_labels.items() if role_id in member_role_ids), None)
-        if role is None:
-            continue
+        if role is not None:
+            matched_members.append((member, role))
+    if not matched_members:
+        return []
+
+    users = await user_crud.get_by_discord_ids(db, [m["discord_id"] for m, _ in matched_members])
+    user_id_by_discord_id = {u.discord_id: u.id for u in users}
+    activity_stats = await activity_report_crud.activity_summary_for_user_ids(
+        db, list(user_id_by_discord_id.values())
+    )
+
+    entries: list[EventRosterEntry] = []
+    for member, role in matched_members:
         stats = counts.get(member["discord_id"], {"submitted": 0, "approved": 0, "rejected": 0})
+        user_id = user_id_by_discord_id.get(member["discord_id"])
+        activity = activity_stats.get(user_id, {}) if user_id else {}
         entries.append(
             EventRosterEntry(
                 discord_id=member["discord_id"],
@@ -150,11 +169,15 @@ async def get_roster(
                 submitted_count=stats["submitted"],
                 approved_count=stats["approved"],
                 rejected_count=stats["rejected"],
+                activity_count_week=activity.get("count_week", 0),
+                activity_count_month=activity.get("count_month", 0),
+                activity_count_all_time=activity.get("count_all_time", 0),
+                activity_last_report_at=activity.get("last_report_at"),
             )
         )
 
-    role_order = {"куратор": 0, "ассистент": 1, "ивентолог": 2}
-    entries.sort(key=lambda e: (role_order.get(e.role, 9), -e.submitted_count, e.username))
+    role_order = {"куратор": 0, "ассистент": 1, "старший ивентолог": 2, "ивентолог": 3, "младший ивентолог": 4}
+    entries.sort(key=lambda e: (role_order.get(e.role, 9), -e.activity_count_all_time, e.username))
     return entries
 
 

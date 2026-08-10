@@ -211,7 +211,7 @@ export function AdminStaffPage() {
         <EmptyState text="Состав Администрации не настроен или пуст." />
       ) : (
         <div className="roster-table-wrap">
-          <table className="roster-table">
+          <table className="roster-table roster-table-wide">
             <thead>
               <tr>
                 <th>Боец</th>
