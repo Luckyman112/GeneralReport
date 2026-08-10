@@ -15,6 +15,9 @@ SpecializationCategory = Literal[
     "medic",
     "pilot",
     "engineer",
+    "jedi_guardian",
+    "jedi_consular",
+    "jedi_sentinel",
 ]
 
 

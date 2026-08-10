@@ -17,7 +17,13 @@ from app.crud import specialization as specialization_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
-from app.models.specialization import DISCIPLINE_CATEGORIES, INSTRUCTOR_TIER_RANK, UNLIMITED_TRAINING_CODE, Specialization
+from app.models.specialization import (
+    DISCIPLINE_CATEGORIES,
+    INSTRUCTOR_TIER_RANK,
+    JEDI_BRANCH_CATEGORIES,
+    UNLIMITED_TRAINING_CODE,
+    Specialization,
+)
 from app.models.user import User
 from app.schemas.specialization import (
     DisciplineRosterEntry,
@@ -80,6 +86,26 @@ async def _check_can_grant(db: AsyncSession, target: User, specialization: Speci
         if required_role is None or required_role not in target.roles:
             regiment_label = specialization.required_regiment.name if specialization.required_regiment else "формирования"
             raise AppError(f"Эта специализация доступна только бойцам формирования «{regiment_label}»")
+
+    # Ветки джедаев (Защитники/Консулы/Стражи) — выбор одной ветки раз и
+    # навсегда, специализацию из другой ветки выдать нельзя (см. решение
+    # пользователя), JEDI_BRANCH_CATEGORIES
+    if specialization.category in JEDI_BRANCH_CATEGORIES:
+        existing_grants = await specialization_crud.list_for_user(db, user_id=target.id)
+        other_branch = next(
+            (
+                g.specialization
+                for g in existing_grants
+                if g.specialization.category in JEDI_BRANCH_CATEGORIES
+                and g.specialization.category != specialization.category
+            ),
+            None,
+        )
+        if other_branch is not None:
+            raise AppError(
+                f"У бойца уже выбрана другая ветка джедая («{other_branch.name}») — "
+                f"специализацию «{specialization.name}» из другой ветки выдать нельзя"
+            )
 
     ban = await specialization_crud.get_active_blocking_ban(
         db, user_id=target.id, specialization_id=specialization.id

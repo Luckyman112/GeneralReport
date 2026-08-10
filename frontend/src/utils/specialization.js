@@ -7,6 +7,9 @@ export const SPECIALIZATION_CATEGORIES = [
   { value: "medic", label: "Медицинская дисциплина" },
   { value: "pilot", label: "Пилотская дисциплина" },
   { value: "engineer", label: "Инженерная дисциплина" },
+  { value: "jedi_guardian", label: "Джедаи — Защитники" },
+  { value: "jedi_consular", label: "Джедаи — Консулы" },
+  { value: "jedi_sentinel", label: "Джедаи — Стражи" },
 ];
 
 // категории-дисциплины: выдаёт только инструктор соответствующей роли

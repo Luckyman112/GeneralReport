@@ -26,6 +26,18 @@ CATEGORY_PILOT = "pilot"
 CATEGORY_ENGINEER = "engineer"
 DISCIPLINE_CATEGORIES = [CATEGORY_MEDIC, CATEGORY_PILOT, CATEGORY_ENGINEER]
 
+# Ветки джедаев (Защитники/Консулы/Стражи) — каждая со своими 2 специализациями,
+# выбирается один раз (см. _check_can_grant: держать специализации из двух
+# разных веток разом нельзя). Сознательно НЕ в DISCIPLINE_CATEGORIES — та
+# завязана на RankTier.<category>_limit колонки и InstructorDiscipline Literal
+# (медик/пилот/инженер, фиксированная тройка); выдавать джедайские ветки пока
+# может любой инструктор, как обычную (не дисциплинарную) специализацию —
+# точечный доступ через "Совет Ордена" сделать позже, отдельной фичей.
+CATEGORY_JEDI_GUARDIAN = "jedi_guardian"
+CATEGORY_JEDI_CONSULAR = "jedi_consular"
+CATEGORY_JEDI_SENTINEL = "jedi_sentinel"
+JEDI_BRANCH_CATEGORIES = [CATEGORY_JEDI_GUARDIAN, CATEGORY_JEDI_CONSULAR, CATEGORY_JEDI_SENTINEL]
+
 # Иерархия внутри дисциплины — тот же принцип, что у командования формирования
 # (командир/зам/боец), только по ветке (медик/пилот/инженер), не по формированию.
 # Права нарастают по ступеням (см. AccessContext.is_discipline_deputy/_curator).
@@ -47,6 +59,7 @@ SPECIALIZATION_CATEGORIES = [
     CATEGORY_ADDITIONAL_SPECIALIZATION,
     CATEGORY_ELITE_SPECIALIZATION,
     *DISCIPLINE_CATEGORIES,
+    *JEDI_BRANCH_CATEGORIES,
 ]
 # Специализация с этим кодом освобождает бойца от всех лимитов на обучение по
 # составу (см. вики: "ЭРК [ARC] - Без ограничений")
