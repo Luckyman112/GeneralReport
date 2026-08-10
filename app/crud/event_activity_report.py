@@ -51,24 +51,29 @@ async def decide(
 
 async def activity_summary_for_user_ids(db: AsyncSession, user_ids: list[int]) -> dict[int, dict]:
     """Кол-во ОДОБРЕННЫХ отчётов за 7д/30д/всё время + дата последнего,
-    сгруппировано по submitted_by_user_id (тот же приём, что и у Администрации,
-    см. app/crud/admin_report.py::activity_summary_for_user_ids)."""
+    сгруппировано по submitted_by_user_id И по event_type — Мини-ивент и
+    Боевой вылет считаются раздельно (см. решение пользователя), а не одной
+    общей цифрой. Тот же приём, что и у Администрации, см.
+    app/crud/admin_report.py::activity_summary_for_user_ids, но с
+    дополнительной группировкой по типу."""
     if not user_ids:
         return {}
     now = datetime.now(timezone.utc)
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
 
-    async def _counts_since(since: datetime | None) -> dict[int, int]:
-        query = select(EventActivityReport.submitted_by_user_id, func.count(EventActivityReport.id)).where(
+    async def _counts_since(since: datetime | None) -> dict[tuple[int, str], int]:
+        query = select(
+            EventActivityReport.submitted_by_user_id, EventActivityReport.event_type, func.count(EventActivityReport.id)
+        ).where(
             EventActivityReport.submitted_by_user_id.in_(user_ids),
             EventActivityReport.status == EventActivityReportStatus.APPROVED,
         )
         if since is not None:
             query = query.where(EventActivityReport.created_at >= since)
-        query = query.group_by(EventActivityReport.submitted_by_user_id)
+        query = query.group_by(EventActivityReport.submitted_by_user_id, EventActivityReport.event_type)
         result = await db.execute(query)
-        return dict(result.all())
+        return {(user_id, event_type): count for user_id, event_type, count in result.all()}
 
     count_week = await _counts_since(week_ago)
     count_month = await _counts_since(month_ago)
@@ -84,11 +89,21 @@ async def activity_summary_for_user_ids(db: AsyncSession, user_ids: list[int]) -
     )
     last_report_at = dict(last_result.all())
 
+    def _by_type(counts: dict[tuple[int, str], int], user_id: int, event_type: str) -> int:
+        return counts.get((user_id, event_type), 0)
+
     return {
         user_id: {
-            "count_week": count_week.get(user_id, 0),
-            "count_month": count_month.get(user_id, 0),
-            "count_all_time": count_all_time.get(user_id, 0),
+            "mini": {
+                "count_week": _by_type(count_week, user_id, "mini"),
+                "count_month": _by_type(count_month, user_id, "mini"),
+                "count_all_time": _by_type(count_all_time, user_id, "mini"),
+            },
+            "combat": {
+                "count_week": _by_type(count_week, user_id, "combat"),
+                "count_month": _by_type(count_month, user_id, "combat"),
+                "count_all_time": _by_type(count_all_time, user_id, "combat"),
+            },
             "last_report_at": last_report_at.get(user_id),
         }
         for user_id in user_ids

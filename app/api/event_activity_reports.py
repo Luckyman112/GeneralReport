@@ -60,6 +60,13 @@ async def create_activity_report(
         db, event_type=payload.event_type, payload=payload.payload, submitted_by_user_id=access.user.id
     )
     logger.info("%s подал отчёт о мероприятии (%s)", access.user.username, payload.event_type)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_activity_report_create",
+        details=f"Отчёт о мероприятии {report.id} ({payload.event_type})",
+    )
     return EventActivityReportRead.model_validate(report)
 
 

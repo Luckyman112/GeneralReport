@@ -30,11 +30,14 @@ from app.schemas.event import (
     EventMapCreate,
     EventMapRead,
     EventMapUpdate,
+    EventMemberDetail,
     EventRead,
     EventRejectRequest,
     EventRosterEntry,
     EventUpdate,
 )
+from app.schemas.event_activity_report import EventActivityReportRead
+from app.schemas.rank import RankRead
 from app.schemas.regiment_commander import GuildMemberRead
 
 logger = logging.getLogger(__name__)
@@ -150,35 +153,94 @@ async def get_roster(
         return []
 
     users = await user_crud.get_by_discord_ids(db, [m["discord_id"] for m, _ in matched_members])
-    user_id_by_discord_id = {u.discord_id: u.id for u in users}
+    user_by_discord_id = {u.discord_id: u for u in users}
     activity_stats = await activity_report_crud.activity_summary_for_user_ids(
-        db, list(user_id_by_discord_id.values())
+        db, [u.id for u in users]
     )
 
     entries: list[EventRosterEntry] = []
     for member, role in matched_members:
         stats = counts.get(member["discord_id"], {"submitted": 0, "approved": 0, "rejected": 0})
-        user_id = user_id_by_discord_id.get(member["discord_id"])
-        activity = activity_stats.get(user_id, {}) if user_id else {}
+        user = user_by_discord_id.get(member["discord_id"])
+        activity = activity_stats.get(user.id, {}) if user else {}
+        mini = activity.get("mini", {})
+        combat = activity.get("combat", {})
         entries.append(
             EventRosterEntry(
                 discord_id=member["discord_id"],
                 username=member["username"],
                 avatar_url=member.get("avatar_url"),
                 role=role,
+                rank=RankRead.model_validate(user.rank) if user and user.rank else None,
                 submitted_count=stats["submitted"],
                 approved_count=stats["approved"],
                 rejected_count=stats["rejected"],
-                activity_count_week=activity.get("count_week", 0),
-                activity_count_month=activity.get("count_month", 0),
-                activity_count_all_time=activity.get("count_all_time", 0),
+                mini_count_week=mini.get("count_week", 0),
+                mini_count_month=mini.get("count_month", 0),
+                mini_count_all_time=mini.get("count_all_time", 0),
+                combat_count_week=combat.get("count_week", 0),
+                combat_count_month=combat.get("count_month", 0),
+                combat_count_all_time=combat.get("count_all_time", 0),
                 activity_last_report_at=activity.get("last_report_at"),
             )
         )
 
     role_order = {"куратор": 0, "ассистент": 1, "старший ивентолог": 2, "ивентолог": 3, "младший ивентолог": 4}
-    entries.sort(key=lambda e: (role_order.get(e.role, 9), -e.activity_count_all_time, e.username))
+    entries.sort(
+        key=lambda e: (role_order.get(e.role, 9), -(e.mini_count_all_time + e.combat_count_all_time), e.username)
+    )
     return entries
+
+
+@router.get("/roster/{discord_id}", response_model=EventMemberDetail)
+async def get_roster_member_detail(
+    discord_id: str,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventMemberDetail:
+    """Досье по клику на строку ростера — ранг + список заявок на ивенты и
+    отчётов о мероприятиях этого конкретного участника (см. решение
+    пользователя: агрегированных счётчиков в таблице недостаточно)."""
+    if not access.can_access_event_room:
+        raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
+
+    app_config = await app_settings_crud.get(db)
+    role_labels = {
+        app_config.event_curator_role_id: "куратор",
+        app_config.event_assistant_role_id: "ассистент",
+        app_config.event_senior_role_id: "старший ивентолог",
+        app_config.event_role_id: "ивентолог",
+        app_config.event_junior_role_id: "младший ивентолог",
+    }
+    role_labels.pop(None, None)
+
+    members = await discord_client.fetch_guild_members()
+    member = next((m for m in members if m["discord_id"] == discord_id), None)
+    if member is None:
+        raise NotFoundError("Участник не найден")
+    member_role_ids = set(member.get("roles") or [])
+    role = next((label for role_id, label in role_labels.items() if role_id in member_role_ids), None)
+    if role is None:
+        raise NotFoundError("Участник не входит в состав Ивентрума")
+
+    user = await user_crud.get_by_discord_id_with_rank(db, discord_id)
+    events: list[EventRead] = []
+    activity_reports: list[EventActivityReportRead] = []
+    if user is not None:
+        events = [EventRead.model_validate(r) for r in await event_crud.list_all(db, submitted_by_user_id=user.id)]
+        activity_reports = [
+            EventActivityReportRead.model_validate(r)
+            for r in await activity_report_crud.list_all(db, submitted_by_user_id=user.id)
+        ]
+
+    return EventMemberDetail(
+        discord_id=discord_id,
+        username=member["username"],
+        role=role,
+        rank=RankRead.model_validate(user.rank) if user and user.rank else None,
+        events=events,
+        activity_reports=activity_reports,
+    )
 
 
 @router.post("/upload-map-image")

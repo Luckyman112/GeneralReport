@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import delete as sa_delete
@@ -29,6 +30,8 @@ from app.models.regiment import Regiment
 from app.models.report import Report, ReportStatus
 from app.models.report_category import ReportCategory
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 _REQUEST_LOAD_OPTIONS = [
     selectinload(PromotionRequest.user).selectinload(User.rank),
@@ -134,12 +137,42 @@ async def get_request_by_id(db: AsyncSession, request_id: int) -> PromotionReque
     return await db.get(PromotionRequest, request_id, options=_REQUEST_LOAD_OPTIONS, populate_existing=True)
 
 
+async def cancel_pending_for_user(db: AsyncSession, *, user_id: int, reason: str) -> None:
+    """Гасит зависшую заявку на повышение (from_rank больше не совпадает с
+    текущим rank_id) — когда звание/ранг бойца меняют В ОБХОД обычного decide()
+    (ручной оверрайд в update_member_profile, прямая мутация rank_id при
+    одобрении "Курса молодого бойца"/испытания джедая) — иначе на странице
+    Повышения зависает карточка со старым переходом (баг-репорт: PDW-джедай с
+    видимой заявкой RCT -> PVT от старой жизни рекрутом)."""
+    request = await get_pending_for_user(db, user_id=user_id)
+    if request is None:
+        return
+    request.status = "cancelled"
+    request.decided_at = datetime.now(timezone.utc)
+    # PromotionRequest не хранит текст причины (нет такой колонки) — фиксируем
+    # только в логе, статус "cancelled" сам по себе уже отличим от
+    # approved/rejected на странице Повышения
+    logger.info("Погашена зависшая заявка на повышение #%s (user_id=%s): %s", request.id, user_id, reason)
+
+    if request.mirror_report_id is not None:
+        # тот же зеркальный рапорт в категории "Повышение", что и в decide() —
+        # без этого он навсегда остаётся "На рассмотрении" в общей ленте рапортов
+        mirror_report = await db.get(Report, request.mirror_report_id)
+        if mirror_report is not None:
+            mirror_report.status = ReportStatus.REJECTED
+
+    await db.commit()
+    event_bus.publish("promotions")
+
+
 async def list_decided_for_user(db: AsyncSession, *, user_id: int) -> list[PromotionRequest]:
     """История повышений — заявки, по которым уже принято решение (approved/rejected),
-    для личной страницы "карьера"."""
+    для личной страницы "карьера". "cancelled" (см. cancel_pending_for_user) сюда
+    не входит — это техническая пометка "звание сменилось в обход заявки", а не
+    решение, которое стоит показывать бойцу как отклонённое."""
     query = (
         select(PromotionRequest)
-        .where(PromotionRequest.user_id == user_id, PromotionRequest.status != "pending")
+        .where(PromotionRequest.user_id == user_id, PromotionRequest.status.in_(["approved", "rejected"]))
         .options(*_REQUEST_LOAD_OPTIONS)
         .order_by(PromotionRequest.decided_at.desc())
     )

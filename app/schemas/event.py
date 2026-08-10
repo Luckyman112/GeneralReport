@@ -4,6 +4,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.event import EventStatus
+from app.schemas.event_activity_report import EventActivityReportRead
+from app.schemas.rank import RankRead
 from app.schemas.user import UserBrief
 
 
@@ -82,10 +84,29 @@ class EventRosterEntry(BaseModel):
     username: str
     avatar_url: str | None = None
     role: str  # "младший ивентолог" | "ивентолог" | "старший ивентолог" | "ассистент" | "куратор"
+    rank: RankRead | None = None
     submitted_count: int
     approved_count: int
     rejected_count: int
-    activity_count_week: int = 0
-    activity_count_month: int = 0
-    activity_count_all_time: int = 0
+    # Мини-ивент и Боевой вылет считаются раздельно (см. решение пользователя),
+    # не одной общей цифрой
+    mini_count_week: int = 0
+    mini_count_month: int = 0
+    mini_count_all_time: int = 0
+    combat_count_week: int = 0
+    combat_count_month: int = 0
+    combat_count_all_time: int = 0
     activity_last_report_at: datetime | None = None
+
+
+class EventMemberDetail(BaseModel):
+    """Досье по одному участнику Ивентрума для клика по строке ростера (см.
+    решение пользователя) — ранг + его заявки на ивенты и отчёты о
+    проведённых мероприятиях, а не только агрегированные счётчики."""
+
+    discord_id: str
+    username: str
+    role: str
+    rank: RankRead | None = None
+    events: list["EventRead"] = Field(default_factory=list)
+    activity_reports: list[EventActivityReportRead] = Field(default_factory=list)

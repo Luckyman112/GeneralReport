@@ -121,14 +121,10 @@ export function AdminStaffPage() {
   return (
     <div className="page-container">
       <h2>Администрация</h2>
-      <p className="hint-text">
-        Нон-РП должность (модерация сервера) — не связана с РП-формированиями. Здесь публикуется вся деятельность
-        Администрации, помимо выдачи наказаний, и сами отчёты о выданных наказаниях.
-      </p>
 
       {error && <p className="error-text">{error}</p>}
 
-      {access?.is_admin_staff && (
+      {(access?.is_admin_staff || access?.is_admin) && (
         <form className="report-form fade-in-up" onSubmit={handleSubmit}>
           <h3>Подать отчёт</h3>
           <label>

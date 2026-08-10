@@ -63,6 +63,13 @@ async def create_booking(
         requested_by_user_id=access.user.id,
     )
     logger.info("%s забронировал слот под ивент: %s", access.user.username, payload.title)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_booking_create",
+        details=f"Бронь {booking.id} ({payload.title})",
+    )
     return EventBookingRead.model_validate(booking)
 
 

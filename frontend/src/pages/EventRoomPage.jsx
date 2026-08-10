@@ -5,6 +5,7 @@ import { DateTimePicker } from "../components/DateTimePicker";
 import { EmptyState } from "../components/EmptyState";
 import { EventActivityReports } from "../components/EventActivityReports";
 import { EventBookingCalendar } from "../components/EventBookingCalendar";
+import { EventMemberDetailModal } from "../components/EventMemberDetailModal";
 import { HorizontalBarChart } from "../components/HorizontalBarChart";
 import { InlineSpinner } from "../components/InlineSpinner";
 import { MemberSearchPicker } from "../components/MemberSearchPicker";
@@ -25,10 +26,13 @@ const ROLE_LABELS = {
   "младший ивентолог": "Младший Ивентолог",
 };
 
+// Один период разом двигает и колонки таблицы, и график (см. решение
+// пользователя — раньше период двигал только график, таблица показывала
+// фиксированные неделя/месяц/всё-время колонки одновременно)
 const PERIOD_OPTIONS = [
-  { key: "week", label: "Неделя", field: "activity_count_week" },
-  { key: "month", label: "Месяц", field: "activity_count_month" },
-  { key: "all", label: "Всё время", field: "activity_count_all_time" },
+  { key: "week", label: "Неделя", miniField: "mini_count_week", combatField: "combat_count_week" },
+  { key: "month", label: "Месяц", miniField: "mini_count_month", combatField: "combat_count_month" },
+  { key: "all", label: "Всё время", miniField: "mini_count_all_time", combatField: "combat_count_all_time" },
 ];
 
 function emptyAudience() {
@@ -592,6 +596,7 @@ function RosterPanel() {
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState("week");
+  const [selectedDiscordId, setSelectedDiscordId] = useState(null);
 
   useEffect(() => {
     api.getEventRoster(token).then(setRoster).catch(() => setRoster([])).finally(() => setLoading(false));
@@ -599,8 +604,9 @@ function RosterPanel() {
 
   if (loading) return <InlineSpinner />;
 
-  const periodField = PERIOD_OPTIONS.find((p) => p.key === period)?.field ?? "activity_count_week";
-  const chartData = roster.map((r) => ({ id: r.discord_id, label: r.username, value: r[periodField] ?? 0 }));
+  const periodOption = PERIOD_OPTIONS.find((p) => p.key === period) ?? PERIOD_OPTIONS[0];
+  const miniChartData = roster.map((r) => ({ id: r.discord_id, label: r.username, value: r[periodOption.miniField] ?? 0 }));
+  const combatChartData = roster.map((r) => ({ id: r.discord_id, label: r.username, value: r[periodOption.combatField] ?? 0 }));
 
   return (
     <div className="regiment-panel">
@@ -609,40 +615,6 @@ function RosterPanel() {
         <EmptyState text="Роли Ивентрума ещё не настроены или никто их не занимает." />
       ) : (
         <>
-          <div className="roster-table-wrap-full">
-            <table className="roster-table roster-table-wide roster-table-full">
-              <thead>
-                <tr>
-                  <th>Участник</th>
-                  <th>Роль</th>
-                  <th>Заявок подано</th>
-                  <th>Одобрено</th>
-                  <th>Отклонено</th>
-                  <th>Мероприятий за неделю</th>
-                  <th>За месяц</th>
-                  <th>Всего</th>
-                  <th>Последний отчёт</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roster.map((r) => (
-                  <tr key={r.discord_id}>
-                    <td>{r.username}</td>
-                    <td>{ROLE_LABELS[r.role] || r.role}</td>
-                    <td className="mono-num">{r.submitted_count}</td>
-                    <td className="mono-num">{r.approved_count}</td>
-                    <td className="mono-num">{r.rejected_count}</td>
-                    <td className="mono-num">{r.activity_count_week}</td>
-                    <td className="mono-num">{r.activity_count_month}</td>
-                    <td className="mono-num">{r.activity_count_all_time}</td>
-                    <td>{r.activity_last_report_at ? formatMskDate(r.activity_last_report_at) : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <h4>Проведено мероприятий за период</h4>
           <div className="report-form-actions">
             {PERIOD_OPTIONS.map((p) => (
               <button
@@ -655,8 +627,47 @@ function RosterPanel() {
               </button>
             ))}
           </div>
-          <HorizontalBarChart data={chartData} />
+
+          <div className="roster-table-wrap-full">
+            <table className="roster-table roster-table-wide roster-table-full">
+              <thead>
+                <tr>
+                  <th>Участник</th>
+                  <th>Роль</th>
+                  <th>Заявок подано</th>
+                  <th>Одобрено</th>
+                  <th>Отклонено</th>
+                  <th>Мини-ивент</th>
+                  <th>Боевой вылет</th>
+                  <th>Последний отчёт</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roster.map((r) => (
+                  <tr key={r.discord_id} onClick={() => setSelectedDiscordId(r.discord_id)}>
+                    <td>{r.username}</td>
+                    <td>{ROLE_LABELS[r.role] || r.role}</td>
+                    <td className="mono-num">{r.submitted_count}</td>
+                    <td className="mono-num">{r.approved_count}</td>
+                    <td className="mono-num">{r.rejected_count}</td>
+                    <td className="mono-num">{r[periodOption.miniField]}</td>
+                    <td className="mono-num">{r[periodOption.combatField]}</td>
+                    <td>{r.activity_last_report_at ? formatMskDate(r.activity_last_report_at) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h4>Мини-ивент за период</h4>
+          <HorizontalBarChart data={miniChartData} />
+          <h4>Боевой вылет за период</h4>
+          <HorizontalBarChart data={combatChartData} />
         </>
+      )}
+
+      {selectedDiscordId && (
+        <EventMemberDetailModal discordId={selectedDiscordId} onClose={() => setSelectedDiscordId(null)} />
       )}
     </div>
   );
@@ -820,6 +831,7 @@ export function EventRoomPage() {
                     <span className="report-regiment">{ev.title}</span>
                     <span className="report-category">подал {formatFullName(ev.submitted_by)}</span>
                   </div>
+                  <p className="member-report-date">{formatMskDate(ev.created_at)} МСК</p>
                   {ev.payload?.summary && <p className="report-row-content">{ev.payload.summary}</p>}
                   <div className="report-row-actions">
                     <CardViewButton eventId={ev.id} />
@@ -874,6 +886,7 @@ export function EventRoomPage() {
                   <span className="report-regiment">{ev.title}</span>
                   <span className="report-category">{STATUS_LABELS[ev.status]}</span>
                 </div>
+                <p className="member-report-date">{formatMskDate(ev.created_at)} МСК</p>
                 {ev.status === "rejected" && ev.rejection_reason && (
                   <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
                 )}

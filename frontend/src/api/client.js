@@ -739,6 +739,7 @@ export const api = {
     }),
   deleteEventMap: (token, mapId) => request(`/api/event-room/maps/${mapId}`, { method: "DELETE", token }),
   getEventRoster: (token) => request("/api/event-room/roster", { token }),
+  getEventRosterMemberDetail: (token, discordId) => request(`/api/event-room/roster/${discordId}`, { token }),
   uploadEventMapImage: (token, file) => {
     const formData = new FormData();
     formData.append("file", file);

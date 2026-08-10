@@ -74,6 +74,13 @@ async def create_admin_report(
         db, report_type=payload.report_type, payload=payload.payload, submitted_by_user_id=access.user.id
     )
     logger.info("%s подал отчёт Администрации (%s)", access.user.username, payload.report_type)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="admin_report_create",
+        details=f"Отчёт Администрации {report.id} ({payload.report_type})",
+    )
     return AdminReportRead.model_validate(report)
 
 

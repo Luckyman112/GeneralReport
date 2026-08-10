@@ -645,6 +645,12 @@ async def _apply_approval_side_effects(db: AsyncSession, updated, category, acto
             trainee.early_promoted_by_username = None
             trainee.early_promotion_reason = None
             await db.commit()
+            # rank_id сменился в обход обычной заявки — гасим зависшую pending,
+            # если была (см. app/api/regiments.py::update_member_profile, тот
+            # же баг-репорт)
+            await promotion_crud.cancel_pending_for_user(
+                db, user_id=trainee.id, reason="Пройден Курс молодого бойца"
+            )
             await notification_crud.create_personal_notification(
                 db,
                 target_user_id=trainee.id,
