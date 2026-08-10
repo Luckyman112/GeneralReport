@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
 from app.crud import audit_log as audit_log_crud
+from app.crud import jedi_trial as jedi_trial_crud
 from app.crud import notification as notification_crud
 from app.crud import promotion as promotion_crud
 from app.crud import rank as rank_crud
@@ -369,7 +370,14 @@ async def _compute_promotion_status(
     days_ok = days_required is None or (days_in_rank is not None and days_in_rank >= days_required)
     points_ok = points_current >= points_required
     categories_ok = all(status.satisfied for status in category_statuses)
-    is_eligible = days_ok and points_ok and categories_ok and not has_active_reprimand
+
+    jedi_needs_trained_padawan = False
+    if regiment.is_jedi_order and next_rank.code == "MST":
+        jedi_needs_trained_padawan = not await jedi_trial_crud.has_trained_a_padawan(db, user_id=user.id)
+
+    is_eligible = (
+        days_ok and points_ok and categories_ok and not jedi_needs_trained_padawan and not has_active_reprimand
+    )
 
     if is_eligible:
         await promotion_crud.check_and_create_promotion_request(db, user, regiment_id=regiment.id)
@@ -386,6 +394,7 @@ async def _compute_promotion_status(
         points_required=points_required,
         has_active_reprimand=has_active_reprimand,
         is_eligible=is_eligible,
+        jedi_needs_trained_padawan=jedi_needs_trained_padawan,
         pending_request_id=pending_request.id if pending_request else None,
         category_requirements=[
             CategoryRequirementStatus(

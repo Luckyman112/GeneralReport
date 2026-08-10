@@ -52,6 +52,8 @@ class GuildMemberRead(BaseModel):
     # Джедайское командное звание (CO/SCO/GEN/SGEN/HGEN) — независимо от rank_id
     # (личного ранга джедая), см. app/models/user.py::jedi_title_id
     jedi_title: RankRead | None = None
+    # Совет Ордена — чистый титул, см. app/models/user.py::JEDI_COUNCIL_SEATS
+    jedi_council_seat: str | None = None
     # Сколько дней участник в текущем звании — для сверки с требованием по выслуге
     days_in_rank: int | None = None
     is_inactive: bool = False
@@ -127,6 +129,9 @@ class MemberProfileUpdate(BaseModel):
     # Джедайское командное звание — отдельно от rank_id (личного ранга), меняет
     # только admin/high_command (см. app/api/regiments.py::update_member_profile)
     jedi_title_id: int | None = None
+    # Совет Ордена — чистый титул, одно из JEDI_COUNCIL_SEATS, меняет только
+    # admin/high_command (см. app/models/user.py::jedi_council_seat)
+    jedi_council_seat: str | None = None
     is_inactive: bool | None = None
     # Причина досрочного повышения — учитывается, если rank_id или jedi_title_id
     # реально меняются (см. app/api/regiments.py::update_member_profile)

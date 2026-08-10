@@ -5,6 +5,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
+# Совет Ордена — 4 главы веток (см. User.jedi_council_seat), "Глава Храма" не
+# входит сюда — это просто действующий командир формирования, отдельного поля
+# не требует (см. решение пользователя)
+JEDI_COUNCIL_SEAT_CONSULAR_HEAD = "consular_head"
+JEDI_COUNCIL_SEAT_GUARDIAN_HEAD = "guardian_head"
+JEDI_COUNCIL_SEAT_SENTINEL_HEAD = "sentinel_head"
+JEDI_COUNCIL_SEAT_APPRENTICE_HEAD = "apprentice_head"
+JEDI_COUNCIL_SEATS = {
+    JEDI_COUNCIL_SEAT_CONSULAR_HEAD: "Глава Консулов",
+    JEDI_COUNCIL_SEAT_GUARDIAN_HEAD: "Глава Защитников",
+    JEDI_COUNCIL_SEAT_SENTINEL_HEAD: "Глава Стражей",
+    JEDI_COUNCIL_SEAT_APPRENTICE_HEAD: "Глава Ученичества",
+}
+
 
 class User(Base):
     __tablename__ = "users"
@@ -45,6 +59,12 @@ class User(Base):
     # выслуги/баллов (см. app/api/regiments.py::update_member_profile)
     jedi_title_id: Mapped[int | None] = mapped_column(ForeignKey("ranks.id"), nullable=True)
     jedi_title: Mapped["Rank | None"] = relationship(foreign_keys=[jedi_title_id])
+    # Совет Ордена — чистый титул (одна из JEDI_COUNCIL_SEATS), НЕ даёт прав в
+    # системе (никак не участвует в AccessContext) — только отметка в личном
+    # деле. Обычная (не partial) UNIQUE-колонка: NULL не ограничен, но каждое
+    # конкретное значение — только у одного бойца сразу (миграция 0081). Меняет
+    # только admin/high_command, как и jedi_title_id.
+    jedi_council_seat: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Неактивный боец не может создавать рапорты и видит блокирующий экран вместо
     # интерфейса — переключается командиром/заместителем формирования

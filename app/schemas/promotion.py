@@ -77,6 +77,10 @@ class PromotionStatusRead(BaseModel):
     has_active_reprimand: bool
     is_eligible: bool
     pending_request_id: int | None = None
+    # true, если для следующего ранга (Мастер у джедаев) требуется обучить хотя
+    # бы одного падавана, и это условие ещё не выполнено — см.
+    # jedi_trial_crud.has_trained_a_padawan
+    jedi_needs_trained_padawan: bool = False
     category_requirements: list[CategoryRequirementStatus] = []
 
 

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.events import event_bus
+from app.crud import jedi_trial as jedi_trial_crud
 from app.crud import notification as notification_crud
 from app.crud import points_adjustment as points_adjustment_crud
 from app.crud import rank as rank_crud
@@ -223,6 +224,13 @@ async def check_and_create_promotion_request(
         regiment = next((r for r in regiments if r.discord_role_id in role_ids), None)
     if regiment is None:
         return None
+
+    # Дополнительное условие для перехода в Мастера у джедаев: обучить хотя бы
+    # одного падавана (см. решение пользователя — считаем по испытаниям,
+    # наставник ведёт все 5, см. jedi_trial_crud.has_trained_a_padawan)
+    if regiment.is_jedi_order and next_rank.code == "MST":
+        if not await jedi_trial_crud.has_trained_a_padawan(db, user_id=user.id):
+            return None
 
     days_required = rank_crud.effective_tenure_days(next_rank)
     if days_required is not None:

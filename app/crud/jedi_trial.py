@@ -54,6 +54,16 @@ def graduation_available_at(passed: list[JediTrial]) -> datetime | None:
     return last.passed_at + timedelta(days=GRADUATION_GAP_DAYS)
 
 
+async def has_trained_a_padawan(db: AsyncSession, *, user_id: int) -> bool:
+    """Для условия "обучить хотя бы одного падавана" на переход в Мастера (см.
+    решение пользователя) — наставник ведёт все 5 испытаний, поэтому "обучил"
+    значит "довёл хотя бы одного падавана до 5-го испытания" (полный курс)."""
+    result = await db.execute(
+        select(JediTrial.id).where(JediTrial.passed_by_user_id == user_id, JediTrial.trial_number == TRIAL_COUNT)
+    )
+    return result.first() is not None
+
+
 async def mark_passed(db: AsyncSession, *, user_id: int, trial_number: int, passed_by_user_id: int) -> JediTrial:
     row = JediTrial(user_id=user_id, trial_number=trial_number, passed_by_user_id=passed_by_user_id)
     db.add(row)

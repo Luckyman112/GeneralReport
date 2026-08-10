@@ -33,7 +33,7 @@ from app.models.character import Character
 from app.models.report import ReportStatus
 from app.models.specialization import DISCIPLINE_CATEGORIES
 from app.models.squad import DEFAULT_SQUAD_TIER_LABELS
-from app.models.user import User
+from app.models.user import JEDI_COUNCIL_SEATS, User
 
 _PHOTO_UPLOAD_ROOT = Path(__file__).resolve().parent.parent.parent / "uploads" / "members"
 _ALLOWED_PHOTO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
@@ -809,6 +809,7 @@ def _build_guild_member(
         photo_url=user.photo_url if user else None,
         rank=RankRead.model_validate(user.rank) if user and user.rank else None,
         jedi_title=RankRead.model_validate(user.jedi_title) if user and user.jedi_title else None,
+        jedi_council_seat=user.jedi_council_seat if user else None,
         days_in_rank=days_in_rank,
         is_inactive=user.is_inactive if user else False,
         early_promoted_by_username=user.early_promoted_by_username if user else None,
@@ -955,6 +956,16 @@ async def update_member_profile(
     elif "jedi_title_id" in changes and not is_admin_or_hc:
         raise ForbiddenError("Звание джедая может менять только администратор или высшее командование")
 
+    if "jedi_council_seat" in changes:
+        if not is_admin_or_hc:
+            raise ForbiddenError("Совет Ордена назначает только администратор или высшее командование")
+        seat = changes["jedi_council_seat"]
+        if seat is not None:
+            if not regiment.is_jedi_order:
+                raise AppError("Совет Ордена есть только у джедайских формирований")
+            if seat not in JEDI_COUNCIL_SEATS:
+                raise AppError("Неизвестная должность в Совете Ордена")
+
     old_rank_id = existing_user.rank_id if existing_user else None
     new_rank_id = changes.get("rank_id")
     rank_changed = "rank_id" in changes and new_rank_id != old_rank_id
@@ -980,6 +991,8 @@ async def update_member_profile(
         )
     except IntegrityError:
         await db.rollback()
+        if "jedi_council_seat" in changes and changes["jedi_council_seat"] is not None:
+            raise AppError("Эта должность в Совете Ордена уже занята другим бойцом — сначала снимите её")
         raise AppError("Гранд-Мастер уже назначен другому бойцу — сначала снимите ранг с текущего")
     logger.info("%s обновил профиль участника %s: %s", access.user.username, discord_id, changes)
 

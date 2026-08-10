@@ -14,12 +14,22 @@ import { steamProfileUrl } from "../utils/steam";
 import { discordProfileUrl } from "../utils/discord";
 import { DISCIPLINE_CATEGORIES } from "../utils/specialization";
 
+// Держим синхронно с app/models/user.py::JEDI_COUNCIL_SEATS — чистый титул,
+// прав в системе не даёт (см. решение пользователя)
+const JEDI_COUNCIL_SEATS = {
+  consular_head: "Глава Консулов",
+  guardian_head: "Глава Защитников",
+  sentinel_head: "Глава Стражей",
+  apprentice_head: "Глава Ученичества",
+};
+
 function profileSnapshot(member) {
   return {
     serviceId: member.service_id ?? "",
     callsign: member.callsign ?? "",
     rankId: member.rank?.id ?? "",
     jediTitleId: member.jedi_title?.id ?? "",
+    jediCouncilSeat: member.jedi_council_seat ?? "",
     isInactive: member.is_inactive ?? false,
   };
 }
@@ -34,6 +44,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [callsign, setCallsign] = useState(baseline.callsign);
   const [rankId, setRankId] = useState(baseline.rankId);
   const [jediTitleId, setJediTitleId] = useState(baseline.jediTitleId);
+  const [jediCouncilSeat, setJediCouncilSeat] = useState(baseline.jediCouncilSeat);
   const [isInactive, setIsInactive] = useState(baseline.isInactive);
   const [tiers, setTiers] = useState([]);
   const [reports, setReports] = useState([]);
@@ -305,13 +316,15 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     serviceId !== baseline.serviceId ||
     callsign !== baseline.callsign ||
     rankId !== baseline.rankId ||
-    jediTitleId !== baseline.jediTitleId;
+    jediTitleId !== baseline.jediTitleId ||
+    jediCouncilSeat !== baseline.jediCouncilSeat;
 
   function handleResetProfile() {
     setServiceId(baseline.serviceId);
     setCallsign(baseline.callsign);
     setRankId(baseline.rankId);
     setJediTitleId(baseline.jediTitleId);
+    setJediCouncilSeat(baseline.jediCouncilSeat);
     setEarlyPromotionReason("");
   }
 
@@ -380,6 +393,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     try {
       const rankChanged = rankId !== baseline.rankId;
       const jediTitleChanged = jediTitleId !== baseline.jediTitleId;
+      const jediCouncilSeatChanged = jediCouncilSeat !== baseline.jediCouncilSeat;
       await api.setMemberProfile(token, regimentId, member.discord_id, {
         service_id: serviceId.trim() || null,
         callsign: callsign.trim() || null,
@@ -387,11 +401,14 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
         ...(isAdminOrHc && jediTitleChanged
           ? { jedi_title_id: jediTitleId === "" ? null : Number(jediTitleId) }
           : {}),
+        ...(isAdminOrHc && jediCouncilSeatChanged
+          ? { jedi_council_seat: jediCouncilSeat === "" ? null : jediCouncilSeat }
+          : {}),
         ...(rankChanged || jediTitleChanged
           ? { early_promotion_reason: earlyPromotionReason.trim() || null }
           : {}),
       });
-      setBaseline({ serviceId, callsign, rankId, jediTitleId, isInactive });
+      setBaseline({ serviceId, callsign, rankId, jediTitleId, jediCouncilSeat, isInactive });
       setEarlyPromotionReason("");
       showToast("Профиль сохранён");
       loadPromotionStatus();
@@ -534,6 +551,19 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                 </select>
               </label>
             )}
+            {regiment?.is_jedi_order && isAdminOrHc && (
+              <label>
+                Должность в Совете Ордена — чистый титул, прав в системе не даёт
+                <select value={jediCouncilSeat} onChange={(e) => setJediCouncilSeat(e.target.value)}>
+                  <option value="">— нет —</option>
+                  {Object.entries(JEDI_COUNCIL_SEATS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label>
               Позывной (он же веб-ник — используется везде, включая рапорты)
               <input type="text" value={callsign} onChange={(e) => setCallsign(e.target.value)} />
@@ -593,6 +623,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
             <p className="hint-text">
               {member.rank.code} — {member.rank.name}
               {member.jedi_title && ` · Звание: ${member.jedi_title.code} — ${member.jedi_title.name}`}
+              {member.jedi_council_seat && ` · ${JEDI_COUNCIL_SEATS[member.jedi_council_seat] || member.jedi_council_seat}`}
               {member.callsign && ` · ${member.callsign}`}
             </p>
           )
@@ -813,6 +844,11 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
             )}
             {promotionStatus.has_active_reprimand && (
               <p className="error-text">Есть непогашенный строгий выговор — повышение недоступно.</p>
+            )}
+            {promotionStatus.jedi_needs_trained_padawan && (
+              <p className="error-text">
+                Для перехода в Мастера нужно обучить хотя бы одного падавана (провести все 5 испытаний до конца).
+              </p>
             )}
           </div>
         )}
