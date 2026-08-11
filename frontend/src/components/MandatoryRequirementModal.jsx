@@ -90,6 +90,9 @@ export function MandatoryRequirementModal({ ranks, existingCategoryNames, initia
 
           <label>
             Название категории
+            {!isEdit && (
+              <InfoHint text="Введите имя уже существующего обязательного критерия (подскажет список), чтобы применить его же ещё к одному званию — поля можно оставить пустыми, они не изменятся." />
+            )}
             <input
               type="text"
               value={categoryName}

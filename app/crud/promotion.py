@@ -533,15 +533,36 @@ async def update_mandatory_category_requirement(
     if not rows:
         return []
 
+    # Формирование, заведённое ПОСЛЕ создания обязательного требования, никогда
+    # не получало свою категорию (в отличие от create_mandatory_category_requirement,
+    # это раньше не перезапускалось на update) — без этого правка требования
+    # молча не долетала до новых формирований. fields=[]/min_rank_id=None здесь
+    # только чтобы ДОБРАТЬ недостающие по имени, существующие категории эта
+    # заготовочная выдача не трогает — реальные значения проставляются ниже.
+    categories_by_regiment = await report_category_crud.get_or_create_in_all_regiments(
+        db, name=category_name, fields=[], min_rank_id=None, commander_only=False
+    )
+
+    existing_regiment_ids = {row.regiment_id for row in rows}
+    for regiment_id, category in categories_by_regiment.items():
+        if regiment_id in existing_regiment_ids:
+            continue
+        new_row = PromotionCategoryRequirement(
+            regiment_id=regiment_id,
+            rank_id=rank_id,
+            category_id=category.id,
+            count_required=count_required,
+            is_mandatory=True,
+            mandatory_group_id=group_id,
+        )
+        db.add(new_row)
+        rows.append(new_row)
+
     for row in rows:
         row.rank_id = rank_id
         row.count_required = count_required
 
-    category_ids = {row.category_id for row in rows}
-    for category_id in category_ids:
-        category = await db.get(ReportCategory, category_id)
-        if category is None:
-            continue
+    for category in categories_by_regiment.values():
         category.name = category_name
         if category_fields:
             category.fields = category_fields
