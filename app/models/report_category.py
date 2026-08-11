@@ -95,6 +95,13 @@ class ReportCategory(Base):
     # автор рапорта = наставник (получает баллы + зачёт "обучил падавана" для
     # своего перехода в Мастера). См. _apply_approval_side_effects.
     is_jedi_trial_report: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # "Аттестация" — 6-е и последнее "испытание": одобрение отмечает его
+    # сданным в jedi_trials (тот же механизм, что 1-5) и СРАЗУ меняет rank_id
+    # падавана на Рыцаря — точная копия паттерна is_recruit_promotion (см.
+    # решение пользователя). Ограничение подачи настраивается так же, как у
+    # "Наставничество" (min_rank/commander_only и т.д., обычное поле, не
+    # системное). См. _apply_approval_side_effects.
+    is_jedi_attestation_report: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Не более N рапортов этой категории в день на одного бойца (например
     # "Деятельность специализации" у джедаев — не чаще 2 раз) — None: без лимита.
     # Проверяется в app/api/reports.py::_check_category_filing_restrictions.

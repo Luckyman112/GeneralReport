@@ -667,8 +667,9 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           <div className="regiment-panel fade-in-up">
             <h4>Испытания Падавана</h4>
             <ul className="requirement-checklist">
-              {[1, 2, 3, 4, 5].map((n) => {
+              {[1, 2, 3, 4, 5, 6].map((n) => {
                 const passedEntry = jediTrials.trials.find((t) => t.trial_number === n);
+                const label = n === 6 ? "Аттестация" : `Испытание ${n}`;
                 return (
                   <li
                     key={n}
@@ -676,7 +677,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                   >
                     <span className="requirement-check">{passedEntry && "✓"}</span>
                     <span className="requirement-label">
-                      Испытание {n}
+                      {label}
                       {passedEntry &&
                         ` — сдано ${formatMskDate(passedEntry.passed_at)} МСК (${formatFullName(passedEntry.passed_by)})`}
                     </span>
@@ -686,17 +687,18 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
             </ul>
             {jediTrials.next_trial_number != null ? (
               <p className="hint-text">
-                {jediTrials.next_trial_available_at && new Date(jediTrials.next_trial_available_at) > new Date()
-                  ? `Испытание ${jediTrials.next_trial_number} доступно с ${formatMskDate(jediTrials.next_trial_available_at)} МСК`
-                  : `Испытание ${jediTrials.next_trial_number} доступно — наставник подаёт рапорт «Наставничество»`}
+                {jediTrials.next_trial_number === 6 ? (
+                  jediTrials.next_trial_available_at && new Date(jediTrials.next_trial_available_at) > new Date()
+                    ? `Аттестация доступна с ${formatMskDate(jediTrials.next_trial_available_at)} МСК`
+                    : "Все 5 испытаний сданы — аттестация доступна, подаётся рапортом «Аттестация»"
+                ) : jediTrials.next_trial_available_at && new Date(jediTrials.next_trial_available_at) > new Date() ? (
+                  `Испытание ${jediTrials.next_trial_number} доступно с ${formatMskDate(jediTrials.next_trial_available_at)} МСК`
+                ) : (
+                  `Испытание ${jediTrials.next_trial_number} доступно — наставник подаёт рапорт «Наставничество»`
+                )}
               </p>
             ) : (
-              <p className="hint-text">
-                Все 5 испытаний сданы.
-                {jediTrials.graduation_available_at && new Date(jediTrials.graduation_available_at) > new Date()
-                  ? ` Аттестация на Рыцаря доступна с ${formatMskDate(jediTrials.graduation_available_at)} МСК.`
-                  : " Аттестация на Рыцаря доступна — можно менять ранг выше."}
-              </p>
+              <p className="hint-text">Аттестация пройдена — можно менять ранг на Рыцаря.</p>
             )}
           </div>
         )}

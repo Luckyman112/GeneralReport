@@ -15,10 +15,12 @@ class JediTrialRead(BaseModel):
 
 class JediTrialProgressRead(BaseModel):
     """Полная картина для бойца: что уже сдано + когда доступно следующее
-    испытание/аттестация на Рыцаря (None — либо всё сдано, либо ранг не
-    Падаван, см. app/api/regiments.py)."""
+    испытание (None — либо всё сдано включая аттестацию, либо ранг не
+    Падаван, см. app/api/regiments.py). 6-е испытание — сама аттестация на
+    Рыцаря, тот же механизм, что и 1-5 (см. app/crud/jedi_trial.py), поэтому
+    отдельного graduation_available_at больше нет — next_trial_available_at
+    покрывает и его, когда next_trial_number == 6."""
 
     trials: list[JediTrialRead]
     next_trial_number: int | None
     next_trial_available_at: datetime | None
-    graduation_available_at: datetime | None

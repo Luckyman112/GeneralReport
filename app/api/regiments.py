@@ -111,18 +111,15 @@ async def _check_jedi_title_ceiling(db: AsyncSession, *, rang_rank_id: int | Non
 
 
 async def _check_padawan_trials_complete(db: AsyncSession, target_user) -> None:
-    """Смена ранга на Рыцаря требует все 5 испытаний сданными + разрыв
-    GRADUATION_GAP_DAYS после пятого (см. app/crud/jedi_trial.py)."""
+    """Смена ранга на Рыцаря требует всех 6 испытаний сданными — 5 обычных +
+    аттестация (см. app/crud/jedi_trial.py, TRIAL_COUNT). Разрыв в днях уже
+    учтён на момент, когда каждое испытание/аттестация были отмечены сданными
+    (тот же гейт, что при подаче рапорта, см. app/api/reports.py) — здесь
+    просто safety-net на случай ручной смены ранга в обход рапорта
+    «Аттестация»."""
     passed = await jedi_trial_crud.list_for_user(db, user_id=target_user.id)
     if jedi_trial_crud.next_trial_number(passed) is not None:
-        raise AppError("Нельзя аттестовать на Рыцаря — сданы не все 5 испытаний")
-    available_at = jedi_trial_crud.graduation_available_at(passed)
-    now = datetime.now(timezone.utc)
-    if available_at is not None and now < available_at:
-        raise AppError(
-            f"Аттестация на Рыцаря доступна не раньше {available_at.strftime('%d.%m.%Y %H:%M')} МСК "
-            f"(разрыв после 5-го испытания)"
-        )
+        raise AppError("Нельзя аттестовать на Рыцаря — сданы не все испытания (включая аттестацию)")
 
 
 @router.get("", response_model=list[RegimentRead])
@@ -460,8 +457,12 @@ async def update_category(
         or category.is_training
         or category.is_recruit_promotion
         or category.is_jedi_trial_report
+        or category.is_jedi_attestation_report
     ):
-        raise AppError("Совместной категорией не может быть системная (задержание/повышение/понижение/обучение/КМБ/наставничество)")
+        raise AppError(
+            "Совместной категорией не может быть системная "
+            "(задержание/повышение/понижение/обучение/КМБ/наставничество/аттестация)"
+        )
     # is_detention системный, вручную не редактируется (категория задержания заводится
     # автоматически при создании формирования)
     changes.pop("is_detention", None)
@@ -495,6 +496,7 @@ async def delete_category(
         or category.is_training
         or category.is_recruit_promotion
         or category.is_jedi_trial_report
+        or category.is_jedi_attestation_report
     ):
         raise ForbiddenError("Это системная категория, её нельзя удалить")
     if not access.can_manage_categories(regiment_id) and not await _can_manage_discipline_category(
@@ -1327,7 +1329,6 @@ async def _build_jedi_trial_progress(db: AsyncSession, target_user) -> JediTrial
         trials=[JediTrialRead.model_validate(t) for t in passed],
         next_trial_number=jedi_trial_crud.next_trial_number(passed),
         next_trial_available_at=jedi_trial_crud.earliest_available_at(passed, padawan_since=padawan_since),
-        graduation_available_at=jedi_trial_crud.graduation_available_at(passed),
     )
 
 
