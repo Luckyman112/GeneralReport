@@ -97,9 +97,28 @@ export function EventBookingCalendar() {
     setTitle("");
   }
 
+  // Начало и окончание — независимые поля, но пользователь двигает именно
+  // начало (например с дефолтных 18:00 на 21:00) — без этого окончание
+  // осталось бы на старом месте (20:00) и бронь падала с "Время окончания
+  // должно быть позже времени начала", хотя внешне ничего не подсказывало,
+  // что окончание тоже надо было подвинуть. Сдвигаем окончание на ту же
+  // разницу, сохраняя текущую длительность брони.
+  function handleStartChange(nextStartsAt) {
+    const prevStart = startsAt ? new Date(startsAt) : null;
+    const prevEnd = endsAt ? new Date(endsAt) : null;
+    setStartsAt(nextStartsAt);
+    if (!nextStartsAt || !prevStart || !prevEnd) return;
+    const durationMs = prevEnd.getTime() - prevStart.getTime();
+    if (durationMs <= 0) return;
+    const nextStart = new Date(nextStartsAt);
+    setEndsAt(toPickerValue(new Date(nextStart.getTime() + durationMs)));
+  }
+
+  const isTimeRangeValid = Boolean(startsAt && endsAt && new Date(endsAt) > new Date(startsAt));
+
   async function handleSubmitBooking(e) {
     e.preventDefault();
-    if (!title.trim() || !startsAt || !endsAt) return;
+    if (!title.trim() || !isTimeRangeValid) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -199,14 +218,17 @@ export function EventBookingCalendar() {
           </label>
           <label>
             Начало
-            <DateTimePicker value={startsAt} onChange={setStartsAt} />
+            <DateTimePicker value={startsAt} onChange={handleStartChange} />
           </label>
           <label>
             Окончание
             <DateTimePicker value={endsAt} onChange={setEndsAt} />
           </label>
+          {!isTimeRangeValid && (
+            <p className="error-text">Время окончания должно быть позже времени начала</p>
+          )}
           <div className="report-form-actions">
-            <button className="primary" type="submit" disabled={submitting}>
+            <button className="primary" type="submit" disabled={submitting || !title.trim() || !isTimeRangeValid}>
               Забронировать
             </button>
             <button className="ghost" type="button" onClick={() => setSelectedDate(null)}>
