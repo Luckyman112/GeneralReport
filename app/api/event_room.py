@@ -316,8 +316,8 @@ async def update_event(
     row = await event_crud.get_by_id(db, event_id)
     if row is None:
         raise NotFoundError("Заявка не найдена")
-    if row.status == "rejected":
-        raise ForbiddenError("Отклонённую заявку менять нельзя")
+    if row.status in ("rejected", "cancelled"):
+        raise ForbiddenError("Отклонённую или отменённую заявку менять нельзя")
     if row.submitted_by_user_id != access.user.id and not access.can_decide_event:
         raise ForbiddenError("Редактировать заявку может только её автор или Ассистент/Куратор ивентологии")
 
