@@ -15,13 +15,15 @@ const STATUS_LABELS = { pending: "Ожидает решения", approved: "О�
  * "помогавшего" указывают явно (только Ивентологи, не Администрацию — см.
  * решение пользователя). */
 export function EventActivityReports() {
-  const { token, access } = useAuth();
+  const { token, user, access } = useAuth();
   const showToast = useToast();
   const [reports, setReports] = useState([]);
   const [members, setMembers] = useState([]);
+  const [myApprovedEvents, setMyApprovedEvents] = useState([]);
   const [error, setError] = useState(null);
 
   const [eventType, setEventType] = useState("mini");
+  const [eventId, setEventId] = useState("");
   const [coHostId, setCoHostId] = useState("");
   const [rating, setRating] = useState("");
   const [screenshotUrls, setScreenshotUrls] = useState([]);
@@ -36,10 +38,13 @@ export function EventActivityReports() {
   }
 
   useEffect(() => {
-    Promise.all([api.listEventActivityReports(token), api.getEventMemberCandidates(token)])
-      .then(([reportsData, membersData]) => {
+    Promise.all([api.listEventActivityReports(token), api.getEventMemberCandidates(token), api.listEvents(token)])
+      .then(([reportsData, membersData, eventsData]) => {
         setReports(reportsData);
         setMembers(membersData);
+        // только свои одобренные заявки на ивент — привязать отчёт можно
+        // только к тому, что сам подавал и что одобрили (см. решение пользователя)
+        setMyApprovedEvents(eventsData.filter((e) => e.submitted_by.id === user.id && e.status === "approved"));
       })
       .catch((e) => setError(e.message));
   }, [token]);
@@ -74,12 +79,15 @@ export function EventActivityReports() {
       await api.createEventActivityReport(token, {
         eventType,
         payload: {
+          event_id: eventId ? Number(eventId) : null,
+          event_title: myApprovedEvents.find((e) => String(e.id) === eventId)?.title || null,
           co_host_discord_id: coHostId || null,
           co_host_username: members.find((m) => m.discord_id === coHostId)?.username || null,
           rating: rating ? Number(rating) : null,
           screenshot_urls: screenshotUrls,
         },
       });
+      setEventId("");
       setCoHostId("");
       setRating("");
       setScreenshotUrls([]);
@@ -122,6 +130,19 @@ export function EventActivityReports() {
             <option value="combat">Боевой вылет</option>
           </select>
         </label>
+        {myApprovedEvents.length > 0 && (
+          <label>
+            Заявка на ивент (если подавали)
+            <select value={eventId} onChange={(e) => setEventId(e.target.value)}>
+              <option value="">— не выбрано —</option>
+              {myApprovedEvents.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           Помогал проводить (если был)
           <MemberSearchPicker members={members} selectedId={coHostId} onSelect={setCoHostId} />
@@ -168,6 +189,7 @@ export function EventActivityReports() {
               <span className="report-category">{TYPE_LABELS[r.event_type] || r.event_type}</span>
               <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
               <p className="report-byline">Провёл: {r.submitted_by?.nickname_override || r.submitted_by?.username}</p>
+              {r.payload.event_title && <p className="hint-text">По заявке: {r.payload.event_title}</p>}
               {r.payload.co_host_username && <p className="report-byline">Помогал: {r.payload.co_host_username}</p>}
               {r.payload.rating != null && <p className="hint-text">Оценка: {r.payload.rating}</p>}
               {(r.payload.screenshot_urls || []).length > 0 && (
