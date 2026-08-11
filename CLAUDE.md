@@ -298,7 +298,77 @@ assignment (see `commander_regiment_ids` in `app/api/deps.py`), so Council
 titles intentionally do NOT go through that table. Changed only by
 `is_admin`/`is_high_command` via the same `update_member_profile` endpoint as
 `jedi_title_id`, same `IntegrityError`→friendly-`AppError` pattern for a seat
-that's already taken.
+that's already taken. Assignable two ways: the per-member profile form
+(`MemberDetailModal.jsx`) or, since this session, directly from
+`RegimentConfigModal.jsx`'s "Главы направлений" section (jedi-order regiments
+only) — a 4-row picker sourced from that regiment's own roster
+(`api.getMembers`), reusing the exact same `PATCH .../profile` call. Reassigning
+a seat that's already held does a two-step dance client-side (clear the old
+holder, then set the new one) to dodge the unique-constraint `IntegrityError` —
+the backend has no "swap" endpoint.
+
+**"Следящий за джедаями" vs "Командир"** — the `RegimentCommander.role_type`
+value is still the literal string `"commander"` everywhere (DB, permission
+checks, `AccessContext.commander_regiment_ids`) — only the *displayed* label
+changes for jedi-order regiments, via
+`frontend/src/utils/regimentRoles.js::commanderRoleLabel(roleType,
+isJediOrder)`. Deputy/mentor labels are unaffected. Applied everywhere the role
+renders in a jedi-order context: `RegimentConfigModal.jsx` (formation config +
+its `InfoHint`), `HqLeadershipPanel.jsx` (Штаб page — needed
+`HqFormationLeadershipRead.is_jedi_order`, added to the backend schema/endpoint
+since `HqFormationLeadershipRead` didn't carry it before), `Navbar.jsx`'s own
+position badge, `RosterBrowserModal.jsx`'s per-row position column (and its
+"командир sorts first" comparison, which now compares against the *label*, not
+the literal string `"Командир"`), and `ViewAsBar.jsx`'s role picker/active-banner.
+The one deliberate exception: `SettingsPage.jsx`'s "Командир" role-config card
+is a *different* concept entirely — a single global Discord role
+(`commander_role_id`) used for `category_manager_regiment_ids` across every
+regiment, not scoped to one formation, so it isn't jedi-aware and wasn't touched.
+
+### Registration is no longer bypassed for is_admin/is_high_command
+`Layout`'s `needsRegistration` gate (`App.jsx`) used to exempt anyone with
+`is_admin` or `is_high_command` — convenient for bootstrapping the very first
+admin, but it meant such a person could use the whole site indefinitely without
+ever completing the registration terminal, leaving `service_id`/`steam_id`
+permanently empty — which then showed up as a confusing "не зарегистрирован"
+badge on someone who clearly had full access (bug report). Now only
+`access.is_founder` is exempt (a narrower, explicit-list flag — see
+`app/api/deps.py`), preserving *a* bootstrap escape hatch without exempting the
+much broader admin/HC population. Known tradeoff, accepted deliberately: if the
+only non-founder admin on a fresh install hasn't registered yet, nobody else can
+approve their registration (the registrations queue itself is unreachable while
+`needsRegistration` is true) — acceptable here since production already has
+multiple registered admins. The `isBlockedByMaintenance`/`hasRoleConflict` gates
+in the same component still exempt admin/HC same as before — unrelated,
+deliberately untouched.
+
+### `event_crud.decide` (and its Администрация/Ивентрум siblings) now reject re-deciding
+`event_crud.decide` had no guard against being called on an already-decided
+`Event` — unlike `promotion_crud.decide`, which has always raised on a non-
+`"pending"` row. A double-click (or any repeated `POST .../approve`) on an
+already-approved event silently re-ran the whole approval side-effect chain
+every time, including **re-sending the Discord notification with the ping role**
+— bug report: one event approved 7 times, pinging the whole server 7 times, no
+duplicate `Event` rows involved since it's the same row re-approved repeatedly.
+Fixed by adding the same `status != PENDING → raise AppError` guard `promotion_crud.decide`
+already had. The same missing-guard bug existed in the three sibling `decide()`
+functions built from the same template this session —
+`event_activity_report_crud.decide`, `event_booking_crud.decide`,
+`admin_report_crud.decide` — fixed identically, even though only the Event one
+has an externally-visible side effect (Discord ping); the others were still
+silently allowing an approved/rejected row to flip status again.
+
+### HqLeadershipPanel is now clickable
+`HqLeadershipPanel.jsx` (Штаб page) used to be explicitly non-clickable by
+design (see prior docstring, now removed) — reversed by user request. Clicking
+a name fetches that regiment's full roster (`api.getMembers`) and finds the
+matching `discord_id`, because `HqPersonRead` (the schema this panel's data
+arrives in) is missing most fields `MemberDetailModal` expects
+(`discord_username`, `is_inactive`, `squads`, etc.) — reusing `HqPersonRead`
+directly would render a broken-looking modal. For the "Высшее командование" top
+block (not tied to any single regiment), a `regiment_id` is inferred by finding
+that same `discord_id` in one of the formation blocks below; if they don't
+appear in any, the name isn't clickable (no regiment context to fetch against).
 
 **Jedi "trained a padawan" promotion gate** — Рыцарь→Мастер additionally
 requires having mentored at least one padawan through to Рыцарь, checked via

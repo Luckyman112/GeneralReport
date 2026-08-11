@@ -7,6 +7,7 @@ import { CrossIcon, MegaphoneIcon, MenuIcon, MoonIcon, SunIcon } from "./icons";
 import { NotificationBell } from "./NotificationBell";
 import { PasswordEscalation } from "./PasswordEscalation";
 import { useState } from "react";
+import { commanderRoleLabel } from "../utils/regimentRoles";
 
 function buildPositionLabel(access, regiments) {
   if (!access) return "";
@@ -17,7 +18,7 @@ function buildPositionLabel(access, regiments) {
 
   for (const regiment of regiments) {
     let role = null;
-    if (access.category_manager_regiment_ids?.includes(regiment.id)) role = "Командир";
+    if (access.category_manager_regiment_ids?.includes(regiment.id)) role = commanderRoleLabel("commander", regiment.is_jedi_order);
     else if (access.commander_regiment_ids?.includes(regiment.id)) role = "Заместитель";
     else if (access.soldier_regiment_ids?.includes(regiment.id)) role = "Боец";
 

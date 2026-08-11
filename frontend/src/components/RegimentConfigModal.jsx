@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { InfoHint } from "./Tooltip";
+import { commanderRoleLabel, JEDI_COUNCIL_SEATS } from "../utils/regimentRoles";
 
 export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }) {
   const { token } = useAuth();
@@ -19,6 +20,7 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
   const [selectedRoleType, setSelectedRoleType] = useState("commander");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [savingCouncilSeat, setSavingCouncilSeat] = useState(null);
 
   const [squads, setSquads] = useState([]);
   const [allMembers, setAllMembers] = useState([]);
@@ -137,6 +139,28 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
       await loadCommanders();
     } catch (e) {
       setError(e.message);
+    }
+  }
+
+  async function handleSetCouncilSeat(seatValue, discordId) {
+    setSavingCouncilSeat(seatValue);
+    setError(null);
+    try {
+      // Должность уникальна (см. app/models/user.py::jedi_council_seat) — если
+      // сменяем держателя, сначала снимаем со старого, иначе бэкенд отвергнет
+      // назначение как дубликат
+      const currentHolder = allMembers.find((m) => m.jedi_council_seat === seatValue);
+      if (currentHolder && currentHolder.discord_id !== discordId) {
+        await api.setMemberProfile(token, regiment.id, currentHolder.discord_id, { jedi_council_seat: null });
+      }
+      if (discordId) {
+        await api.setMemberProfile(token, regiment.id, discordId, { jedi_council_seat: seatValue });
+      }
+      await loadSquads();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSavingCouncilSeat(null);
     }
   }
 
@@ -277,16 +301,14 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
         </label>
 
         <h4>
-          Командиры
-          <InfoHint text="Только эти люди получат командирские права над формированием — даже если у них есть общая роль «Командир» и роль этого формирования." />
+          {isJediOrder ? "Следящие за джедаями" : "Командиры"}
+          <InfoHint text={`Только эти люди получат командирские права над формированием — даже если у них есть общая роль «${commanderRoleLabel("commander", isJediOrder)}» и роль этого формирования.`} />
         </h4>
         <ul className="category-list">
           {commanders.map((c) => (
             <li key={c.discord_id}>
               {c.username}{" "}
-              <span className="hint-text">
-                ({c.role_type === "mentor" ? "наставник" : c.role_type === "deputy" ? "заместитель" : "командир"})
-              </span>
+              <span className="hint-text">({commanderRoleLabel(c.role_type, isJediOrder).toLowerCase()})</span>
               <button className="ghost" onClick={() => handleRemoveCommander(c.discord_id)}>
                 Снять
               </button>
@@ -305,7 +327,7 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
               ))}
             </select>
             <select value={selectedRoleType} onChange={(e) => handleSelectRoleType(e.target.value)}>
-              <option value="commander">Командир</option>
+              <option value="commander">{commanderRoleLabel("commander", isJediOrder)}</option>
               <option value="deputy">Заместитель</option>
               <option value="mentor">Наставник</option>
             </select>
@@ -313,6 +335,37 @@ export function RegimentConfigModal({ regiment, roles, tiers, onClose, onSaved }
               Назначить
             </button>
           </div>
+        )}
+
+        {isJediOrder && (
+          <>
+            <h4>
+              Главы направлений
+              <InfoHint text="Совет Ордена — Консулы/Защитники/Стражи/Ученичество. Чистый титул, прав в системе не даёт (см. личное дело бойца)." />
+            </h4>
+            <ul className="category-list">
+              {Object.entries(JEDI_COUNCIL_SEATS).map(([seatValue, seatLabel]) => {
+                const holder = allMembers.find((m) => m.jedi_council_seat === seatValue);
+                return (
+                  <li key={seatValue}>
+                    {seatLabel}: {holder ? holder.username : <span className="hint-text">не назначен</span>}
+                    <select
+                      value={holder?.discord_id ?? ""}
+                      disabled={savingCouncilSeat === seatValue}
+                      onChange={(e) => handleSetCouncilSeat(seatValue, e.target.value)}
+                    >
+                      <option value="">— не назначен —</option>
+                      {allMembers.map((m) => (
+                        <option key={m.discord_id} value={m.discord_id}>
+                          {m.username}
+                        </option>
+                      ))}
+                    </select>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
 
         <h4>

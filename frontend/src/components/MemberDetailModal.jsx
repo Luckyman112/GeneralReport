@@ -13,15 +13,8 @@ import { formatFullName, formatFullNameAtRank } from "../utils/formatName";
 import { steamProfileUrl } from "../utils/steam";
 import { discordProfileUrl } from "../utils/discord";
 import { DISCIPLINE_CATEGORIES } from "../utils/specialization";
+import { JEDI_COUNCIL_SEATS } from "../utils/regimentRoles";
 
-// Держим синхронно с app/models/user.py::JEDI_COUNCIL_SEATS — чистый титул,
-// прав в системе не даёт (см. решение пользователя)
-const JEDI_COUNCIL_SEATS = {
-  consular_head: "Глава Консулов",
-  guardian_head: "Глава Защитников",
-  sentinel_head: "Глава Стражей",
-  apprentice_head: "Глава Ученичества",
-};
 
 function profileSnapshot(member) {
   return {

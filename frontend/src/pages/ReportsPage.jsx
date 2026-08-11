@@ -551,7 +551,7 @@ export function ReportsPage() {
 
       {isViewingHq ? (
         <aside className="reports-sidebar">
-          <HqLeadershipPanel />
+          <HqLeadershipPanel canManageMembers={canManageMembers} />
         </aside>
       ) : (
         accessibleRegimentIds.length > 0 && (

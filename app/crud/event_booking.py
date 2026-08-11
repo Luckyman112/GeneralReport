@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.exceptions import AppError
 from app.models.event_booking import EventBooking, EventBookingStatus
 
 _LOAD_OPTIONS = [
@@ -40,6 +41,10 @@ async def create(
 async def decide(
     db: AsyncSession, booking: EventBooking, *, approve: bool, decided_by_user_id: int, rejection_reason: str | None = None
 ) -> EventBooking:
+    # Защита от повторного решения (двойной клик/повтор запроса) — см.
+    # app/crud/event.py::decide и promotion_crud.decide, тот же паттерн
+    if booking.status != EventBookingStatus.PENDING:
+        raise AppError("Бронь уже решена — повторное решение по ней невозможно")
     booking.status = EventBookingStatus.APPROVED if approve else EventBookingStatus.REJECTED
     booking.decided_by_user_id = decided_by_user_id
     booking.decided_at = datetime.now(timezone.utc)

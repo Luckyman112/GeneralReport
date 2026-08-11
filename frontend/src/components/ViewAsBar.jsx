@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { MemberSearchPicker } from "./MemberSearchPicker";
 import { useToast } from "./ToastContext";
+import { commanderRoleLabel } from "../utils/regimentRoles";
 
 const ROLE_LABELS = {
   soldier: "Боец",
@@ -101,11 +102,16 @@ export function ViewAsBar() {
         </div>
       );
     }
-    const regimentName = regiments.find((r) => r.id === viewAs.regimentId)?.name;
+    const viewAsRegiment = regiments.find((r) => r.id === viewAs.regimentId);
+    const regimentName = viewAsRegiment?.name;
+    const roleLabel =
+      viewAs.role === "commander"
+        ? commanderRoleLabel("commander", viewAsRegiment?.is_jedi_order)
+        : ROLE_LABELS[viewAs.role] || viewAs.role;
     const extraLabels = (viewAs.extras || []).map((e) => EXTRA_LABELS[e]).filter(Boolean);
     return (
       <div className="view-as-bar">
-        Смотрите как: <strong>{ROLE_LABELS[viewAs.role] || viewAs.role}</strong>
+        Смотрите как: <strong>{roleLabel}</strong>
         {regimentName && ` — ${regimentName}`}
         {extraLabels.length > 0 && ` + ${extraLabels.join(", ")}`}
         <button className="ghost" onClick={handleReset}>
@@ -142,7 +148,9 @@ export function ViewAsBar() {
                 <select value={role} onChange={(e) => setRole(e.target.value)}>
                   <option value="soldier">Боец</option>
                   <option value="deputy">Заместитель</option>
-                  <option value="commander">Командир</option>
+                  <option value="commander">
+                    {commanderRoleLabel("commander", regiments.find((r) => r.id === Number(regimentId))?.is_jedi_order)}
+                  </option>
                   <option value="mentor">Наставник</option>
                   <option value="high_command">Высшее командование</option>
                 </select>

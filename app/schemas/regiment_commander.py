@@ -122,6 +122,10 @@ class HqFormationLeadershipRead(BaseModel):
     regiment_id: int
     regiment_name: str
     regiment_color: str | None = None
+    # У Ордена джедаев "командир" называется иначе ("Следящий за джедаями") —
+    # фронт переименовывает только role_type="commander" по этому флагу, см.
+    # frontend/src/utils/regimentRoles.js::commanderRoleLabel
+    is_jedi_order: bool = False
     commanders: list[HqCommanderRead]
 
 

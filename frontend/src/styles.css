@@ -725,8 +725,8 @@ label {
   overflow-y: auto;
 }
 
-/* Статичный список командования формирований на странице Штаба (см. решение
- * пользователя) — не роструктура, просто справочный список */
+/* Статичный список командования формирований на странице Штаба — клик по
+ * имени открывает личное дело (см. HqLeadershipPanel.jsx) */
 .hq-leadership-panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -756,6 +756,18 @@ label {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+}
+
+.hq-leadership-list li.clickable-row {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0.15rem 0.35rem;
+  margin: 0 -0.35rem;
+  transition: background 0.15s ease;
+}
+
+.hq-leadership-list li.clickable-row:hover {
+  background: var(--surface-2);
 }
 
 .category-nav {

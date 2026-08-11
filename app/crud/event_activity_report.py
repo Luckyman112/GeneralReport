@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.exceptions import AppError
 from app.models.event_activity_report import EventActivityReport, EventActivityReportStatus
 
 _LOAD_OPTIONS = [
@@ -41,6 +42,10 @@ async def decide(
     decided_by_user_id: int,
     rejection_reason: str | None = None,
 ) -> EventActivityReport:
+    # Защита от повторного решения (двойной клик/повтор запроса) — см.
+    # app/crud/event.py::decide и promotion_crud.decide, тот же паттерн
+    if report.status != EventActivityReportStatus.PENDING:
+        raise AppError("Отчёт уже решён — повторное решение по нему невозможно")
     report.status = EventActivityReportStatus.APPROVED if approve else EventActivityReportStatus.REJECTED
     report.decided_by_user_id = decided_by_user_id
     report.decided_at = datetime.now(timezone.utc)

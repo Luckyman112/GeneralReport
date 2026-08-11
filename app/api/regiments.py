@@ -199,6 +199,7 @@ async def get_hq_leadership(
             regiment_id=r.id,
             regiment_name=r.name,
             regiment_color=r.color,
+            is_jedi_order=r.is_jedi_order,
             commanders=[
                 HqCommanderRead(role_type=c.role_type, person=_build_person(c.discord_id, c.username))
                 for c in commanders_by_regiment.get(r.id, [])

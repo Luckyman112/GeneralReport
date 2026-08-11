@@ -52,6 +52,13 @@ async def update_content(db: AsyncSession, event: Event, *, title: str, payload:
 async def decide(
     db: AsyncSession, event: Event, *, approve: bool, decided_by_user_id: int, rejection_reason: str | None = None
 ) -> Event:
+    # Защита от повторного решения (двойной клик/повтор запроса) — без неё
+    # повторное approve на уже одобренной заявке молча шлёт ЕЩЁ ОДНО сообщение
+    # с пингом роли в Discord-канал каждый раз заново (баг-репорт: 7 пингов
+    # всего сервера от одной и той же заявки) — тот же паттерн, что
+    # promotion_crud.decide()
+    if event.status != EventStatus.PENDING:
+        raise AppError("Заявка уже решена — повторное решение по ней невозможно")
     event.status = EventStatus.APPROVED if approve else EventStatus.REJECTED
     event.decided_by_user_id = decided_by_user_id
     event.decided_at = datetime.now(timezone.utc)

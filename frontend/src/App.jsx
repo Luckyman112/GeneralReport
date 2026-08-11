@@ -51,8 +51,13 @@ function Layout({ children }) {
   const maintenanceStatus = useMaintenanceStatus();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // is_admin/is_high_command НЕ освобождают от регистрации (см. решение
+  // пользователя — иначе в составе висел misleading бейдж "не зарегистрирован"
+  // у людей с полным доступом) — освобождён только is_founder, чтобы не
+  // заблокировать самого владельца сайта на пустой инсталляции без единого
+  // одобренного админа
   const needsRegistration =
-    isAuthenticated && user?.registration_status !== "approved" && !access?.is_admin && !access?.is_high_command;
+    isAuthenticated && user?.registration_status !== "approved" && !access?.is_founder;
   const isBlockedByMaintenance =
     isAuthenticated && maintenanceStatus?.enabled && !access?.is_admin && !access?.is_high_command;
   const hasRoleConflict =

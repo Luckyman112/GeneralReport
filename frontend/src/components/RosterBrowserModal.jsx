@@ -10,6 +10,7 @@ import { formatMskDate } from "../utils/formatDate";
 import { steamProfileUrl } from "../utils/steam";
 import { discordProfileUrl } from "../utils/discord";
 import { safeUrl } from "../utils/safeUrl";
+import { commanderRoleLabel } from "../utils/regimentRoles";
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
@@ -109,11 +110,10 @@ export function RosterBrowserModal({ onClose }) {
     }
     for (const c of commanders) {
       if (c.role_type === "mentor") continue;
-      const label = c.role_type === "deputy" ? "Заместитель" : "Командир";
-      map.set(c.discord_id, label);
+      map.set(c.discord_id, commanderRoleLabel(c.role_type, regiment?.is_jedi_order));
     }
     return map;
-  }, [members, commanders]);
+  }, [members, commanders, regiment?.is_jedi_order]);
 
   const activeReprimandCountByDiscordId = useMemo(() => {
     const map = new Map();
@@ -131,13 +131,14 @@ export function RosterBrowserModal({ onClose }) {
   // звания (см. решение пользователя)
   const sortedMembers = useMemo(() => {
     const registered = members.filter((m) => m.registration_status === "approved");
+    const commanderLabel = commanderRoleLabel("commander", regiment?.is_jedi_order);
     return [...registered].sort((a, b) => {
-      const aIsCommander = positionByDiscordId.get(a.discord_id) === "Командир";
-      const bIsCommander = positionByDiscordId.get(b.discord_id) === "Командир";
+      const aIsCommander = positionByDiscordId.get(a.discord_id) === commanderLabel;
+      const bIsCommander = positionByDiscordId.get(b.discord_id) === commanderLabel;
       if (aIsCommander !== bIsCommander) return aIsCommander ? -1 : 1;
       return (b.rank?.order ?? -1) - (a.rank?.order ?? -1);
     });
-  }, [members, positionByDiscordId]);
+  }, [members, positionByDiscordId, regiment?.is_jedi_order]);
 
   const modalContent = (
     <div className="modal-overlay" onClick={onClose}>
