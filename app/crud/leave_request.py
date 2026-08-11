@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.exceptions import AppError
 from app.models.leave_request import LeaveRequest
 from app.models.user import User
 
@@ -54,6 +55,10 @@ async def list_by_user(db: AsyncSession, *, user_id: int) -> list[LeaveRequest]:
 
 
 async def decide(db: AsyncSession, request: LeaveRequest, *, approve: bool, decided_by: int) -> LeaveRequest:
+    # Защита от повторного решения (двойной клик/повтор запроса) — см.
+    # app/crud/event.py::decide и promotion_crud.decide, тот же паттерн
+    if request.status != "pending":
+        raise AppError("Заявка уже решена — повторное решение по ней невозможно")
     request.status = "approved" if approve else "rejected"
     request.decided_by = decided_by
     request.decided_at = datetime.now(timezone.utc)

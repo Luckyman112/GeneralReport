@@ -358,6 +358,27 @@ functions built from the same template this session —
 has an externally-visible side effect (Discord ping); the others were still
 silently allowing an approved/rejected row to flip status again.
 
+A follow-up full-repo audit found the same missing-guard bug in three more
+places, now fixed the same way: `leave_request_crud.decide`,
+`reprimand_crud.revoke` (only the commander-facing `DELETE .../reprimands/{id}`
+route was missing it — `self_revoke_reprimand` already checked `revoked_at`
+before calling in), and `update_report_status`
+(`app/api/reports.py`) — the last one needed a narrower fix than a blanket
+status guard, since re-*rejecting* an already-approved report is the
+legitimate appeal path (see `was_approved`); only re-*approving* an
+already-approved report is blocked, because that's what re-ran
+`_apply_approval_side_effects` a second time — double-counting a padawan's
+Jedi trial via "Наставничество," or re-clearing a recruit's
+`rank_assigned_at` via "Курс молодого бойца."
+
+Same audit also found `specialization_crud.get_by_id` was the one `get_by_id`-
+style function in the whole codebase missing `populate_existing=True` (every
+other one already has it — this exact gotcha is why the pattern is documented
+above), and `specialization_crud.update` only refreshed `min_rank` after
+commit, not `required_regiment`/`parent` — with `expire_on_commit=False`,
+changing either field via `PATCH /specializations/{id}` could return the
+pre-update relationship in the same response. Both fixed.
+
 ### HqLeadershipPanel is now clickable
 `HqLeadershipPanel.jsx` (Штаб page) used to be explicitly non-clickable by
 design (see prior docstring, now removed) — reversed by user request. Clicking

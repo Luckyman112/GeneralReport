@@ -52,7 +52,9 @@ async def get_all(db: AsyncSession) -> list[Specialization]:
 
 
 async def get_by_id(db: AsyncSession, specialization_id: int) -> Specialization | None:
-    return await db.get(Specialization, specialization_id, options=_SPECIALIZATION_LOAD_OPTIONS)
+    return await db.get(
+        Specialization, specialization_id, options=_SPECIALIZATION_LOAD_OPTIONS, populate_existing=True
+    )
 
 
 async def list_grants_by_category(db: AsyncSession, category: str) -> list[UserSpecialization]:
@@ -119,7 +121,10 @@ async def update(db: AsyncSession, specialization: Specialization, **changes) ->
         raise AppError(f"Специализация с кодом «{changes.get('code', specialization.code)}» уже существует")
     if prerequisite_specialization_ids is not None:
         await _set_prerequisites(db, specialization.id, prerequisite_specialization_ids)
-    await db.refresh(specialization, attribute_names=["min_rank"])
+    # required_regiment_id/parent_id могут быть среди changes — рефрешим все три
+    # relationship'а, иначе с expire_on_commit=False ответ сразу после PATCH
+    # покажет старые привязанные формирование/родителя (баг-репорт)
+    await db.refresh(specialization, attribute_names=["min_rank", "required_regiment", "parent"])
     return specialization
 
 

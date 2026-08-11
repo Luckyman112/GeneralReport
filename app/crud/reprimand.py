@@ -2,6 +2,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.exceptions import AppError
 from app.models.report import Report, ReportStatus
 from app.models.reprimand import Reprimand
 from app.models.user import User
@@ -133,6 +134,11 @@ async def create(
 
 async def revoke(db: AsyncSession, reprimand: Reprimand, *, revoked_by: int) -> Reprimand:
     from datetime import datetime, timezone
+
+    # Защита от повторного снятия (двойной клик/повтор запроса) — тот же
+    # паттерн, что и у decide()-функций в других местах кодовой базы
+    if reprimand.revoked_at is not None:
+        raise AppError("Выговор уже снят — повторное снятие невозможно")
 
     reprimand.revoked_at = datetime.now(timezone.utc)
     reprimand.revoked_by = revoked_by
