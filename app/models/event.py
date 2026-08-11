@@ -52,17 +52,13 @@ class EventMap(Base):
     Ассистент/Куратор ивентологии (см. решение пользователя).
 
     url — ссылка на карту, вставляется как гиперссылка в поле "Карта" карточки
-    в Discord. planet_name/landscape/weather/star_system — необязательная
-    справочная информация о планете, в саму карточку НЕ попадает — идёт
-    отдельным текстом в теле сообщения (см. app/api/event_room.py::_planet_info_text,
-    решение пользователя)."""
+    в Discord. Информация о планете (название/система/ландшафт/погода/флора и
+    фауна) раньше жила здесь, на карте — переехала в саму заявку на ивент
+    (Event.payload), потому что планета привязана к конкретному ивенту, а не
+    к переиспользуемой карте (см. решение пользователя)."""
 
     __tablename__ = "event_maps"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    planet_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    landscape: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    weather: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    star_system: Mapped[str | None] = mapped_column(String(255), nullable=True)

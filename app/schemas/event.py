@@ -47,19 +47,11 @@ class EventMapRead(BaseModel):
     id: int
     name: str
     url: str | None = None
-    planet_name: str | None = None
-    landscape: str | None = None
-    weather: str | None = None
-    star_system: str | None = None
 
 
 class EventMapCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     url: str | None = Field(default=None, max_length=500)
-    planet_name: str | None = Field(default=None, max_length=255)
-    landscape: str | None = Field(default=None, max_length=255)
-    weather: str | None = Field(default=None, max_length=255)
-    star_system: str | None = Field(default=None, max_length=255)
 
 
 class EventMapUpdate(BaseModel):
@@ -67,10 +59,6 @@ class EventMapUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     url: str | None = Field(default=None, max_length=500)
-    planet_name: str | None = Field(default=None, max_length=255)
-    landscape: str | None = Field(default=None, max_length=255)
-    weather: str | None = Field(default=None, max_length=255)
-    star_system: str | None = Field(default=None, max_length=255)
 
 
 class EventRosterEntry(BaseModel):

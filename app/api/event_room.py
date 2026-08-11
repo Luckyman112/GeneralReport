@@ -338,7 +338,7 @@ async def update_event(
                 image_bytes = await _render_event_image(
                     db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
                 )
-                content = _message_content(app_config, map_row)
+                content = _message_content(app_config)
                 if updated.discord_message_id:
                     try:
                         await discord_client.edit_channel_message(
@@ -433,11 +433,13 @@ async def _get_selected_map(db: AsyncSession, row):
 
 
 def _build_event_embed(row, map_row) -> dict:
-    """Метаданные операции — живые Discord-поля (упоминания, дата) сверху
-    сообщения; содержательная часть (сводка/цель/задача/состав/угроза) —
-    в приложенной картинке-досье, см. render_operation_dossier. Справка о
-    планете сюда НЕ входит — идёт отдельным текстом в content, см.
-    _planet_info_text (решение пользователя)."""
+    """Метаданные операции — живые Discord-поля (упоминания, дата, планета)
+    сверху сообщения; содержательная часть (сводка/цель/задача/состав/угроза)
+    — в приложенной картинке-досье, см. render_operation_dossier. Планета —
+    поля самой заявки (row.payload), не карты (см. решение пользователя:
+    планета привязана к конкретному ивенту, а не к переиспользуемой карте) —
+    раньше шла отдельным текстом в content, теперь встроена в embed как
+    обычные структурные поля."""
     payload = row.payload or {}
 
     fields = []
@@ -457,6 +459,12 @@ def _build_event_embed(row, map_row) -> dict:
         map_value = f"[{map_row.name}]({map_row.url})" if map_row.url else map_row.name
     add_field("🗺️ Карта", map_value)
 
+    add_field("🪐 Планета", payload.get("planet_name"))
+    add_field("Система", payload.get("star_system"))
+    add_field("Ландшафт", payload.get("landscape"))
+    add_field("Погодные условия", payload.get("weather"))
+    add_field("Флора и фауна", payload.get("flora_fauna"), inline=False)
+
     return {
         "title": row.title,
         "color": 0x3B6FD6,
@@ -465,26 +473,8 @@ def _build_event_embed(row, map_row) -> dict:
     }
 
 
-def _planet_info_text(map_row) -> str | None:
-    """Справочная информация о планете карты — не для карточки, отдельным
-    текстом в теле сообщения (см. решение пользователя)."""
-    if map_row is None:
-        return None
-    lines = []
-    if map_row.planet_name:
-        lines.append(f"🪐 Планета: {map_row.planet_name}")
-    if map_row.star_system:
-        lines.append(f"Система: {map_row.star_system}")
-    if map_row.landscape:
-        lines.append(f"Ландшафт: {map_row.landscape}")
-    if map_row.weather:
-        lines.append(f"Погодные условия: {map_row.weather}")
-    return "\n".join(lines) if lines else None
-
-
-def _message_content(app_config, map_row) -> str | None:
-    parts = [p for p in (_ping_content(app_config), _planet_info_text(map_row)) if p]
-    return "\n\n".join(parts) if parts else None
+def _message_content(app_config) -> str | None:
+    return _ping_content(app_config)
 
 
 def _read_map_image(payload: dict) -> bytes | None:
@@ -570,7 +560,7 @@ async def approve_event(
                 embed=embed,
                 file_bytes=image_bytes,
                 filename=f"operation-{updated.id}.png",
-                content=_message_content(app_config, map_row),
+                content=_message_content(app_config),
             )
             await event_crud.mark_notified(db, updated, discord_message_id=message_id)
         except Exception:
@@ -638,10 +628,6 @@ async def create_map(
         db,
         name=payload.name.strip(),
         url=(payload.url or "").strip() or None,
-        planet_name=(payload.planet_name or "").strip() or None,
-        landscape=(payload.landscape or "").strip() or None,
-        weather=(payload.weather or "").strip() or None,
-        star_system=(payload.star_system or "").strip() or None,
     )
     return EventMapRead.model_validate(row)
 
@@ -659,7 +645,7 @@ async def update_map(
     if row is None:
         raise NotFoundError("Карта не найдена")
     changes = payload.model_dump(exclude_unset=True)
-    for key in ("name", "url", "planet_name", "landscape", "weather", "star_system"):
+    for key in ("name", "url"):
         if key in changes and isinstance(changes[key], str):
             changes[key] = changes[key].strip() or None
     updated = await event_crud.update_map(db, row, **changes)

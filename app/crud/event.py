@@ -87,19 +87,8 @@ async def create_map(
     *,
     name: str,
     url: str | None = None,
-    planet_name: str | None = None,
-    landscape: str | None = None,
-    weather: str | None = None,
-    star_system: str | None = None,
 ) -> EventMap:
-    row = EventMap(
-        name=name,
-        url=url,
-        planet_name=planet_name,
-        landscape=landscape,
-        weather=weather,
-        star_system=star_system,
-    )
+    row = EventMap(name=name, url=url)
     db.add(row)
     try:
         await db.commit()

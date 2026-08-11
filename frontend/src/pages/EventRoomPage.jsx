@@ -53,6 +53,11 @@ function emptyForm() {
     commander_discord_id: "",
     map_id: "",
     map_image_url: "",
+    planet_name: "",
+    star_system: "",
+    landscape: "",
+    weather: "",
+    flora_fauna: "",
   };
 }
 
@@ -79,6 +84,11 @@ function formToPayload(form) {
     commander_discord_id: form.commander_discord_id || null,
     map_id: form.map_id ? Number(form.map_id) : null,
     map_image_url: form.map_image_url || null,
+    planet_name: form.planet_name.trim() || null,
+    star_system: form.star_system.trim() || null,
+    landscape: form.landscape.trim() || null,
+    weather: form.weather.trim() || null,
+    flora_fauna: form.flora_fauna.trim() || null,
   };
 }
 
@@ -97,6 +107,11 @@ function payloadToForm(event) {
     commander_discord_id: p.commander_discord_id || "",
     map_id: p.map_id ? String(p.map_id) : "",
     map_image_url: p.map_image_url || "",
+    planet_name: p.planet_name || "",
+    star_system: p.star_system || "",
+    landscape: p.landscape || "",
+    weather: p.weather || "",
+    flora_fauna: p.flora_fauna || "",
   };
 }
 
@@ -427,6 +442,47 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
 
       <MapImageField value={form.map_image_url} onChange={(url) => setForm((f) => ({ ...f, map_image_url: url }))} />
 
+      <label>
+        Название планеты
+        <input
+          type="text"
+          value={form.planet_name}
+          onChange={(e) => setForm((f) => ({ ...f, planet_name: e.target.value }))}
+        />
+      </label>
+      <label>
+        Система
+        <input
+          type="text"
+          value={form.star_system}
+          onChange={(e) => setForm((f) => ({ ...f, star_system: e.target.value }))}
+        />
+      </label>
+      <label>
+        Ландшафт
+        <input
+          type="text"
+          value={form.landscape}
+          onChange={(e) => setForm((f) => ({ ...f, landscape: e.target.value }))}
+        />
+      </label>
+      <label>
+        Погодные условия
+        <input
+          type="text"
+          value={form.weather}
+          onChange={(e) => setForm((f) => ({ ...f, weather: e.target.value }))}
+        />
+      </label>
+      <label>
+        Флора и фауна
+        <input
+          type="text"
+          value={form.flora_fauna}
+          onChange={(e) => setForm((f) => ({ ...f, flora_fauna: e.target.value }))}
+        />
+      </label>
+
       {error && <p className="error-text">{error}</p>}
 
       <div className="regiment-panel">
@@ -528,24 +584,16 @@ function RejectInline({ onReject }) {
 }
 
 function emptyMapForm() {
-  return { id: null, name: "", url: "", planetName: "", landscape: "", weather: "", starSystem: "" };
+  return { id: null, name: "", url: "" };
 }
 
 function mapToForm(m) {
-  return {
-    id: m.id,
-    name: m.name,
-    url: m.url || "",
-    planetName: m.planet_name || "",
-    landscape: m.landscape || "",
-    weather: m.weather || "",
-    starSystem: m.star_system || "",
-  };
+  return { id: m.id, name: m.name, url: m.url || "" };
 }
 
 /** Карта каталога — название+ссылка попадают в карточку операции в Discord
- * (ссылка гиперссылкой в поле "Карта"), справка о планете — отдельным текстом
- * в сообщении, не в саму карточку (см. решение пользователя). */
+ * (ссылка гиперссылкой в поле "Карта"). Справка о планете переехала в саму
+ * заявку на ивент (см. EventForm) — карта теперь только название+ссылка. */
 function MapForm({ initial, onSubmit, onCancel }) {
   const [form, setForm] = useState(initial);
 
@@ -557,30 +605,6 @@ function MapForm({ initial, onSubmit, onCancel }) {
     <div className="picker-row" style={{ flexWrap: "wrap" }}>
       <input type="text" placeholder="Название карты" value={form.name} onChange={(e) => setField("name", e.target.value)} />
       <input type="text" placeholder="Ссылка на карту" value={form.url} onChange={(e) => setField("url", e.target.value)} />
-      <input
-        type="text"
-        placeholder="Название планеты"
-        value={form.planetName}
-        onChange={(e) => setField("planetName", e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Система"
-        value={form.starSystem}
-        onChange={(e) => setField("starSystem", e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Ландшафт"
-        value={form.landscape}
-        onChange={(e) => setField("landscape", e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Погодные условия"
-        value={form.weather}
-        onChange={(e) => setField("weather", e.target.value)}
-      />
       <button type="button" disabled={!form.name.trim()} onClick={() => onSubmit(form)}>
         {form.id ? "Сохранить" : "Добавить карту"}
       </button>
@@ -746,14 +770,7 @@ export function EventRoomPage() {
 
   async function handleSaveMap(form) {
     if (!form.name.trim()) return;
-    const body = {
-      name: form.name.trim(),
-      url: form.url.trim(),
-      planetName: form.planetName.trim(),
-      landscape: form.landscape.trim(),
-      weather: form.weather.trim(),
-      starSystem: form.starSystem.trim(),
-    };
+    const body = { name: form.name.trim(), url: form.url.trim() };
     try {
       if (form.id) {
         await api.updateEventMap(token, form.id, body);
