@@ -127,6 +127,16 @@ async def list_rejected_registrations(db: AsyncSession) -> list[User]:
     return list(result.scalars().all())
 
 
+async def list_inactive(db: AsyncSession) -> list[User]:
+    """Разжалованные — is_inactive=True, независимо от того, в каком формировании
+    боец служил (профиль/regiment_id нигде не хранится напрямую, только через
+    живую Discord-роль, см. app/api/regiments.py::list_inactive_members) — этот
+    список для глобального "Разжалованные" в Админ-панели, чтобы не искать
+    человека по формированиям вручную (см. решение пользователя)."""
+    result = await db.execute(select(User).where(User.is_inactive.is_(True)))
+    return list(result.scalars().all())
+
+
 async def get_by_ids(db: AsyncSession, user_ids: list[int]) -> list[User]:
     if not user_ids:
         return []

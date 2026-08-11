@@ -74,6 +74,25 @@ class GuildMemberRead(BaseModel):
     last_report_at: datetime | None = None
 
 
+class InactiveMemberRead(BaseModel):
+    """Разжалованный — глобальный список поперёк всех формирований (Админ-панель,
+    см. решение пользователя: "я же могу не помнить где он служил"). ИДН/звание/
+    позывной здесь не показываем — они обнуляются при разжаловании (см.
+    app/crud/user.py::update_profile), поэтому единственная зацепка — Discord-ник
+    и формирование, определяемое ЖИВОЙ ролью на сервере (Discord-роль после
+    разжалования не снимается автоматически, только профиль на сайте)."""
+
+    discord_id: str
+    username: str
+    avatar_url: str | None = None
+    regiment_names: list[str] = []
+    # id формирований, чью Discord-роль боец сейчас держит — нужно фронту, чтобы
+    # вызвать "Восстановить в строй" (PATCH .../{regiment_id}/members/.../profile
+    # требует конкретный regiment_id, а не только название)
+    regiment_ids: list[int] = []
+    last_login_at: datetime | None = None
+
+
 class DiscordChannelRead(BaseModel):
     id: str
     name: str

@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { SaveBar } from "../components/SaveBar";
 import { useToast } from "../components/ToastContext";
+import { formatMskDate } from "../utils/formatDate";
 import { SPECIALIZATION_CATEGORIES } from "../utils/specialization";
 
 /** Админ-панель ("God mode") — правки, недоступные обычному командиру/заместителю:
@@ -92,6 +93,9 @@ export function AdminPanelPage() {
   const [systemHealth, setSystemHealth] = useState(null);
   const [healthStaleDays, setHealthStaleDays] = useState(3);
 
+  const [inactiveMembers, setInactiveMembers] = useState([]);
+  const [reinstatingDiscordId, setReinstatingDiscordId] = useState(null);
+
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
   const memberRequestIdRef = useRef(0);
@@ -122,6 +126,35 @@ export function AdminPanelPage() {
     loadHealth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  function loadInactiveMembers() {
+    api.getInactiveMembers(token).then(setInactiveMembers).catch(() => setInactiveMembers([]));
+  }
+
+  useEffect(() => {
+    loadInactiveMembers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  async function handleReinstate(m) {
+    // Разжалованный числится "в составе" сразу нескольких формирований, только
+    // если у него совпало несколько Discord-ролей одновременно (редкость) —
+    // берём первое найденное, этого достаточно, чтобы снять is_inactive
+    // (сама отметка глобальная на User, не привязана к конкретному формированию)
+    const regimentId = m.regiment_ids[0];
+    setReinstatingDiscordId(m.discord_id);
+    setError(null);
+    try {
+      await api.setMemberProfile(token, regimentId, m.discord_id, { is_inactive: false });
+      showToast(`${m.username} восстановлен в строй`);
+      loadInactiveMembers();
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    } finally {
+      setReinstatingDiscordId(null);
+    }
+  }
 
   async function handleMaintenanceSave() {
     try {
@@ -812,6 +845,42 @@ export function AdminPanelPage() {
           </ul>
         ) : (
           <p className="hint-text">Загрузка...</p>
+        )}
+      </div>
+
+      <div className="regiment-panel fade-in-up">
+        <h4>Разжалованные {inactiveMembers.length > 0 && <span className="category-points-badge">{inactiveMembers.length}</span>}</h4>
+        <p className="hint-text">
+          Поперёк всех формирований разом — при разжаловании ИДН/звание/позывной обнуляются, поэтому опознать можно
+          только по Discord-нику. Формирование определяется по текущей Discord-роли (она не снимается автоматически).
+        </p>
+        {inactiveMembers.length === 0 ? (
+          <p className="hint-text">Разжалованных сейчас нет.</p>
+        ) : (
+          <ul className="member-report-list">
+            {inactiveMembers.map((m) => (
+              <li key={m.discord_id}>
+                <span className="report-regiment">{m.username}</span>
+                <span className="hint-text">
+                  {" "}
+                  {m.regiment_names.length > 0 ? m.regiment_names.join(", ") : "формирование не определено"}
+                </span>
+                <span className="member-report-date">
+                  {m.last_login_at ? `последний вход: ${formatMskDate(m.last_login_at)} МСК` : "не входил"}
+                </span>
+                <div className="report-form-actions">
+                  <button
+                    type="button"
+                    disabled={m.regiment_ids.length === 0 || reinstatingDiscordId === m.discord_id}
+                    onClick={() => handleReinstate(m)}
+                    title={m.regiment_ids.length === 0 ? "Не найден в составе ни одного формирования по Discord-роли" : undefined}
+                  >
+                    {reinstatingDiscordId === m.discord_id ? "Восстановление…" : "Восстановить в строй"}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 

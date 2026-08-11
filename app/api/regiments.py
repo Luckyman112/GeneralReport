@@ -49,6 +49,7 @@ from app.schemas.regiment_commander import (
     HqFormationLeadershipRead,
     HqLeadershipRead,
     HqPersonRead,
+    InactiveMemberRead,
     MemberProfileUpdate,
     PointsAdjustmentBody,
     RegimentCommanderCreate,
@@ -217,6 +218,46 @@ async def get_discord_roles(access: AccessContext = Depends(get_access_context))
 
     roles = await discord_client.fetch_guild_roles()
     return [DiscordRoleOption(**role) for role in roles]
+
+
+@router.get("/members/inactive", response_model=list[InactiveMemberRead])
+async def list_inactive_members(
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[InactiveMemberRead]:
+    """Разжалованные поперёк ВСЕХ формирований разом (Админ-панель) — иначе их
+    искать пришлось бы по формированиям вручную, не помня, где боец служил (см.
+    решение пользователя). ИДН/звание/позывной не показываем — обнулены при
+    разжаловании; формирование определяем по живой Discord-роли (роль не
+    снимается автоматически при разжаловании, см. app/crud/user.py::update_profile)."""
+    if not (access.is_admin or access.is_high_command):
+        raise ForbiddenError("Список разжалованных доступен только администратору/высшему командованию")
+
+    inactive_users = await user_crud.list_inactive(db)
+    if not inactive_users:
+        return []
+
+    regiments = await regiment_crud.get_all(db, include_archived=True)
+    members = await discord_client.fetch_guild_members()
+    members_by_discord_id = {m["discord_id"]: m for m in members}
+
+    entries: list[InactiveMemberRead] = []
+    for user in inactive_users:
+        member = members_by_discord_id.get(user.discord_id)
+        role_ids = set(member["roles"]) if member else set()
+        matched_regiments = [r for r in regiments if r.discord_role_id in role_ids]
+        entries.append(
+            InactiveMemberRead(
+                discord_id=user.discord_id,
+                username=member["username"] if member else user.username,
+                avatar_url=member["avatar_url"] if member else user.avatar_url,
+                regiment_names=[r.name for r in matched_regiments],
+                regiment_ids=[r.id for r in matched_regiments],
+                last_login_at=user.last_login_at,
+            )
+        )
+    entries.sort(key=lambda e: e.username)
+    return entries
 
 
 @router.post("", response_model=RegimentRead, status_code=201)

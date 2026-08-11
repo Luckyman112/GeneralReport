@@ -13,7 +13,7 @@ import { formatFullName, formatFullNameAtRank } from "../utils/formatName";
 const CATEGORY_LABELS = {
   class: "Общий класс",
   gear: "Общее снаряжение",
-  specialization: "Общая специализация",
+  specialization: "Главная специализация",
   additional_specialization: "Доп. специализация",
   elite_specialization: "Элитная специализация",
 };

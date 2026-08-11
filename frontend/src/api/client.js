@@ -170,6 +170,7 @@ export const api = {
     request(`/api/regiments/${regimentId}`, { method: "PATCH", token, body: { is_archived: isArchived } }),
   getHqLeadership: (token) => request("/api/regiments/hq-leadership", { token }),
   getDiscordRoles: (token) => request("/api/regiments/discord-roles", { token }),
+  getInactiveMembers: (token) => request("/api/regiments/members/inactive", { token }),
   createRegiment: (token, { name, discordRoleId, color, discordChannelUrl, isJediOrder }) =>
     request("/api/regiments", {
       method: "POST",
