@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PageLoading } from "../components/PageLoading";
 import { RegimentConfigModal } from "../components/RegimentConfigModal";
 
@@ -17,6 +18,8 @@ export function RegimentsAdminPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [archivingId, setArchivingId] = useState(null);
+  const [confirmArchiveRegiment, setConfirmArchiveRegiment] = useState(null);
 
   const loadAll = useCallback(async () => {
     const [regimentsData, rolesData, tiersData] = await Promise.all([
@@ -59,11 +62,16 @@ export function RegimentsAdminPage() {
   }
 
   async function handleToggleArchive(regiment) {
+    setConfirmArchiveRegiment(null);
+    setArchivingId(regiment.id);
+    setError(null);
     try {
       await api.archiveRegiment(token, regiment.id, !regiment.is_archived);
       await loadAll();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setArchivingId(null);
     }
   }
 
@@ -117,12 +125,24 @@ export function RegimentsAdminPage() {
               {r.is_archived && <span className="member-inactive-badge">заморожено</span>}
             </span>
             <button onClick={() => setEditingRegiment(r)}>Настроить</button>
-            <button className="ghost" onClick={() => handleToggleArchive(r)}>
+            <button
+              className="ghost"
+              disabled={archivingId === r.id}
+              onClick={() => (r.is_archived ? handleToggleArchive(r) : setConfirmArchiveRegiment(r))}
+            >
               {r.is_archived ? "Разморозить" : "Заморозить"}
             </button>
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={confirmArchiveRegiment !== null}
+        message={`Заморозить формирование «${confirmArchiveRegiment?.name}»? Категории/звания/история останутся, но формирование станет неактивным для новых действий.`}
+        confirmLabel="Заморозить"
+        onConfirm={() => handleToggleArchive(confirmArchiveRegiment)}
+        onCancel={() => setConfirmArchiveRegiment(null)}
+      />
 
       {editingRegiment && (
         <RegimentConfigModal

@@ -13,6 +13,7 @@ from app.core.constants import PASSWORD_LOGIN_DISCORD_ID
 from app.core.security import create_access_token, decode_access_token
 from app.crud import app_settings as app_settings_crud
 from app.crud import notification as notification_crud
+from app.crud import promotion as promotion_crud
 from app.crud import regiment as regiment_crud
 from app.crud import transfer_request as transfer_request_crud
 from app.crud import user as user_crud
@@ -87,6 +88,12 @@ async def _finalize_transfer_if_ready(db: AsyncSession, user):
             changes={"rank_id": request.target_rank_id},
         )
         await transfer_request_crud.complete(db, request)
+        # rank_id сменился в обход обычной заявки на повышение — та же зависшая
+        # pending-заявка от старого формирования/звания, что и в
+        # app/api/regiments.py::update_member_profile (баг-репорт)
+        await promotion_crud.cancel_pending_for_user(
+            db, user_id=user.id, reason="Перевод завершён"
+        )
         await notification_crud.create_personal_notification(
             db,
             target_user_id=user.id,

@@ -1050,12 +1050,19 @@ async def update_member_profile(
         raise AppError("Гранд-Мастер уже назначен другому бойцу — сначала снимите ранг с текущего")
     logger.info("%s обновил профиль участника %s: %s", access.user.username, discord_id, changes)
 
-    if rank_changed:
+    # Разжалование (is_inactive: true) тоже обнуляет rank_id — но ВНУТРИ
+    # user_crud.update_profile, а не через "rank_id" в changes, поэтому
+    # rank_changed выше это не ловит; без отдельной проверки зависшая
+    # pending-заявка на повышение переживала бы разжалование (баг-репорт)
+    became_inactive = changes.get("is_inactive") is True
+    if rank_changed or became_inactive:
         # Ранг сменился в обход обычной заявки на повышение — если у бойца была
         # зависшая pending-заявка от СТАРОГО ранга, гасим её, иначе на странице
         # Повышения виснет карточка с несуществующим уже переходом (баг-репорт)
         await promotion_crud.cancel_pending_for_user(
-            db, user_id=user.id, reason="Ранг изменён вручную, минуя заявку на повышение"
+            db,
+            user_id=user.id,
+            reason="Боец разжалован" if became_inactive else "Ранг изменён вручную, минуя заявку на повышение",
         )
 
     if is_demotion:

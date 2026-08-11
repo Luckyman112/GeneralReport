@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AccessContext, get_access_context
 from app.crud import audit_log as audit_log_crud
 from app.crud import event_booking as event_booking_crud
+from app.crud import notification as notification_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.schemas.event_booking import EventBookingCreate, EventBookingDecide, EventBookingRead
@@ -99,5 +100,13 @@ async def decide_booking(
         actor_is_admin=access.is_admin,
         action="event_booking_decide",
         details=f"Бронь {booking_id} ({booking.title}) -> {payload.status}",
+    )
+    await notification_crud.create_personal_notification(
+        db,
+        target_user_id=updated.requested_by_user_id,
+        title="Бронь одобрена" if payload.status == "approved" else "Бронь отклонена",
+        body=f"Ваша бронь «{booking.title}» {'одобрена' if payload.status == 'approved' else 'отклонена'}."
+        + (f" Причина: {payload.rejection_reason}" if payload.status == "rejected" and payload.rejection_reason else ""),
+        created_by=access.user.id,
     )
     return EventBookingRead.model_validate(updated)

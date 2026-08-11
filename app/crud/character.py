@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -66,6 +68,7 @@ async def create(
         service_id=service_id,
         callsign=callsign,
         rank_id=rank_id,
+        rank_assigned_at=datetime.now(timezone.utc) if rank_id is not None else None,
         steam_id=steam_id,
         is_jedi=is_jedi,
     )
@@ -81,6 +84,10 @@ async def create(
 async def update(db: AsyncSession, character: Character, **changes) -> Character:
     """changes — только реально переданные клиентом поля (exclude_unset в
     эндпоинте), как и остальные частичные обновления в проекте."""
+    # Не тронуто до этого фикса: days_in_rank для персонажей всегда был пуст в
+    # составе, потому что rank_assigned_at никогда не выставлялся (баг-репорт)
+    if "rank_id" in changes and changes["rank_id"] != character.rank_id:
+        character.rank_assigned_at = datetime.now(timezone.utc) if changes["rank_id"] is not None else None
     for key, value in changes.items():
         setattr(character, key, value)
     await db.commit()

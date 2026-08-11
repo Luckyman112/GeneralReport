@@ -234,11 +234,14 @@ async def get_promotion_review(
     """Обзор заявки на повышение (ожидающей или уже решённой) — все рапорты бойца
     за период текущего звания и выполненные требования по категориям. Доступно
     командиру/заму этого формирования (в том числе для истории) и самому бойцу,
-    о ком заявка (посмотреть, что зачлось в свою историю повышений)."""
+    о ком заявка (посмотреть, что зачлось в свою историю повышений). Тот же
+    carve-out 17-го Передового Полка, что и на решение по заявке (см.
+    can_decide_promotion) — иначе кто вправе решить по заявке рекрута, не
+    смог бы открыть её обзор (баг-репорт)."""
     request = await promotion_crud.get_request_by_id(db, request_id)
     if request is None:
         raise NotFoundError("Заявка не найдена")
-    if not access.is_commander_of(request.regiment_id) and request.user_id != access.user.id:
+    if not access.can_decide_promotion(request.regiment_id) and request.user_id != access.user.id:
         raise ForbiddenError("Обзор доступен командиру формирования или самому бойцу")
 
     period_start = request.tenure_started_at
@@ -424,8 +427,12 @@ async def get_member_promotion_status(
 ) -> PromotionStatusRead:
     """Та же сводка "что осталось до повышения", что боец видит для себя на
     Главной — только для конкретного бойца, в его личном деле. Доступно только
-    командиру/заму этого формирования."""
-    if not access.is_commander_of(regiment_id):
+    командиру/заму этого формирования. Исключение — 17-й Передовой Полк: пока
+    боец там числится, доступно командиру/заму ЛЮБОГО формирования (см.
+    can_decide_promotion, тот же carve-out, что и на решение по заявке —
+    иначе тот, кто вправе одобрить заявку рекрута, не смог бы даже увидеть
+    его прогресс до повышения, баг-репорт)."""
+    if not access.can_decide_promotion(regiment_id):
         raise ForbiddenError("Сводка по повышению доступна только командиру формирования")
 
     target = await user_crud.get_by_discord_id(db, discord_id)

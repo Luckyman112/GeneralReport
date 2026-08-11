@@ -14,6 +14,7 @@ from app.api.deps import AccessContext, get_access_context
 from app.core.uploads import read_image_upload
 from app.crud import audit_log as audit_log_crud
 from app.crud import event_activity_report as activity_report_crud
+from app.crud import notification as notification_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
 from app.schemas.event_activity_report import (
@@ -96,6 +97,14 @@ async def decide_activity_report(
         actor_is_admin=access.is_admin,
         action="event_activity_report_decide",
         details=f"Отчёт о мероприятии {report_id} ({report.event_type}) -> {payload.status}",
+    )
+    await notification_crud.create_personal_notification(
+        db,
+        target_user_id=updated.submitted_by_user_id,
+        title="Отчёт о мероприятии одобрен" if payload.status == "approved" else "Отчёт о мероприятии отклонён",
+        body=f"Ваш отчёт о мероприятии ({report.event_type}) {'одобрен' if payload.status == 'approved' else 'отклонён'}."
+        + (f" Причина: {payload.rejection_reason}" if payload.status == "rejected" and payload.rejection_reason else ""),
+        created_by=access.user.id,
     )
     return EventActivityReportRead.model_validate(updated)
 

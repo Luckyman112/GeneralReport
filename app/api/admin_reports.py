@@ -15,6 +15,7 @@ from app.core.uploads import read_file_upload, read_image_upload
 from app.crud import admin_report as admin_report_crud
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
+from app.crud import notification as notification_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
@@ -110,6 +111,14 @@ async def decide_admin_report(
         actor_is_admin=access.is_admin,
         action="admin_report_decide",
         details=f"Отчёт Администрации {report_id} ({report.report_type}) -> {payload.status}",
+    )
+    await notification_crud.create_personal_notification(
+        db,
+        target_user_id=updated.submitted_by_user_id,
+        title="Отчёт Администрации одобрен" if payload.status == "approved" else "Отчёт Администрации отклонён",
+        body=f"Ваш отчёт ({report.report_type}) {'одобрен' if payload.status == 'approved' else 'отклонён'}."
+        + (f" Причина: {payload.rejection_reason}" if payload.status == "rejected" and payload.rejection_reason else ""),
+        created_by=access.user.id,
     )
     return AdminReportRead.model_validate(updated)
 

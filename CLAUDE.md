@@ -379,6 +379,41 @@ commit, not `required_regiment`/`parent` — with `expire_on_commit=False`,
 changing either field via `PATCH /specializations/{id}` could return the
 pre-update relationship in the same response. Both fixed.
 
+A round-2 audit pass over the previously-unreviewed backend files found five
+more, also fixed:
+- `update_member_profile` (`app/api/regiments.py`) only ran the stale-
+  `PromotionRequest` cleanup (`cancel_pending_for_user`) when `rank_id` was
+  present in the *request payload* — but discharging someone
+  (`is_inactive: true`) also nulls `rank_id`, just *inside*
+  `user_crud.update_profile`, invisibly to that check. Now `became_inactive`
+  triggers the same cleanup.
+- `_finalize_transfer_if_ready` (`app/api/auth.py`) changes `rank_id` on
+  transfer completion the same way `update_member_profile` does, but never
+  called `cancel_pending_for_user` at all — same stale-request symptom,
+  different trigger path. Fixed identically.
+- `character_crud.create`/`update` never set `Character.rank_assigned_at`
+  (unlike `user_crud.update_profile`, which always does when `rank_id`
+  changes) — every `Character`-backed roster row (secondary/dual-formation
+  characters) showed `days_in_rank = None` forever, even with a real rank set.
+  Fixed to mirror the `User` behavior.
+- `get_member_promotion_status` and `get_promotion_review`
+  (`app/api/promotions.py`) checked `access.is_commander_of(regiment_id)`
+  instead of `access.can_decide_promotion(regiment_id)` — the latter is the
+  method that carries the 17th-Recruit-Regiment carve-out (any regiment's
+  commander/deputy, not just the 17th's own, per the Recruit pipeline section
+  above). Someone who could validly *decide* a recruit's promotion request via
+  `can_decide_promotion` got a 403 trying to view that same recruit's
+  promotion-status summary or a decided request's review. Both now call
+  `can_decide_promotion`.
+- `event_booking_crud.decide`/`admin_report_crud.decide`/
+  `event_activity_report_crud.decide` never notified the submitter of the
+  decision, unlike every sibling decide-flow in the app (`transfer_requests`,
+  `reports`, `promotions`, `event_crud.decide`) which all call
+  `notification_crud.create_personal_notification`. Added the same call to
+  all three `app/api/*.py` endpoints (not the crud layer, to keep `decide()`
+  free of notification concerns — matches where `event_room.py` puts its own
+  Discord-side notification, outside `event_crud.decide`).
+
 ### HqLeadershipPanel is now clickable
 `HqLeadershipPanel.jsx` (Штаб page) used to be explicitly non-clickable by
 design (see prior docstring, now removed) — reversed by user request. Clicking
