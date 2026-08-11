@@ -33,6 +33,19 @@ async def get_by_name(db: AsyncSession, *, regiment_id: int, name: str) -> Repor
     return result.scalar_one_or_none()
 
 
+async def get_recruit_promotion_category(db: AsyncSession, regiment_id: int) -> ReportCategory | None:
+    """Единственная категория «Курс молодого бойца» (is_recruit_promotion=True) в
+    формировании-рекрутской (см. app/api/deps.py::recruit_regiment_id) — нужна,
+    чтобы собрать все такие рапорты разом для публичного списка (см.
+    app/api/reports.py::list_recruit_training_reports)."""
+    result = await db.execute(
+        select(ReportCategory).where(
+            ReportCategory.regiment_id == regiment_id, ReportCategory.is_recruit_promotion.is_(True)
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_or_create_in_all_regiments(
     db: AsyncSession,
     *,

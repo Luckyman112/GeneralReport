@@ -190,6 +190,25 @@ async def list_reports(
     return list(result.scalars().all())
 
 
+async def list_for_category_public(db: AsyncSession, *, category_id: int) -> list[Report]:
+    """Все рапорты категории, кроме черновиков и аннулированных — для публичных
+    витрин (сейчас единственный случай: список рапортов «Курс молодого бойца»,
+    открытый любому бойцу независимо от формирования, см.
+    app/api/reports.py::list_recruit_training_reports). Черновики сюда не
+    попадают — иначе был бы виден чужой неотправленный рапорт."""
+    query = (
+        select(Report)
+        .options(*_LOAD_OPTIONS)
+        .where(
+            Report.category_id == category_id,
+            Report.status.not_in([ReportStatus.DRAFT, ReportStatus.DELETED]),
+        )
+        .order_by(Report.created_at.desc())
+    )
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
 async def last_report_at_by_user_ids(db: AsyncSession, user_ids: list[int]) -> dict[int, datetime]:
     """Дата последнего рапорта каждого бойца (любой статус кроме DELETED) —
     для колонки "Последний рапорт" в ростере (см. решение пользователя: удобно

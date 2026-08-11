@@ -178,6 +178,17 @@ each a narrow carve-out rather than a broad permission change:
   so a non-member commander can actually find the recruit — see `RecruitsPage.jsx`
   ("Рекрутская"), a read-only search, not a general roster browser.
 
+`RecruitsPage.jsx` route (`/recruits`) is open to every authenticated user (not
+`reviewerOnly`) — the roster/search table itself stays gated inline
+(`canViewRoster` = admin/high-command/any `commander_regiment_ids`), but
+`GET /reports/recruit-training` (`app/api/reports.py`) is intentionally visible to
+anyone with `access.has_access`, listing every `is_recruit_promotion` report
+regardless of regiment (bypasses the normal `GET /reports` regiment-membership
+filtering entirely, via `report_crud.list_for_category_public` — excludes drafts
+so a stray unsent one never leaks). `report_category_crud.get_recruit_promotion_category`
+resolves the one such category by `recruit_regiment_id` + the `is_recruit_promotion`
+flag rather than by name.
+
 ### Specialization prerequisites ("нужны ВСЕ из")
 `Specialization.parent_id` only expresses "needs exactly one specific specialization
 first". A tier that needs *every* sibling branch at once (e.g. "Старший медик" =

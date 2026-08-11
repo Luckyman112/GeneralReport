@@ -244,7 +244,7 @@ function AppRoutes() {
         <Route
           path="/recruits"
           element={
-            <ProtectedRoute reviewerOnly>
+            <ProtectedRoute>
               <RecruitsPage />
             </ProtectedRoute>
           }

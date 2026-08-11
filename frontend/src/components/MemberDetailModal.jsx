@@ -27,6 +27,7 @@ function profileSnapshot(member) {
   return {
     serviceId: member.service_id ?? "",
     callsign: member.callsign ?? "",
+    steamId: member.steam_id ?? "",
     rankId: member.rank?.id ?? "",
     jediTitleId: member.jedi_title?.id ?? "",
     jediCouncilSeat: member.jedi_council_seat ?? "",
@@ -42,6 +43,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [photoUrl, setPhotoUrl] = useState(member.photo_url ?? null);
   const [serviceId, setServiceId] = useState(baseline.serviceId);
   const [callsign, setCallsign] = useState(baseline.callsign);
+  const [steamId, setSteamId] = useState(baseline.steamId);
   const [rankId, setRankId] = useState(baseline.rankId);
   const [jediTitleId, setJediTitleId] = useState(baseline.jediTitleId);
   const [jediCouncilSeat, setJediCouncilSeat] = useState(baseline.jediCouncilSeat);
@@ -66,6 +68,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [specializations, setSpecializations] = useState([]);
   const [specializationCatalog, setSpecializationCatalog] = useState([]);
   const [newSpecializationId, setNewSpecializationId] = useState("");
+  const [grantingSpecialization, setGrantingSpecialization] = useState(false);
   const [specializationBans, setSpecializationBans] = useState([]);
   const [newBanSpecializationId, setNewBanSpecializationId] = useState("");
   const [newBanUntilDate, setNewBanUntilDate] = useState("");
@@ -230,7 +233,8 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   );
 
   async function handleGrantSpecialization() {
-    if (!newSpecializationId) return;
+    if (!newSpecializationId || grantingSpecialization) return;
+    setGrantingSpecialization(true);
     setError(null);
     try {
       await api.grantSpecialization(token, member.discord_id, Number(newSpecializationId));
@@ -240,6 +244,11 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     } catch (e) {
       setError(e.message);
       showToast(e.message, "error");
+      // Расхождение с бэкендом (например "уже выдана") — перегружаем список,
+      // чтобы форма не продолжала показывать устаревшее "не выдано"
+      loadSpecializations();
+    } finally {
+      setGrantingSpecialization(false);
     }
   }
 
@@ -300,6 +309,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const isDirty =
     serviceId !== baseline.serviceId ||
     callsign !== baseline.callsign ||
+    steamId !== baseline.steamId ||
     rankId !== baseline.rankId ||
     jediTitleId !== baseline.jediTitleId ||
     jediCouncilSeat !== baseline.jediCouncilSeat;
@@ -307,6 +317,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   function handleResetProfile() {
     setServiceId(baseline.serviceId);
     setCallsign(baseline.callsign);
+    setSteamId(baseline.steamId);
     setRankId(baseline.rankId);
     setJediTitleId(baseline.jediTitleId);
     setJediCouncilSeat(baseline.jediCouncilSeat);
@@ -382,6 +393,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
       await api.setMemberProfile(token, regimentId, member.discord_id, {
         service_id: serviceId.trim() || null,
         callsign: callsign.trim() || null,
+        steam_id: steamId.trim() || null,
         rank_id: rankId === "" ? null : Number(rankId),
         ...(isAdminOrHc && jediTitleChanged
           ? { jedi_title_id: jediTitleId === "" ? null : Number(jediTitleId) }
@@ -393,7 +405,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           ? { early_promotion_reason: earlyPromotionReason.trim() || null }
           : {}),
       });
-      setBaseline({ serviceId, callsign, rankId, jediTitleId, jediCouncilSeat, isInactive });
+      setBaseline({ serviceId, callsign, steamId, rankId, jediTitleId, jediCouncilSeat, isInactive });
       setEarlyPromotionReason("");
       showToast("Профиль сохранён");
       loadPromotionStatus();
@@ -488,6 +500,15 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                 value={serviceId}
                 onChange={(e) => setServiceId(e.target.value.replace(/\D/g, "").slice(0, 4))}
                 placeholder="0000"
+              />
+            </label>
+            <label>
+              Steam ID
+              <input
+                type="text"
+                value={steamId}
+                onChange={(e) => setSteamId(e.target.value)}
+                placeholder="STEAM_1:0:12345678"
               />
             </label>
             <label>
@@ -680,7 +701,11 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                 </option>
               ))}
             </select>
-            <button type="button" disabled={!newSpecializationId} onClick={handleGrantSpecialization}>
+            <button
+              type="button"
+              disabled={!newSpecializationId || grantingSpecialization}
+              onClick={handleGrantSpecialization}
+            >
               Выдать
             </button>
           </div>

@@ -314,6 +314,28 @@ async def list_reports(
     return await _to_report_reads(db, reports)
 
 
+@router.get("/recruit-training", response_model=list[ReportRead])
+async def list_recruit_training_reports(
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[ReportRead]:
+    """Все рапорты «Курс молодого бойца» разом, открыто ЛЮБОМУ зарегистрированному
+    бойцу, а не только командирам 17-го Передового Полка/decision-makers (см.
+    решение пользователя — «Рекрутская», обычная видимость GET /reports по
+    формированиям тут не подходит, т.к. подать может Капрал+ из ЛЮБОГО
+    формирования — см. is_recruit_promotion). Черновики не попадают сюда, см.
+    report_crud.list_for_category_public."""
+    if not access.has_access:
+        raise ForbiddenError("У вас нет доступа ни к одному формированию")
+    if access.recruit_regiment_id is None:
+        return []
+    category = await report_category_crud.get_recruit_promotion_category(db, access.recruit_regiment_id)
+    if category is None:
+        return []
+    reports = await report_crud.list_for_category_public(db, category_id=category.id)
+    return await _to_report_reads(db, reports)
+
+
 @router.post("", response_model=ReportRead, status_code=201)
 async def create_report(
     payload: ReportCreate,

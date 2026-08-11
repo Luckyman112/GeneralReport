@@ -98,6 +98,7 @@ export const api = {
     const query = params.toString() ? `?${params.toString()}` : "";
     return request(`/api/reports${query}`, { token, withTotal: Boolean(limit) });
   },
+  listRecruitTrainingReports: (token) => request("/api/reports/recruit-training", { token }),
   createReport: (
     token,
     {
