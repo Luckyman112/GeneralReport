@@ -41,6 +41,13 @@ class EventRejectRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class EventMessageRequest(BaseModel):
+    """Свободное сообщение автора одобренной заявки — уходит доп. сообщением
+    в тот же Discord-канал, что и карточка (см. решение пользователя)."""
+
+    content: str = Field(min_length=1, max_length=2000)
+
+
 class EventMapRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

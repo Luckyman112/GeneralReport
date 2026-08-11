@@ -713,6 +713,8 @@ export const api = {
   approveEvent: (token, eventId) => request(`/api/event-room/${eventId}/approve`, { method: "POST", token }),
   rejectEvent: (token, eventId, reason) =>
     request(`/api/event-room/${eventId}/reject`, { method: "POST", token, body: { reason } }),
+  sendEventMessage: (token, eventId, content) =>
+    request(`/api/event-room/${eventId}/message`, { method: "POST", token, body: { content } }),
   getEventMemberCandidates: (token) => request("/api/event-room/member-candidates", { token }),
   listEventMaps: (token) => request("/api/event-room/maps/all", { token }),
   createEventMap: (token, { name, url }) =>

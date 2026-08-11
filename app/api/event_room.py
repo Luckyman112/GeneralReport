@@ -21,6 +21,7 @@ from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import event as event_crud
 from app.crud import event_activity_report as activity_report_crud
+from app.crud import notification as notification_crud
 from app.crud import regiment as regiment_crud
 from app.crud import user as user_crud
 from app.database import get_db
@@ -31,6 +32,7 @@ from app.schemas.event import (
     EventMapRead,
     EventMapUpdate,
     EventMemberDetail,
+    EventMessageRequest,
     EventRead,
     EventRejectRequest,
     EventRosterEntry,
@@ -546,6 +548,13 @@ async def approve_event(
         details=f"Одобрил заявку на ивент «{updated.title}» (#{updated.id})",
         target_user_id=updated.submitted_by_user_id,
     )
+    await notification_crud.create_personal_notification(
+        db,
+        target_user_id=updated.submitted_by_user_id,
+        title="Заявка на ивент одобрена",
+        body=f"«{updated.title}» одобрена.",
+        created_by=access.user.id,
+    )
 
     app_config = await app_settings_crud.get(db)
     if app_config.event_notify_channel_id:
@@ -600,6 +609,41 @@ async def reject_event(
     )
     event_bus.publish("event_room")
     return EventRead.model_validate(updated)
+
+
+@router.post("/{event_id}/message")
+async def send_event_message(
+    event_id: int,
+    payload: EventMessageRequest,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> dict:
+    """Свободное сообщение автора одобренной заявки — доп. текстом в тот же
+    канал, что и карточка операции, не трогает саму карточку/embed (см.
+    решение пользователя)."""
+    row = await event_crud.get_by_id(db, event_id)
+    if row is None:
+        raise NotFoundError("Заявка не найдена")
+    if row.submitted_by_user_id != access.user.id:
+        raise ForbiddenError("Отправить сообщение может только автор заявки")
+    if row.status != "approved":
+        raise AppError("Заявка ещё не одобрена")
+
+    app_config = await app_settings_crud.get(db)
+    if not app_config.event_notify_channel_id:
+        raise AppError("Канал уведомлений Ивентрума не настроен")
+
+    await discord_client.send_channel_message(
+        app_config.event_notify_channel_id, content=f"💬 {access.user.username}: {payload.content.strip()}"
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_message",
+        details=f"Отправил сообщение по заявке «{row.title}» (#{row.id})",
+    )
+    return {"ok": True}
 
 
 # --- Каталог карт (правят только Ассистент/Куратор ивентологии) -------------

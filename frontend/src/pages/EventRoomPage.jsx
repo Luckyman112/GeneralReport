@@ -622,6 +622,57 @@ function RejectInline({ onReject }) {
   );
 }
 
+function SendMessageInline({ onSend }) {
+  const [content, setContent] = useState("");
+  const [open, setOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+  const [sent, setSent] = useState(false);
+
+  if (sent) {
+    return <span className="hint-text">Сообщение отправлено.</span>;
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}>
+        Отправить сообщение
+      </button>
+    );
+  }
+
+  async function submit() {
+    setSending(true);
+    setError(null);
+    try {
+      await onSend(content.trim());
+      setSent(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <span className="reject-inline">
+      <input
+        type="text"
+        placeholder="Текст сообщения"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+      />
+      <button type="button" disabled={!content.trim() || sending} onClick={submit}>
+        {sending ? "Отправка…" : "Отправить"}
+      </button>
+      <button type="button" className="ghost" onClick={() => setOpen(false)} disabled={sending}>
+        Отмена
+      </button>
+      {error && <p className="error-text">{error}</p>}
+    </span>
+  );
+}
+
 function emptyMapForm() {
   return { id: null, name: "", url: "" };
 }
@@ -742,7 +793,7 @@ function RosterPanel() {
  * Многие поля (например, командующего) часто узнают только по ходу брифинга —
  * заявку можно редактировать и до, и после одобрения (см. решение пользователя). */
 export function EventRoomPage() {
-  const { token, access, regiments } = useAuth();
+  const { token, user, access, regiments } = useAuth();
   const [events, setEvents] = useState([]);
   const [maps, setMaps] = useState([]);
   const [members, setMembers] = useState([]);
@@ -805,6 +856,10 @@ export function EventRoomPage() {
     } catch (e) {
       setError(e.message);
     }
+  }
+
+  async function handleSendMessage(id, content) {
+    await api.sendEventMessage(token, id, content);
   }
 
   async function handleSaveMap(form) {
@@ -952,6 +1007,9 @@ export function EventRoomPage() {
                     <button type="button" onClick={() => setEditingId(ev.id)}>
                       {ev.status === "approved" ? "Дозаполнить" : "Редактировать"}
                     </button>
+                  )}
+                  {ev.status === "approved" && ev.submitted_by.id === user.id && (
+                    <SendMessageInline onSend={(content) => handleSendMessage(ev.id, content)} />
                   )}
                 </div>
               </div>
