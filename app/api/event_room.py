@@ -21,6 +21,7 @@ from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import event as event_crud
 from app.crud import event_activity_report as activity_report_crud
+from app.crud import event_message as event_message_crud
 from app.crud import notification as notification_crud
 from app.crud import regiment as regiment_crud
 from app.crud import user as user_crud
@@ -33,13 +34,13 @@ from app.schemas.event import (
     EventMapRead,
     EventMapUpdate,
     EventMemberDetail,
-    EventMessageRequest,
     EventRead,
     EventRejectRequest,
     EventRosterEntry,
     EventUpdate,
 )
 from app.schemas.event_activity_report import EventActivityReportRead
+from app.schemas.event_message import EventMessageCreate, EventMessageDecide, EventMessageRead
 from app.schemas.rank import RankRead
 from app.schemas.regiment_commander import GuildMemberRead
 
@@ -56,6 +57,23 @@ _ALLOWED_IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp":
 _MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 МБ, как у картинок рапортов
 
 
+async def _event_to_read(db: AsyncSession, row) -> EventRead:
+    messages = await event_message_crud.list_for_event(db, event_id=row.id)
+    read = EventRead.model_validate(row)
+    read.messages = [EventMessageRead.model_validate(m) for m in messages]
+    return read
+
+
+async def _events_to_read(db: AsyncSession, rows: list) -> list[EventRead]:
+    messages_by_event = await event_message_crud.list_for_events(db, event_ids=[r.id for r in rows])
+    result = []
+    for row in rows:
+        read = EventRead.model_validate(row)
+        read.messages = [EventMessageRead.model_validate(m) for m in messages_by_event.get(row.id, [])]
+        result.append(read)
+    return result
+
+
 @router.get("", response_model=list[EventRead])
 async def list_events(
     db: AsyncSession = Depends(get_db),
@@ -67,7 +85,7 @@ async def list_events(
         rows = await event_crud.list_all(db, submitted_by_user_id=access.user.id)
     else:
         raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
-    return [EventRead.model_validate(r) for r in rows]
+    return await _events_to_read(db, rows)
 
 
 @router.post("", response_model=EventRead, status_code=201)
@@ -91,7 +109,7 @@ async def create_event(
         details=f"Подал заявку на ивент «{row.title}» (#{row.id})",
     )
     event_bus.publish("event_room")
-    return EventRead.model_validate(row)
+    return await _event_to_read(db, row)
 
 
 @router.get("/member-candidates", response_model=list[GuildMemberRead])
@@ -230,7 +248,7 @@ async def get_roster_member_detail(
     events: list[EventRead] = []
     activity_reports: list[EventActivityReportRead] = []
     if user is not None:
-        events = [EventRead.model_validate(r) for r in await event_crud.list_all(db, submitted_by_user_id=user.id)]
+        events = await _events_to_read(db, await event_crud.list_all(db, submitted_by_user_id=user.id))
         activity_reports = [
             EventActivityReportRead.model_validate(r)
             for r in await activity_report_crud.list_all(db, submitted_by_user_id=user.id)
@@ -380,7 +398,7 @@ async def update_event(
                 logger.exception("Не удалось отправить обновление ивента «%s» в Discord", updated.title)
 
     event_bus.publish("event_room")
-    return EventRead.model_validate(updated)
+    return await _event_to_read(db, updated)
 
 
 def _ping_content(app_config) -> str | None:
@@ -579,7 +597,7 @@ async def approve_event(
             logger.exception("Не удалось отправить уведомление об ивенте «%s» в Discord", updated.title)
 
     event_bus.publish("event_room")
-    return EventRead.model_validate(updated)
+    return await _event_to_read(db, updated)
 
 
 @router.post("/{event_id}/reject", response_model=EventRead)
@@ -609,7 +627,7 @@ async def reject_event(
         target_user_id=updated.submitted_by_user_id,
     )
     event_bus.publish("event_room")
-    return EventRead.model_validate(updated)
+    return await _event_to_read(db, updated)
 
 
 @router.post("/{event_id}/cancel", response_model=EventRead)
@@ -668,42 +686,122 @@ async def cancel_event(
                 logger.exception("Не удалось отметить ивент «%s» как отменённый в Discord", updated.title)
 
     event_bus.publish("event_room")
-    return EventRead.model_validate(updated)
+    return await _event_to_read(db, updated)
 
 
-@router.post("/{event_id}/message")
-async def send_event_message(
+@router.post("/{event_id}/messages", response_model=EventMessageRead, status_code=201)
+async def create_event_message(
     event_id: int,
-    payload: EventMessageRequest,
+    payload: EventMessageCreate,
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
-) -> dict:
-    """Свободное сообщение автора одобренной заявки — доп. текстом в тот же
-    канал, что и карточка операции, не трогает саму карточку/embed (см.
-    решение пользователя)."""
+) -> EventMessageRead:
+    """Заявка на свободное сообщение по одобренной заявке — не отправляется
+    сразу, а идёт на решение Ассистенту+/Куратору (см. решение пользователя),
+    как и сама заявка на ивент. Подать может только автор заявки."""
     row = await event_crud.get_by_id(db, event_id)
     if row is None:
         raise NotFoundError("Заявка не найдена")
     if row.submitted_by_user_id != access.user.id:
-        raise ForbiddenError("Отправить сообщение может только автор заявки")
+        raise ForbiddenError("Подать заявку на сообщение может только автор заявки на ивент")
     if row.status != "approved":
         raise AppError("Заявка ещё не одобрена")
+
+    message = await event_message_crud.create(
+        db, event_id=event_id, content=payload.content.strip(), submitted_by_user_id=access.user.id
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_message_create",
+        details=f"Подал заявку на сообщение по заявке «{row.title}» (#{row.id})",
+    )
+    event_bus.publish("event_room")
+    return EventMessageRead.model_validate(message)
+
+
+@router.patch("/messages/{message_id}", response_model=EventMessageRead)
+async def decide_event_message(
+    message_id: int,
+    payload: EventMessageDecide,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventMessageRead:
+    if not access.can_decide_event:
+        raise ForbiddenError("Решить по заявке на сообщение может только Ассистент/Куратор ивентологии")
+    message = await event_message_crud.get_by_id(db, message_id)
+    if message is None:
+        raise NotFoundError("Заявка на сообщение не найдена")
+
+    updated = await event_message_crud.decide(
+        db,
+        message,
+        approve=payload.status == "approved",
+        decided_by_user_id=access.user.id,
+        rejection_reason=payload.rejection_reason,
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_message_decide",
+        details=f"Заявка на сообщение {message_id} (событие #{updated.event_id}) -> {payload.status}",
+    )
+    if updated.status == "approved":
+        await notification_crud.create_personal_notification(
+            db,
+            target_user_id=updated.submitted_by_user_id,
+            title="Заявка на сообщение одобрена",
+            body="Ваше сообщение по ивенту одобрено — теперь его можно отправить.",
+            created_by=access.user.id,
+        )
+    event_bus.publish("event_room")
+    return EventMessageRead.model_validate(updated)
+
+
+@router.post("/messages/{message_id}/send", response_model=EventMessageRead)
+async def send_event_message(
+    message_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventMessageRead:
+    """Реальная отправка в Discord — доступна и автору заявки на сообщение, и
+    Ассистенту+/Куратору (см. решение пользователя), но только после
+    одобрения; повторно отправить нельзя. Статус/sent_at проверяются ЗДЕСЬ,
+    до вызова Discord — если положиться только на guard внутри mark_sent
+    (который срабатывает ПОСЛЕ фактической отправки), то по клику на уже
+    отправленное или ещё не одобренное сообщение бот всё равно шлёт реальное
+    сообщение в канал, а уже потом падает с ошибкой (баг-репорт при
+    разработке — 3 реальных отправки на 1 успешный сценарий в тесте)."""
+    message = await event_message_crud.get_by_id(db, message_id)
+    if message is None:
+        raise NotFoundError("Заявка на сообщение не найдена")
+    if message.submitted_by_user_id != access.user.id and not access.can_decide_event:
+        raise ForbiddenError("Отправить сообщение может автор заявки или Ассистент/Куратор ивентологии")
+    if message.status != "approved":
+        raise AppError("Отправить можно только одобренное сообщение")
+    if message.sent_at is not None:
+        raise AppError("Сообщение уже отправлено")
 
     app_config = await app_settings_crud.get(db)
     if not app_config.event_notify_channel_id:
         raise AppError("Канал уведомлений Ивентрума не настроен")
 
     await discord_client.send_channel_message(
-        app_config.event_notify_channel_id, content=f"💬 {access.user.username}: {payload.content.strip()}"
+        app_config.event_notify_channel_id,
+        content=f"💬 {message.submitted_by.username}: {message.content}",
     )
+    updated = await event_message_crud.mark_sent(db, message, sent_by_user_id=access.user.id)
     await audit_log_crud.log(
         db,
         actor_user_id=access.user.id,
         actor_is_admin=access.is_admin,
-        action="event_message",
-        details=f"Отправил сообщение по заявке «{row.title}» (#{row.id})",
+        action="event_message_send",
+        details=f"Отправил сообщение {message_id} по ивенту #{updated.event_id}",
     )
-    return {"ok": True}
+    event_bus.publish("event_room")
+    return EventMessageRead.model_validate(updated)
 
 
 # --- Каталог карт (правят только Ассистент/Куратор ивентологии) -------------

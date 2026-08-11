@@ -624,7 +624,13 @@ function RejectInline({ onReject }) {
   );
 }
 
-function EventRow({ ev, user, canDecide, onEdit, onCancel, onSendMessage }) {
+const MESSAGE_STATUS_LABELS = {
+  pending: "Ожидает решения",
+  approved: "Одобрено",
+  rejected: "Отклонено",
+};
+
+function EventRow({ ev, user, canDecide, onEdit, onCancel, onSubmitMessage, onDecideMessage, onSendMessage }) {
   return (
     <div className="report-row">
       <div className="report-row-header">
@@ -653,41 +659,87 @@ function EventRow({ ev, user, canDecide, onEdit, onCancel, onSendMessage }) {
             Отменить
           </button>
         )}
-        {ev.status === "approved" && ev.submitted_by.id === user.id && <SendMessageInline onSend={onSendMessage} />}
       </div>
+      {ev.status === "approved" && (ev.submitted_by.id === user.id || canDecide) && (
+        <EventMessagesPanel
+          ev={ev}
+          user={user}
+          canDecide={canDecide}
+          onSubmit={(content) => onSubmitMessage(ev.id, content)}
+          onDecide={onDecideMessage}
+          onSend={onSendMessage}
+        />
+      )}
     </div>
   );
 }
 
-function SendMessageInline({ onSend }) {
+function EventMessagesPanel({ ev, user, canDecide, onSubmit, onDecide, onSend }) {
+  const [composing, setComposing] = useState(false);
+  const isAuthor = ev.submitted_by.id === user.id;
+
+  async function handleCompose(content) {
+    await onSubmit(content);
+    setComposing(false);
+  }
+
+  return (
+    <div className="event-messages-panel">
+      {ev.messages.length > 0 && (
+        <ul className="member-report-list">
+          {ev.messages.map((m) => (
+            <li key={m.id}>
+              <span className="report-category">{MESSAGE_STATUS_LABELS[m.status]}</span>
+              <p className="report-row-content">{m.content}</p>
+              <p className="hint-text">
+                {formatMskDate(m.created_at)} МСК — {formatFullName(m.submitted_by)}
+                {m.status === "rejected" && m.rejection_reason ? ` · Причина: ${m.rejection_reason}` : ""}
+                {m.sent_at ? ` · Отправлено ${formatMskDate(m.sent_at)} МСК (${formatFullName(m.sent_by)})` : ""}
+              </p>
+              <div className="report-form-actions">
+                {m.status === "pending" && canDecide && (
+                  <>
+                    <button type="button" onClick={() => onDecide(m.id, "approved")}>
+                      Одобрить
+                    </button>
+                    <RejectInline onReject={(reason) => onDecide(m.id, "rejected", reason)} />
+                  </>
+                )}
+                {m.status === "approved" && !m.sent_at && (isAuthor || canDecide) && (
+                  <button type="button" className="primary" onClick={() => onSend(m.id)}>
+                    Отправить
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {isAuthor &&
+        (composing ? (
+          <MessageComposeForm onSubmit={handleCompose} onCancel={() => setComposing(false)} />
+        ) : (
+          <button type="button" onClick={() => setComposing(true)}>
+            Написать сообщение
+          </button>
+        ))}
+    </div>
+  );
+}
+
+function MessageComposeForm({ onSubmit, onCancel }) {
   const [content, setContent] = useState("");
-  const [open, setOpen] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [sent, setSent] = useState(false);
-
-  if (sent) {
-    return <span className="hint-text">Сообщение отправлено.</span>;
-  }
-
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)}>
-        Отправить сообщение
-      </button>
-    );
-  }
 
   async function submit() {
-    setSending(true);
+    setSubmitting(true);
     setError(null);
     try {
-      await onSend(content.trim());
-      setSent(true);
+      await onSubmit(content.trim());
     } catch (e) {
       setError(e.message);
-    } finally {
-      setSending(false);
+      setSubmitting(false);
     }
   }
 
@@ -699,10 +751,10 @@ function SendMessageInline({ onSend }) {
         value={content}
         onChange={(e) => setContent(e.target.value)}
       />
-      <button type="button" disabled={!content.trim() || sending} onClick={submit}>
-        {sending ? "Отправка…" : "Отправить"}
+      <button type="button" disabled={!content.trim() || submitting} onClick={submit}>
+        {submitting ? "Подача…" : "Подать"}
       </button>
-      <button type="button" className="ghost" onClick={() => setOpen(false)} disabled={sending}>
+      <button type="button" className="ghost" onClick={onCancel} disabled={submitting}>
         Отмена
       </button>
       {error && <p className="error-text">{error}</p>}
@@ -907,8 +959,28 @@ export function EventRoomPage() {
     }
   }
 
-  async function handleSendMessage(id, content) {
-    await api.sendEventMessage(token, id, content);
+  async function handleSubmitMessage(eventId, content) {
+    // без try/catch — форма (MessageComposeForm) сама ловит ошибку и показывает инлайн
+    await api.createEventMessage(token, eventId, content);
+    load();
+  }
+
+  async function handleDecideMessage(messageId, status, reason) {
+    try {
+      await api.decideEventMessage(token, messageId, { status, rejectionReason: reason });
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleSendMessage(messageId) {
+    try {
+      await api.sendEventMessage(token, messageId);
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function handleCancel(id) {
@@ -1059,7 +1131,9 @@ export function EventRoomPage() {
                   canDecide={canDecide}
                   onEdit={() => setEditingId(ev.id)}
                   onCancel={() => setConfirmCancelId(ev.id)}
-                  onSendMessage={(content) => handleSendMessage(ev.id, content)}
+                  onSubmitMessage={handleSubmitMessage}
+                  onDecideMessage={handleDecideMessage}
+                  onSendMessage={handleSendMessage}
                 />
               ))}
             </div>
@@ -1077,7 +1151,9 @@ export function EventRoomPage() {
                       canDecide={canDecide}
                       onEdit={() => setEditingId(ev.id)}
                       onCancel={() => setConfirmCancelId(ev.id)}
-                      onSendMessage={(content) => handleSendMessage(ev.id, content)}
+                      onSubmitMessage={handleSubmitMessage}
+                      onDecideMessage={handleDecideMessage}
+                      onSendMessage={handleSendMessage}
                     />
                   ))}
                 </div>

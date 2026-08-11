@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.event import EventStatus
 from app.schemas.event_activity_report import EventActivityReportRead
+from app.schemas.event_message import EventMessageRead
 from app.schemas.rank import RankRead
 from app.schemas.user import UserBrief
 
@@ -25,6 +26,9 @@ class EventRead(BaseModel):
     cancelled_by: UserBrief | None = None
     cancelled_at: datetime | None = None
     cancellation_reason: str | None = None
+    # Заявки на свободное сообщение по этой заявке (см. app/models/event_message.py)
+    # — заполняется вручную в эндпоинте (batch-запросом), не через relationship
+    messages: list[EventMessageRead] = Field(default_factory=list)
 
 
 class EventCreate(BaseModel):
@@ -46,13 +50,6 @@ class EventRejectRequest(BaseModel):
 
 class EventCancelRequest(BaseModel):
     reason: str | None = None
-
-
-class EventMessageRequest(BaseModel):
-    """Свободное сообщение автора одобренной заявки — уходит доп. сообщением
-    в тот же Discord-канал, что и карточка (см. решение пользователя)."""
-
-    content: str = Field(min_length=1, max_length=2000)
 
 
 class EventMapRead(BaseModel):

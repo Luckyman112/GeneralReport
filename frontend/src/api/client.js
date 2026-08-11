@@ -713,8 +713,16 @@ export const api = {
   approveEvent: (token, eventId) => request(`/api/event-room/${eventId}/approve`, { method: "POST", token }),
   rejectEvent: (token, eventId, reason) =>
     request(`/api/event-room/${eventId}/reject`, { method: "POST", token, body: { reason } }),
-  sendEventMessage: (token, eventId, content) =>
-    request(`/api/event-room/${eventId}/message`, { method: "POST", token, body: { content } }),
+  createEventMessage: (token, eventId, content) =>
+    request(`/api/event-room/${eventId}/messages`, { method: "POST", token, body: { content } }),
+  decideEventMessage: (token, messageId, { status, rejectionReason }) =>
+    request(`/api/event-room/messages/${messageId}`, {
+      method: "PATCH",
+      token,
+      body: { status, rejection_reason: rejectionReason || null },
+    }),
+  sendEventMessage: (token, messageId) =>
+    request(`/api/event-room/messages/${messageId}/send`, { method: "POST", token }),
   cancelEvent: (token, eventId, reason) =>
     request(`/api/event-room/${eventId}/cancel`, { method: "POST", token, body: { reason: reason || null } }),
   getEventMemberCandidates: (token) => request("/api/event-room/member-candidates", { token }),
