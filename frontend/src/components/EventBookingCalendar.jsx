@@ -35,10 +35,17 @@ function formatDayLabel(d) {
  * забронировать, одобряет Ассистент/Куратор ивентологии (см. решение
  * пользователя), чтобы брони не пересекались. */
 export function EventBookingCalendar() {
-  const { token, access } = useAuth();
+  const { token, user, access } = useAuth();
   const showToast = useToast();
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [bookings, setBookings] = useState([]);
+  // Отдельно от bookings (та привязана к текущему отображаемому месяцу
+  // календаря) — широкое окно на год вперёд, НЕ зависящее от того, какой
+  // месяц сейчас пролистан. Без этого "Ожидают решения"/"Одобренные брони"/
+  // "Мои брони" были видны только если решающий/автор случайно смотрели тот
+  // же месяц, что и дата брони — баг-репорт: бронь "не видна" ни автору, ни
+  // Асику+, хотя реально была создана (просто в другом месяце).
+  const [upcomingBookings, setUpcomingBookings] = useState([]);
   const [error, setError] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [title, setTitle] = useState("");
@@ -56,10 +63,26 @@ export function EventBookingCalendar() {
       .catch((e) => setError(e.message));
   }
 
+  function loadUpcoming() {
+    const rangeStart = new Date();
+    rangeStart.setDate(rangeStart.getDate() - 7);
+    const rangeEnd = new Date();
+    rangeEnd.setFullYear(rangeEnd.getFullYear() + 1);
+    api
+      .listEventBookings(token, { rangeStart: rangeStart.toISOString(), rangeEnd: rangeEnd.toISOString() })
+      .then(setUpcomingBookings)
+      .catch((e) => setError(e.message));
+  }
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, month]);
+
+  useEffect(() => {
+    loadUpcoming();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   const bookingsByDateKey = useMemo(() => {
     const map = new Map();
@@ -132,6 +155,7 @@ export function EventBookingCalendar() {
       showToast("Бронь отправлена на одобрение");
       setSelectedDate(null);
       load();
+      loadUpcoming();
     } catch (err) {
       setError(err.message);
       showToast(err.message, "error");
@@ -145,6 +169,7 @@ export function EventBookingCalendar() {
       await api.decideEventBooking(token, bookingId, { status });
       showToast(status === "approved" ? "Бронь одобрена" : "Бронь отклонена");
       load();
+      loadUpcoming();
     } catch (e) {
       showToast(e.message, "error");
     }
@@ -156,6 +181,7 @@ export function EventBookingCalendar() {
       showToast("Бронь отменена");
       setConfirmCancelId(null);
       load();
+      loadUpcoming();
     } catch (e) {
       showToast(e.message, "error");
     }
@@ -251,11 +277,34 @@ export function EventBookingCalendar() {
         </form>
       )}
 
-      {access?.can_decide_event && bookings.some((b) => b.status === "pending") && (
+      {!access?.can_decide_event && upcomingBookings.some((b) => b.requested_by?.id === user.id) && (
+        <>
+          <h4>Мои брони</h4>
+          <ul className="member-report-list">
+            {upcomingBookings
+              .filter((b) => b.requested_by?.id === user.id)
+              .map((b) => (
+                <li key={b.id}>
+                  <span className="member-report-date">
+                    {formatMskDate(b.starts_at)} — {formatMskDate(b.ends_at)} МСК
+                  </span>
+                  <p className="member-report-content">
+                    {b.title} — <span className={`status-badge status-${b.status}`}>{STATUS_LABELS[b.status]}</span>
+                  </p>
+                  {b.status === "rejected" && b.rejection_reason && (
+                    <p className="report-rejection-reason">Причина отклонения: {b.rejection_reason}</p>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </>
+      )}
+
+      {access?.can_decide_event && upcomingBookings.some((b) => b.status === "pending") && (
         <>
           <h4>Ожидают решения</h4>
           <ul className="member-report-list">
-            {bookings
+            {upcomingBookings
               .filter((b) => b.status === "pending")
               .map((b) => (
                 <li key={b.id}>
@@ -279,11 +328,11 @@ export function EventBookingCalendar() {
         </>
       )}
 
-      {access?.can_decide_event && bookings.some((b) => b.status === "approved") && (
+      {access?.can_decide_event && upcomingBookings.some((b) => b.status === "approved") && (
         <>
           <h4>Одобренные брони</h4>
           <ul className="member-report-list">
-            {bookings
+            {upcomingBookings
               .filter((b) => b.status === "approved")
               .map((b) => (
                 <li key={b.id}>
