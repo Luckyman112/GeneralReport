@@ -402,6 +402,29 @@ cancelled row would otherwise misleadingly show as "отклонено" (rejecte
 Existing stale rows from before this fix aren't backfilled — an admin/commander
 resolves them manually via the normal Отклонить button.
 
+### Registration reset vs. discharge — two different "make them re-register" levers
+"Разжаловать" (`update_profile` with `is_inactive=True`) is the heavy option: wipes
+`service_id`/`callsign`/`rank_id`/`jedi_title_id`, hides the member from the roster,
+and forces a full from-scratch registration (starting rank re-assigned) on
+reinstatement. For the common case of just needing someone to redo the *registration
+terminal* itself (e.g. re-link a different Steam account, fix a typo'd ИДН) without
+losing rank/position/roster visibility, there's a separate lighter action:
+`POST /regiments/{regiment_id}/members/{discord_id}/reset-registration`
+(`app/api/regiments.py::reset_member_registration`, strictly `is_admin` — "Высшая
+администрация+", stricter than the regular profile-edit gate) →
+`user_crud.reset_registration` clears only `registration_status` (→ `"pending"`),
+`service_id`, `steam_id`/`steam_verified` — rank/callsign/roster membership
+untouched. Two things had to line up in `RegistrationGate.jsx` for this to actually
+reopen the terminal rather than showing "заявка на рассмотрении": `alreadySubmitted`
+is keyed off `service_id` (must be cleared) and the Steam step
+(`askSteamStep`) skips itself whenever `user.steam_id` is already truthy (also
+must be cleared to let them re-link). `POST /me/registration`
+(`app/api/registration.py::submit_registration`) — the same endpoint every fresh
+recruit hits — unconditionally forced `rank_id` to the starting rank (RCT or the
+regiment's `starting_rank_id` override) on every submission; that's now gated on
+`access.user.rank_id is None`, so a reset-triggered resubmission keeps whatever
+rank the member already had instead of getting bounced back to recruit.
+
 ### Administration (non-RP staff role, separate from is_admin)
 "Администрация" (game moderation staff — bans/mutes/item grants) is
 deliberately **not** a `Regiment` — membership doesn't correlate with RP

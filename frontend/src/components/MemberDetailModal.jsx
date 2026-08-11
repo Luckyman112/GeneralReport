@@ -354,6 +354,22 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     }
   }
 
+  const [confirmResetRegistration, setConfirmResetRegistration] = useState(false);
+
+  async function handleResetRegistration() {
+    setConfirmResetRegistration(false);
+    setError(null);
+    try {
+      await api.resetMemberRegistration(token, regimentId, member.discord_id);
+      showToast("Регистрация сброшена — при следующем входе боец пройдёт терминал зачисления заново");
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(e.message);
+      showToast(e.message, "error");
+    }
+  }
+
   async function handlePhotoUpload(e) {
     const file = e.target.files[0];
     e.target.value = "";
@@ -614,6 +630,24 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
               confirmLabel="Разжаловать"
               onConfirm={handleDischarge}
               onCancel={() => setConfirmDischarge(false)}
+            />
+            {access?.is_admin && !isInactive && member.registration_status === "approved" && (
+              <div className="discharge-panel">
+                <button type="button" className="ghost" onClick={() => setConfirmResetRegistration(true)}>
+                  Сбросить регистрацию
+                </button>
+                <p className="hint-text">
+                  Лёгкая версия разжалования — звание/позывной/место в составе НЕ трогает, только заставляет заново
+                  пройти терминал зачисления (например, перепривязать Steam-аккаунт).
+                </p>
+              </div>
+            )}
+            <ConfirmDialog
+              open={confirmResetRegistration}
+              message={`Сбросить регистрацию ${formatFullName(member)}? Звание и позывной сохранятся, но при следующем входе боец должен будет заново пройти терминал зачисления.`}
+              confirmLabel="Сбросить"
+              onConfirm={handleResetRegistration}
+              onCancel={() => setConfirmResetRegistration(false)}
             />
             <SaveBar
               visible={isDirty}

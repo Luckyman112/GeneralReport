@@ -206,6 +206,24 @@ async def update_profile(
     return user
 
 
+async def reset_registration(db: AsyncSession, user: User) -> User:
+    """Лёгкий сброс регистрации — в отличие от разжалования (update_profile
+    is_inactive=True) НЕ трогает звание/позывной и не прячет бойца из состава,
+    только заставляет заново пройти терминал зачисления (например, чтобы
+    перепривязать Steam-аккаунт или исправить ИДН) — см. решение пользователя:
+    "розовое увольнение" не нужно, нужен способ просто пересдать анкету.
+    service_id/steam_id обнуляются намеренно: RegistrationGate.jsx пропускает
+    шаг Steam, если steam_id уже задан (alreadySubmitted тоже завязан на
+    service_id) — без этого форма не откроется заново."""
+    user.registration_status = "pending"
+    user.service_id = None
+    user.steam_id = None
+    user.steam_verified = False
+    await db.commit()
+    await db.refresh(user, attribute_names=["rank", "jedi_title"])
+    return user
+
+
 async def set_rank_assigned_at(db: AsyncSession, user: User, *, days_in_rank: int) -> User:
     """Админ-панель: перематывает "дату получения текущего звания" назад на
     days_in_rank дней от текущего момента — это меняет days_in_rank, который видит

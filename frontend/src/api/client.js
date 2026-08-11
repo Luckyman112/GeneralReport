@@ -305,6 +305,8 @@ export const api = {
     }),
   getMemberHistory: (token, regimentId, discordId) =>
     request(`/api/regiments/${regimentId}/members/${discordId}/history`, { token }),
+  resetMemberRegistration: (token, regimentId, discordId) =>
+    request(`/api/regiments/${regimentId}/members/${discordId}/reset-registration`, { method: "POST", token }),
   getMemberJediTrials: (token, regimentId, discordId) =>
     request(`/api/regiments/${regimentId}/members/${discordId}/jedi-trials`, { token }),
   uploadMemberPhoto: (token, regimentId, discordId, file) => {

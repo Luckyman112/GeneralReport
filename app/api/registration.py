@@ -65,18 +65,26 @@ async def submit_registration(
     if override_regiment is not None:
         starting_rank = await rank_crud.get_by_id(db, override_regiment.starting_rank_id) or default_starting_rank
 
+    changes = {
+        "service_id": payload.service_id.strip(),
+        "callsign": payload.callsign.strip(),
+        "steam_id": payload.steam_id.strip(),
+        "nickname_override": payload.callsign.strip(),
+        "registration_status": "pending",
+    }
+    # Стартовое звание назначаем только настоящему новичку (rank_id ещё не
+    # задан) — при пересдаче анкеты после user_crud.reset_registration (см.
+    # app/api/regiments.py::reset_member_registration) звание НЕ трогается,
+    # rank_id у такого бойца уже есть, иначе перерегистрация отбрасывала бы
+    # его обратно в рекруты
+    if access.user.rank_id is None:
+        changes["rank_id"] = starting_rank.id
+
     user = await user_crud.update_profile(
         db,
         discord_id=access.user.discord_id,
         fallback_username=access.user.username,
-        changes={
-            "service_id": payload.service_id.strip(),
-            "callsign": payload.callsign.strip(),
-            "steam_id": payload.steam_id.strip(),
-            "nickname_override": payload.callsign.strip(),
-            "rank_id": starting_rank.id,
-            "registration_status": "pending",
-        },
+        changes=changes,
     )
     logger.info("Пользователь %s подал заявку на регистрацию", user.username)
 

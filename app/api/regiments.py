@@ -1097,6 +1097,45 @@ async def update_member_profile(
     return _build_guild_member(member, user)
 
 
+@router.post("/{regiment_id}/members/{discord_id}/reset-registration", response_model=GuildMemberRead)
+async def reset_member_registration(
+    regiment_id: int,
+    discord_id: str,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> GuildMemberRead:
+    """Лёгкий сброс регистрации — в отличие от «Разжаловать» (is_inactive=True)
+    НЕ трогает звание/позывной/ИДН-запись в истории и не прячет бойца из
+    состава, только заставляет заново пройти терминал зачисления (например,
+    перепривязать Steam-аккаунт). Строго Высшая администрация (is_admin) — это
+    административная операция поверх обычного редактирования профиля, доступного
+    и простому командиру/заму (см. решение пользователя)."""
+    if not access.is_admin:
+        raise ForbiddenError("Сбросить регистрацию может только Высшая администрация")
+    regiment = await _get_regiment_or_404(db, regiment_id)
+
+    members = await discord_client.fetch_guild_members()
+    member = next((m for m in members if m["discord_id"] == discord_id), None)
+    if member is None or regiment.discord_role_id not in member["roles"]:
+        raise NotFoundError("Участник не найден в этом формировании")
+
+    target = await user_crud.get_by_discord_id(db, discord_id)
+    if target is None:
+        raise NotFoundError("У этого участника ещё нет записи в системе — сбрасывать нечего")
+
+    user = await user_crud.reset_registration(db, target)
+    logger.info("%s сбросил регистрацию участника %s", access.user.username, discord_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="member_registration_reset",
+        details=f"Сброшена регистрация участника {discord_id} в формировании {regiment_id}",
+        target_user_id=user.id,
+    )
+    return _build_guild_member(member, user)
+
+
 @router.get("/{regiment_id}/members/{discord_id}/history", response_model=list[AuditLogRead])
 async def get_member_history(
     regiment_id: int,
