@@ -84,6 +84,23 @@ similar name — don't confuse them.
   application-level check-then-insert — see `PromotionRequest.__table_args__` /
   migration `0075`. Pair it with an `IntegrityError` catch at the insert site so the
   loser of the race gets a clean no-op instead of a 500.
+- A Pydantic *Read* schema for a model whose column is a real SQLAlchemy `Enum`
+  (a `str`-subclassing Python enum, e.g. `EventStatus(str, enum.Enum)`) must type
+  that field as the actual enum class, not `Literal["a", "b", "c"]` — pydantic-core
+  requires an exact type match when validating `from_attributes=True` against the
+  live ORM attribute (a real enum instance), so a `Literal` alias crashes with a 500
+  the first time such a row is read. Recurred three times before it got documented
+  here (`ReportRead.status`, `EventBookingRead.status`, `EventRead.status`/`cancelled`
+  additions) — always match the model's enum type, never re-declare it as a `Literal`.
+- When a `create_*` crud function calls `get_or_create_in_all_regiments` (or any
+  similar "ensure this exists everywhere" backfill) to handle regiments added after
+  the feature launched, the matching `update_*` function needs the same call —
+  otherwise a regiment created *after* the row existed silently never gets it, and an
+  edit that should apply "everywhere" quietly misses it. See
+  `promotion_crud.update_mandatory_category_requirement` (fixed to mirror
+  `create_mandatory_category_requirement`'s call to
+  `report_category_crud.get_or_create_in_all_regiments`) — check for this asymmetry
+  whenever a create/update pair straddles a "for all current X" concept.
 
 ### Permission model — `AccessContext` (`app/api/deps.py`)
 Every endpoint depends on `get_access_context`, which computes one `AccessContext`
@@ -236,31 +253,60 @@ exactly as before; ранг tiers participate normally except for the
 regiment ⇔ jedi-tier rank) still applies to `rank_id` only — `jedi_title_id` gets
 its own tier check inline in `update_member_profile`.
 
-**Падаван → Рыцарь: five gated trials** (migration 0080, `app/models/jedi_trial.py`,
-`app/crud/jedi_trial.py`). `JediTrial(user_id, trial_number 1-5, passed_at,
-passed_by_user_id)`, unique per `(user_id, trial_number)`. Each trial has a
-mandatory gap in days before it becomes markable — `TRIAL_GAP_DAYS = {1: 0, 2: 1,
-3: 2, 4: 1, 5: 2}`, counted from `User.rank_assigned_at` (trial 1) or the
-previous trial's `passed_at`; a further `GRADUATION_GAP_DAYS = 1` gates the
-Рыцарь promotion itself after trial 5. `update_member_profile`
-(`app/api/regiments.py`) blocks setting `rank_id` to the `KNT` (Рыцарь) rank
-until `_check_padawan_trials_complete` passes — same friendly-`AppError`
-pattern as everywhere else in this file.
+**Падаван → Рыцарь: six gated trials, the 6th is the attestation itself**
+(migration 0080, extended to 6 in a later session — `app/models/jedi_trial.py`,
+`app/crud/jedi_trial.py`). `JediTrial(user_id, trial_number 1-6, passed_at,
+passed_by_user_id)`, unique per `(user_id, trial_number)` — `TRIAL_COUNT = 6`,
+trial 6 **is** the Рыцарь attestation, not a separate mechanism (see решение
+пользователя — one JediTrial table, not a bespoke graduation flow). Each trial
+has a mandatory gap in days before it becomes markable —
+`TRIAL_GAP_DAYS = {1: 0, 2: 1, 3: 2, 4: 1, 5: 2, 6: GRADUATION_GAP_DAYS}`,
+counted from `User.rank_assigned_at` (trial 1) or the previous trial's
+`passed_at`. Because trial 6 is folded into the same ladder, there is no
+separate `graduation_available_at` function/field any more — `_check_padawan_trials_complete`
+(`app/api/regiments.py`, the safety-net gate `update_member_profile` calls
+before allowing a manual `rank_id` change to `KNT`) is now a plain
+"`next_trial_number(passed) is None`" count check; the day-gap was already
+enforced when trial 6 got marked.
 
-Trials are marked via **report approval, not a direct button** (migration
+Trials 1-5 are marked via **report approval, not a direct button** (migration
 0083, `ReportCategory.is_jedi_trial_report`, system flag like
 `is_recruit_promotion`) — the mentor files a "Наставничество" report
 targeting the padawan (`_resolve_jedi_trial_target` validates gate/eligibility
-at submission so it fails fast), a commander/deputy of the jedi regiment
-decides it normally (not auto-approved, unlike `is_training`/
+at submission so it fails fast, and now explicitly refuses once trial 6 is
+next — that's a different category, see below), a commander/deputy of the
+jedi regiment decides it normally (not auto-approved, unlike `is_training`/
 `is_recruit_promotion`), and *approval* is what calls
-`jedi_trial_crud.mark_passed` in `_apply_approval_side_effects` — re-checking
-the same gate there gracefully (log + skip, matching every other branch in
-that function) rather than raising, since the report's status has already
-committed by that point. `passed_by_user_id` = the report's author (the
-mentor), which is what `jedi_trial_crud.has_trained_a_padawan` (the Мастер
-promotion gate, see below) keys off. An earlier direct-button version
-(`POST .../jedi-trials/pass`) was replaced by this — don't reintroduce it.
+`jedi_trial_crud.mark_passed` in `_apply_approval_side_effects` (capped at
+`trial_number <= 5` in this branch) — re-checking the same gate there
+gracefully (log + skip, matching every other branch in that function) rather
+than raising, since the report's status has already committed by that point.
+`passed_by_user_id` = the report's author (the mentor). An earlier
+direct-button version (`POST .../jedi-trials/pass`) was replaced by this —
+don't reintroduce it.
+
+Trial 6 (**"Аттестация"**, migration 0090, `ReportCategory.is_jedi_attestation_report`)
+is a separate system category/report flow, deliberately not folded into
+"Наставничество" — `_resolve_jedi_attestation_target` requires
+`next_trial_number(passed) == TRIAL_COUNT` (all 5 done) before allowing
+submission. Its `_apply_approval_side_effects` branch marks trial 6 passed
+**and then immediately sets `rank_id` to `KNT`** in the same branch — exact
+copy of the `is_recruit_promotion` pattern (snapshot/reset
+`early_promoted_by_username`/`early_promotion_reason`, call
+`promotion_crud.cancel_pending_for_user` for any stale pending
+`PromotionRequest`) — one approval both marks the attestation *and* promotes,
+no separate manual step (see решение пользователя). `jedi_trial_crud.has_trained_a_padawan`
+(the Мастер promotion gate) is intentionally hardcoded to `trial_number == 5`,
+not `TRIAL_COUNT` — mentoring credit is about completing the 5 real trials,
+independent of who (possibly someone else) later approves the attestation.
+The category isn't creatable through the normal category API (same as
+`is_jedi_trial_report` before it) — seed it by hand in the DB for the Jedi
+regiment, same filing restrictions (`min_rank_id`/`commander_only`) as
+"Наставничество" applied afterward via the normal `PATCH` category endpoint.
+Frontend: `JediAttestationReportForm.jsx` (clone of `JediTrialReportForm.jsx`),
+wired into `ReportsPage.jsx`'s overflow menu next to "Наставничество";
+`MemberDetailModal.jsx`'s trial checklist now shows 6 items, the 6th labeled
+"Аттестация" instead of "Испытание 6".
 
 **Jedi specialization branches** (Защитники/Консулы/Стражи —
 `CATEGORY_JEDI_GUARDIAN`/`_CONSULAR`/`_SENTINEL`, `app/models/specialization.py`)
@@ -448,6 +494,55 @@ rather than new routes/sidebar entries — they're part of Ивентрум, not
 sibling features (contrast with Администрация below, which got its own page
 because it's a wholly new non-RP concept, not an extension of something
 already on a page).
+
+**Planet info lives on the Event, not the reusable map** (a later session) —
+`EventMap` used to carry `planet_name`/`landscape`/`weather`/`star_system`;
+those columns were dropped (migration 0088) and the same data now lives as
+plain keys in `Event.payload` (`planet_name`, `star_system`, `landscape`,
+`weather`, plus new `flora_fauna`), filled in on the submission form itself
+since a planet is a property of one event, not of a reusable map. `EventMap`
+is now just `name`/`url`. `_build_event_embed` (`app/api/event_room.py`)
+renders these as structured embed `fields` (was free text in `content` via a
+now-removed `_planet_info_text` helper) — `content` is only the role-ping
+(`_message_content` → `_ping_content`).
+
+**Booking↔event linkage** — `GET /event-bookings/mine` (own approved
+bookings) feeds a "Забронированное время" `<select>` in the event submission
+form (`EventRoomPage.jsx`); picking one auto-fills "Начало брифинга" from the
+booking's `starts_at` (the field stays independently editable — this is an
+autofill, not a hard link, there's no FK from `Event` to `EventBooking`).
+
+**Cancelling an already-*approved* event or booking** — first precedent in
+the codebase for reversing a decision that already had a visible Discord
+side-effect. `EventStatus.CANCELLED` (migration 0089) is a distinct terminal
+status from `REJECTED` ("never approved" vs. "approved, then walked back");
+`Event` gained `cancelled_by_user_id`/`cancelled_at`/`cancellation_reason`
+columns rather than reusing `decided_by`/`decided_at`, so the original
+approver's decision stays on record. `POST /event-room/{id}/cancel`
+(`event_crud.cancel`, gated `!= APPROVED → AppError`) edits the already-sent
+Discord card via `discord_client.edit_channel_message` — same embed, title
+prefixed `❌ ОТМЕНЕНО —`, red color — rather than deleting it or leaving it
+looking live. `EventBooking` has no Discord card to relabel, so its
+`POST /event-bookings/{id}/cancel` (`event_booking_crud.cancel`) just reuses
+the existing `REJECTED` status instead of adding a parallel enum value.
+Both gated `can_decide_event`, both frontend "Отменить" buttons go through
+`ConfirmDialog`.
+
+**Active/Archive split in "Все заявки"/"Мои заявки"** — frontend-only
+(`EventRoomPage.jsx`): an event is archived once `payload.briefing_start` is
+set and in the past; no date or a future date keeps it in the main list. The
+row markup was factored into `EventRow` so active/archived share it; archived
+renders inside a collapsed `<details><summary>Архив (N)</summary>` (the
+project's one collapsible-section pattern, see `InstructorRoomPage.jsx`).
+
+**Notify-on-approval + submitter message button** — `approve_event` now also
+fires `notification_crud.create_personal_notification` to the submitter. A
+separate `POST /event-room/{id}/message` lets the *submitter of their own
+approved* event (not the approver) post a free-text follow-up — gated on
+`row.submitted_by_user_id == access.user.id` and `status == "approved"`, and
+requires `event_notify_channel_id` configured — sent as a plain extra message
+in the same channel as the card (`💬 {username}: {content}`), never edits the
+card/embed itself.
 
 ### Ивентрум roster — merged состав+activity table, split mini/combat
 `GET /event-room/roster` (`app/api/event_room.py::get_roster`) is one merged
