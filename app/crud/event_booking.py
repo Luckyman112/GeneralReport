@@ -6,10 +6,16 @@ from sqlalchemy.orm import selectinload
 
 from app.exceptions import AppError
 from app.models.event_booking import EventBooking, EventBookingStatus
+from app.models.user import User
 
+# .selectinload(User.rank) обязателен — UserBrief.rank читается синхронно при
+# сериализации ответа; без eager load это ленивая relationship, а обращение к
+# ней вне await в асинхронном SQLAlchemy падает MissingGreenlet (500) —
+# баг-репорт: GET /event-bookings падал 500, как только в выбранном диапазоне
+# попадалась хоть одна бронь, тот же паттерн, что уже учтён в app/crud/event.py.
 _LOAD_OPTIONS = [
-    selectinload(EventBooking.requested_by),
-    selectinload(EventBooking.decided_by),
+    selectinload(EventBooking.requested_by).selectinload(User.rank),
+    selectinload(EventBooking.decided_by).selectinload(User.rank),
 ]
 
 

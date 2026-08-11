@@ -3,10 +3,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.models.admin_report import AdminReportStatus
 from app.schemas.user import UserBrief
 
 AdminReportType = Literal["activity", "punishment"]
-AdminReportStatusLiteral = Literal["pending", "approved", "rejected"]
 
 
 class AdminReportRead(BaseModel):
@@ -15,7 +15,12 @@ class AdminReportRead(BaseModel):
     id: int
     report_type: AdminReportType
     payload: dict
-    status: AdminReportStatusLiteral
+    # AdminReportStatus (реальный enum), не Literal[str,...] —
+    # models.admin_report маппит status через sqlalchemy Enum, значит на
+    # ORM-объекте это настоящий AdminReportStatus, а не голая строка —
+    # тот же паттерн, что у ReportRead/EventBookingRead/EventRead/
+    # EventActivityReportRead.status, см. app/models/event.py::EventStatus.
+    status: AdminReportStatus
     submitted_by: UserBrief
     created_at: datetime
     decided_by: UserBrief | None = None

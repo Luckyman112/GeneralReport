@@ -89,9 +89,23 @@ similar name — don't confuse them.
   that field as the actual enum class, not `Literal["a", "b", "c"]` — pydantic-core
   requires an exact type match when validating `from_attributes=True` against the
   live ORM attribute (a real enum instance), so a `Literal` alias crashes with a 500
-  the first time such a row is read. Recurred three times before it got documented
-  here (`ReportRead.status`, `EventBookingRead.status`, `EventRead.status`/`cancelled`
-  additions) — always match the model's enum type, never re-declare it as a `Literal`.
+  the first time such a row is read. Recurred five times before a full audit caught
+  the rest (`ReportRead.status`, `EventBookingRead.status`, `EventRead.status`/
+  `cancelled`, `EventActivityReportRead.status`, `AdminReportRead.status`) — always
+  match the model's enum type, never re-declare it as a `Literal`.
+- Every crud module's `_LOAD_OPTIONS` that feeds a `UserBrief`-typed field (any
+  `submitted_by`/`decided_by`/`requested_by`/`passed_by`/`sent_by`/... relationship)
+  **must** chain `.selectinload(User.rank)` — `UserBrief.rank` is read during response
+  serialization, and an un-eager-loaded relationship accessed outside `await` in
+  async SQLAlchemy raises `MissingGreenlet`, a 500. Silently masked in local testing
+  whenever the test account happens to have `rank_id IS NULL` (a bare FK with no
+  value resolves without a DB round-trip) — only reproduces with a real ranked user,
+  which is why it shipped repeatedly. Found missing in five modules in one audit
+  (`event_booking.py`, `event_activity_report.py`, `admin_report.py`,
+  `event_message.py`, `jedi_trial.py`) — `event.py`/`report.py`/`audit_log.py`/
+  `leave_request.py`/`reprimand.py`/`violation.py`/`wanted.py`/`transfer_request.py`/
+  `specialization.py`'s grant/ban options already had it right; use those as the
+  template for any new crud module with a `UserBrief` field.
 - When a `create_*` crud function calls `get_or_create_in_all_regiments` (or any
   similar "ensure this exists everywhere" backfill) to handle regiments added after
   the feature launched, the matching `update_*` function needs the same call —

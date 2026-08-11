@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.jedi_trial import JediTrial
+from app.models.user import User
 
 TRIAL_COUNT = 6
 # Дней, которые должны пройти ПЕРЕД тем, как испытание N станет доступно —
@@ -17,7 +18,12 @@ TRIAL_COUNT = 6
 GRADUATION_GAP_DAYS = 1
 TRIAL_GAP_DAYS = {1: 0, 2: 1, 3: 2, 4: 1, 5: 2, 6: GRADUATION_GAP_DAYS}
 
-_LOAD_OPTIONS = [selectinload(JediTrial.passed_by)]
+# .selectinload(User.rank) обязателен — JediTrialRead.passed_by читается как
+# UserBrief (включает .rank) при сериализации ответа; без eager load это
+# ленивая relationship, обращение к ней вне await в асинхронном SQLAlchemy
+# падает MissingGreenlet (500) — тот же баг, что был в
+# app/crud/event_booking.py/event_activity_report.py/admin_report.py/event_message.py.
+_LOAD_OPTIONS = [selectinload(JediTrial.passed_by).selectinload(User.rank)]
 
 
 async def list_for_user(db: AsyncSession, *, user_id: int) -> list[JediTrial]:

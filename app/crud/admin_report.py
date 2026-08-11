@@ -6,10 +6,16 @@ from sqlalchemy.orm import selectinload
 
 from app.exceptions import AppError
 from app.models.admin_report import AdminReport, AdminReportStatus
+from app.models.user import User
 
+# .selectinload(User.rank) обязателен — AdminReportRead.submitted_by читается
+# как UserBrief (включает .rank) при сериализации ответа; без eager load это
+# ленивая relationship, обращение к ней вне await в асинхронном SQLAlchemy
+# падает MissingGreenlet (500) — тот же баг, что был в
+# app/crud/event_booking.py/event_activity_report.py (см. коммиты-фиксы).
 _LOAD_OPTIONS = [
-    selectinload(AdminReport.submitted_by),
-    selectinload(AdminReport.decided_by),
+    selectinload(AdminReport.submitted_by).selectinload(User.rank),
+    selectinload(AdminReport.decided_by).selectinload(User.rank),
 ]
 
 
