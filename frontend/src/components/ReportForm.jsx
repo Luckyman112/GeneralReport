@@ -32,6 +32,7 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
     : regiments[0]?.id ?? "";
   const [regimentId, setRegimentId] = useState(defaultRegimentId);
   const [categories, setCategories] = useState([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [categoryId, setCategoryId] = useState("");
   const [members, setMembers] = useState([]);
   const [crossRegimentMembersByField, setCrossRegimentMembersByField] = useState({});
@@ -52,6 +53,7 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
     // Защита от гонки: если формирование переключили ещё раз до того, как пришёл
     // ответ на предыдущий запрос, устаревший ответ не должен затирать актуальный список
     let ignore = false;
+    setCategoriesLoaded(false);
     api
       .listCategories(token, regimentId)
       .then((data) => {
@@ -73,9 +75,12 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
         });
         setCategories(selectable);
         setCategoryId(selectable[0]?.id ?? "");
+        setCategoriesLoaded(true);
       })
       .catch(() => {
-        if (!ignore) setCategories([]);
+        if (ignore) return;
+        setCategories([]);
+        setCategoriesLoaded(true);
       });
     api
       .getMembers(token, regimentId)
@@ -159,6 +164,9 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
   async function handle(submit) {
     if (!regimentId) return;
     if (categories.length > 0 && !categoryId) return;
+    // Ветка (discipline) без единой категории в выбранном формировании — форма
+    // уже показывает предупреждение вместо полей, отправлять тут нечего
+    if (discipline && categoriesLoaded && categories.length === 0) return;
 
     let finalContent;
     if (categoryFields.length > 0) {
@@ -232,7 +240,12 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
         </label>
       )}
 
-      {categoryFields.length > 0 ? (
+      {discipline && categoriesLoaded && categories.length === 0 ? (
+        <p className="error-text">
+          В этом формировании нет рапортов ветки — выберите другое формирование выше (если формирований для выбора
+          нет, значит эта ветка тут не ведётся вообще).
+        </p>
+      ) : categoryFields.length > 0 ? (
         categoryFields.map((field) =>
           field.type === "roster" ? (
             <label key={field.name}>
@@ -267,15 +280,17 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
         </label>
       )}
 
-      <label>
-        Картинки (скриншоты)
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          multiple
-          onChange={(e) => setImages((prev) => [...prev, ...Array.from(e.target.files)])}
-        />
-      </label>
+      {!(discipline && categoriesLoaded && categories.length === 0) && (
+        <label>
+          Картинки (скриншоты)
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple
+            onChange={(e) => setImages((prev) => [...prev, ...Array.from(e.target.files)])}
+          />
+        </label>
+      )}
 
       {images.length > 0 && (
         <ul className="image-picker-list">
@@ -293,10 +308,14 @@ export function ReportForm({ regiments, onSubmit, onCancel, discipline }) {
       {error && <p className="error-text">{error}</p>}
 
       <div className="report-form-actions">
-        <button disabled={submitting} onClick={() => handle(false)}>
+        <button disabled={submitting || (discipline && categoriesLoaded && categories.length === 0)} onClick={() => handle(false)}>
           Сохранить черновик
         </button>
-        <button disabled={submitting} className="primary" onClick={() => handle(true)}>
+        <button
+          disabled={submitting || (discipline && categoriesLoaded && categories.length === 0)}
+          className="primary"
+          onClick={() => handle(true)}
+        >
           Отправить
         </button>
         <button disabled={submitting} className="ghost" onClick={onCancel}>
