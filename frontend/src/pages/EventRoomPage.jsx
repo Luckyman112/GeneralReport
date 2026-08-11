@@ -624,6 +624,41 @@ function RejectInline({ onReject }) {
   );
 }
 
+function EventRow({ ev, user, canDecide, onEdit, onCancel, onSendMessage }) {
+  return (
+    <div className="report-row">
+      <div className="report-row-header">
+        <span className="report-regiment">{ev.title}</span>
+        <span className="report-category">{STATUS_LABELS[ev.status]}</span>
+      </div>
+      <p className="member-report-date">{formatMskDate(ev.created_at)} МСК</p>
+      {ev.status === "rejected" && ev.rejection_reason && (
+        <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
+      )}
+      {ev.status === "cancelled" && (
+        <p className="report-rejection-reason">
+          Отменено{ev.cancelled_by ? ` (${formatFullName(ev.cancelled_by)})` : ""}
+          {ev.cancellation_reason ? `: ${ev.cancellation_reason}` : ""}
+        </p>
+      )}
+      <div className="report-row-actions">
+        <CardViewButton eventId={ev.id} />
+        {(ev.status === "pending" || ev.status === "approved") && (
+          <button type="button" onClick={onEdit}>
+            {ev.status === "approved" ? "Дозаполнить" : "Редактировать"}
+          </button>
+        )}
+        {ev.status === "approved" && canDecide && (
+          <button type="button" className="ghost error-text" onClick={onCancel}>
+            Отменить
+          </button>
+        )}
+        {ev.status === "approved" && ev.submitted_by.id === user.id && <SendMessageInline onSend={onSendMessage} />}
+      </div>
+    </div>
+  );
+}
+
 function SendMessageInline({ onSend }) {
   const [content, setContent] = useState("");
   const [open, setOpen] = useState(false);
@@ -831,6 +866,17 @@ export function EventRoomPage() {
   const decidedEvents = useMemo(() => events.filter((e) => e.status !== "pending"), [events]);
   const editingEvent = events.find((e) => e.id === editingId);
 
+  // Архив — заявки, у которых брифинг уже прошёл (см. решение пользователя);
+  // без даты или в будущем — считаются актуальными
+  function isArchived(ev) {
+    const briefingStart = ev.payload?.briefing_start;
+    if (!briefingStart) return false;
+    return new Date(briefingStart).getTime() < Date.now();
+  }
+  const visibleEvents = canDecide ? decidedEvents : events;
+  const activeEvents = useMemo(() => visibleEvents.filter((e) => !isArchived(e)), [visibleEvents]);
+  const archivedEvents = useMemo(() => visibleEvents.filter((e) => isArchived(e)), [visibleEvents]);
+
   async function handleCreate(body) {
     await api.createEvent(token, body);
     setShowForm(false);
@@ -1003,42 +1049,41 @@ export function EventRoomPage() {
         {events.length === 0 ? (
           <EmptyState text="Заявок пока нет." />
         ) : (
-          <div className="report-list">
-            {(canDecide ? decidedEvents : events).map((ev) => (
-              <div key={ev.id} className="report-row">
-                <div className="report-row-header">
-                  <span className="report-regiment">{ev.title}</span>
-                  <span className="report-category">{STATUS_LABELS[ev.status]}</span>
+          <>
+            <div className="report-list">
+              {activeEvents.map((ev) => (
+                <EventRow
+                  key={ev.id}
+                  ev={ev}
+                  user={user}
+                  canDecide={canDecide}
+                  onEdit={() => setEditingId(ev.id)}
+                  onCancel={() => setConfirmCancelId(ev.id)}
+                  onSendMessage={(content) => handleSendMessage(ev.id, content)}
+                />
+              ))}
+            </div>
+            {archivedEvents.length > 0 && (
+              <details className="training-spec-group">
+                <summary>
+                  Архив <span className="category-points-badge">{archivedEvents.length}</span>
+                </summary>
+                <div className="report-list">
+                  {archivedEvents.map((ev) => (
+                    <EventRow
+                      key={ev.id}
+                      ev={ev}
+                      user={user}
+                      canDecide={canDecide}
+                      onEdit={() => setEditingId(ev.id)}
+                      onCancel={() => setConfirmCancelId(ev.id)}
+                      onSendMessage={(content) => handleSendMessage(ev.id, content)}
+                    />
+                  ))}
                 </div>
-                <p className="member-report-date">{formatMskDate(ev.created_at)} МСК</p>
-                {ev.status === "rejected" && ev.rejection_reason && (
-                  <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
-                )}
-                {ev.status === "cancelled" && (
-                  <p className="report-rejection-reason">
-                    Отменено{ev.cancelled_by ? ` (${formatFullName(ev.cancelled_by)})` : ""}
-                    {ev.cancellation_reason ? `: ${ev.cancellation_reason}` : ""}
-                  </p>
-                )}
-                <div className="report-row-actions">
-                  <CardViewButton eventId={ev.id} />
-                  {(ev.status === "pending" || ev.status === "approved") && (
-                    <button type="button" onClick={() => setEditingId(ev.id)}>
-                      {ev.status === "approved" ? "Дозаполнить" : "Редактировать"}
-                    </button>
-                  )}
-                  {ev.status === "approved" && canDecide && (
-                    <button type="button" className="ghost error-text" onClick={() => setConfirmCancelId(ev.id)}>
-                      Отменить
-                    </button>
-                  )}
-                  {ev.status === "approved" && ev.submitted_by.id === user.id && (
-                    <SendMessageInline onSend={(content) => handleSendMessage(ev.id, content)} />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+              </details>
+            )}
+          </>
         )}
         <ConfirmDialog
           open={confirmCancelId !== null}
