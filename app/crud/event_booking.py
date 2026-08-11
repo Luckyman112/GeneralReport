@@ -29,6 +29,20 @@ async def get_by_id(db: AsyncSession, booking_id: int) -> EventBooking | None:
     return await db.get(EventBooking, booking_id, options=_LOAD_OPTIONS, populate_existing=True)
 
 
+async def list_for_user(
+    db: AsyncSession, *, user_id: int, status: EventBookingStatus = EventBookingStatus.APPROVED
+) -> list[EventBooking]:
+    """Одобренные брони бойца, независимо от даты — для выбора в форме подачи
+    заявки на ивент (см. EventForm)."""
+    result = await db.execute(
+        select(EventBooking)
+        .options(*_LOAD_OPTIONS)
+        .where(EventBooking.requested_by_user_id == user_id, EventBooking.status == status)
+        .order_by(EventBooking.starts_at)
+    )
+    return list(result.scalars().all())
+
+
 async def create(
     db: AsyncSession, *, title: str, starts_at: datetime, ends_at: datetime, requested_by_user_id: int
 ) -> EventBooking:

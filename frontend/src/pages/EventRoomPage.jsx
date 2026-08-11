@@ -39,6 +39,14 @@ function emptyAudience() {
   return { mode: "role", regiment_id: null, custom_name: "", discord_ids: [] };
 }
 
+// Формат, который понимает DateTimePicker (см. его собственный formatValue) —
+// нужен здесь отдельно, чтобы подставлять starts_at выбранной брони в
+// "Начало брифинга" тем же форматом, что вводит сам пользователь
+function toPickerValue(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function emptyForm() {
   return {
     title: "",
@@ -58,6 +66,7 @@ function emptyForm() {
     landscape: "",
     weather: "",
     flora_fauna: "",
+    booking_id: "",
   };
 }
 
@@ -89,6 +98,7 @@ function formToPayload(form) {
     landscape: form.landscape.trim() || null,
     weather: form.weather.trim() || null,
     flora_fauna: form.flora_fauna.trim() || null,
+    booking_id: form.booking_id ? Number(form.booking_id) : null,
   };
 }
 
@@ -112,6 +122,7 @@ function payloadToForm(event) {
     landscape: p.landscape || "",
     weather: p.weather || "",
     flora_fauna: p.flora_fauna || "",
+    booking_id: p.booking_id ? String(p.booking_id) : "",
   };
 }
 
@@ -299,6 +310,20 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const previewRequestRef = useRef(0);
+  const [myBookings, setMyBookings] = useState([]);
+
+  useEffect(() => {
+    api.listMyEventBookings(token).then(setMyBookings).catch(() => setMyBookings([]));
+  }, [token]);
+
+  function handleBookingSelect(bookingId) {
+    const booking = myBookings.find((b) => String(b.id) === bookingId);
+    setForm((f) => ({
+      ...f,
+      booking_id: bookingId,
+      briefing_start: booking ? toPickerValue(new Date(booking.starts_at)) : f.briefing_start,
+    }));
+  }
 
   const isValid = form.title.trim().length > 0;
 
@@ -395,6 +420,20 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
         Угрозы и вражеские силы
         <input type="text" value={form.threat} onChange={(e) => setForm((f) => ({ ...f, threat: e.target.value }))} />
       </label>
+      {myBookings.length > 0 && (
+        <label>
+          Забронированное время
+          <span className="hint-text"> Одобренная бронь — выбор подставит время в поле ниже.</span>
+          <select value={form.booking_id} onChange={(e) => handleBookingSelect(e.target.value)}>
+            <option value="">— не выбрано —</option>
+            {myBookings.map((b) => (
+              <option key={b.id} value={b.id}>
+                {formatMskDate(b.starts_at)}–{formatMskDate(b.ends_at)} МСК — {b.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         Начало брифинга
         <DateTimePicker

@@ -790,6 +790,7 @@ export const api = {
       `/api/event-bookings?range_start=${encodeURIComponent(rangeStart)}&range_end=${encodeURIComponent(rangeEnd)}`,
       { token }
     ),
+  listMyEventBookings: (token) => request("/api/event-bookings/mine", { token }),
   createEventBooking: (token, { title, startsAt, endsAt }) =>
     request("/api/event-bookings", {
       method: "POST",

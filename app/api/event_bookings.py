@@ -36,6 +36,19 @@ async def list_bookings(
     return [EventBookingRead.model_validate(b) for b in bookings]
 
 
+@router.get("/mine", response_model=list[EventBookingRead])
+async def list_my_bookings(
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[EventBookingRead]:
+    """Свои одобренные брони — для выбора в форме подачи заявки на ивент (см.
+    решение пользователя: одобренное время появляется в форме)."""
+    if not access.is_event_submitter:
+        raise ForbiddenError("Доступно только Ивентологам")
+    bookings = await event_booking_crud.list_for_user(db, user_id=access.user.id)
+    return [EventBookingRead.model_validate(b) for b in bookings]
+
+
 @router.post("", response_model=EventBookingRead, status_code=201)
 async def create_booking(
     payload: EventBookingCreate,
