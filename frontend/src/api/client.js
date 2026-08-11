@@ -715,6 +715,8 @@ export const api = {
     request(`/api/event-room/${eventId}/reject`, { method: "POST", token, body: { reason } }),
   sendEventMessage: (token, eventId, content) =>
     request(`/api/event-room/${eventId}/message`, { method: "POST", token, body: { content } }),
+  cancelEvent: (token, eventId, reason) =>
+    request(`/api/event-room/${eventId}/cancel`, { method: "POST", token, body: { reason: reason || null } }),
   getEventMemberCandidates: (token) => request("/api/event-room/member-candidates", { token }),
   listEventMaps: (token) => request("/api/event-room/maps/all", { token }),
   createEventMap: (token, { name, url }) =>
@@ -805,6 +807,8 @@ export const api = {
       token,
       body: { status, rejection_reason: rejectionReason || null },
     }),
+  cancelEventBooking: (token, bookingId, reason) =>
+    request(`/api/event-bookings/${bookingId}/cancel`, { method: "POST", token, body: { reason: reason || null } }),
 
   listAdminReports: (token) => request("/api/admin-reports", { token }),
   createAdminReport: (token, { reportType, payload }) =>

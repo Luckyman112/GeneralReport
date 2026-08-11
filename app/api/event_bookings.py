@@ -12,7 +12,7 @@ from app.crud import audit_log as audit_log_crud
 from app.crud import event_booking as event_booking_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
-from app.schemas.event_booking import EventBookingCreate, EventBookingDecide, EventBookingRead
+from app.schemas.event_booking import EventBookingCancelRequest, EventBookingCreate, EventBookingDecide, EventBookingRead
 
 logger = logging.getLogger(__name__)
 
@@ -112,5 +112,33 @@ async def decide_booking(
         actor_is_admin=access.is_admin,
         action="event_booking_decide",
         details=f"Бронь {booking_id} ({booking.title}) -> {payload.status}",
+    )
+    return EventBookingRead.model_validate(updated)
+
+
+@router.post("/{booking_id}/cancel", response_model=EventBookingRead)
+async def cancel_booking(
+    booking_id: int,
+    payload: EventBookingCancelRequest,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventBookingRead:
+    """Отмена уже одобренной брони — переиспользует REJECTED, у брони нет
+    Discord-карточки, которую надо помечать отдельно (см. решение
+    пользователя)."""
+    if not access.can_decide_event:
+        raise ForbiddenError("Отменить одобренную бронь может Ассистент/Куратор ивентологии")
+    booking = await event_booking_crud.get_by_id(db, booking_id)
+    if booking is None:
+        raise NotFoundError("Бронь не найдена")
+    reason = (payload.reason or "").strip() or None
+    updated = await event_booking_crud.cancel(db, booking, cancelled_by_user_id=access.user.id, reason=reason)
+    logger.info("%s отменил одобренную бронь %s", access.user.username, booking_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_booking_cancel",
+        details=f"Отменил одобренную бронь {booking_id} ({booking.title})",
     )
     return EventBookingRead.model_validate(updated)

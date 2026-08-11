@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DateTimePicker } from "../components/DateTimePicker";
 import { EmptyState } from "../components/EmptyState";
 import { EventActivityReports } from "../components/EventActivityReports";
@@ -16,6 +17,7 @@ const STATUS_LABELS = {
   pending: "Ожидает решения",
   approved: "Одобрено",
   rejected: "Отклонено",
+  cancelled: "Отменено",
 };
 
 const ROLE_LABELS = {
@@ -802,6 +804,7 @@ export function EventRoomPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [mapDraft, setMapDraft] = useState(null); // null — форма закрыта, {} — создание, {id,...} — редактирование
+  const [confirmCancelId, setConfirmCancelId] = useState(null);
 
 
   const canDecide = Boolean(access?.can_decide_event);
@@ -860,6 +863,16 @@ export function EventRoomPage() {
 
   async function handleSendMessage(id, content) {
     await api.sendEventMessage(token, id, content);
+  }
+
+  async function handleCancel(id) {
+    try {
+      await api.cancelEvent(token, id);
+      setConfirmCancelId(null);
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function handleSaveMap(form) {
@@ -1001,11 +1014,22 @@ export function EventRoomPage() {
                 {ev.status === "rejected" && ev.rejection_reason && (
                   <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
                 )}
+                {ev.status === "cancelled" && (
+                  <p className="report-rejection-reason">
+                    Отменено{ev.cancelled_by ? ` (${formatFullName(ev.cancelled_by)})` : ""}
+                    {ev.cancellation_reason ? `: ${ev.cancellation_reason}` : ""}
+                  </p>
+                )}
                 <div className="report-row-actions">
                   <CardViewButton eventId={ev.id} />
                   {(ev.status === "pending" || ev.status === "approved") && (
                     <button type="button" onClick={() => setEditingId(ev.id)}>
                       {ev.status === "approved" ? "Дозаполнить" : "Редактировать"}
+                    </button>
+                  )}
+                  {ev.status === "approved" && canDecide && (
+                    <button type="button" className="ghost error-text" onClick={() => setConfirmCancelId(ev.id)}>
+                      Отменить
                     </button>
                   )}
                   {ev.status === "approved" && ev.submitted_by.id === user.id && (
@@ -1016,6 +1040,13 @@ export function EventRoomPage() {
             ))}
           </div>
         )}
+        <ConfirmDialog
+          open={confirmCancelId !== null}
+          message="Отменить эту одобренную заявку? Карточка в Discord будет отмечена «Отменено»."
+          confirmLabel="Отменить заявку"
+          onConfirm={() => handleCancel(confirmCancelId)}
+          onCancel={() => setConfirmCancelId(null)}
+        />
       </div>
 
       {canDecide && <RosterPanel />}

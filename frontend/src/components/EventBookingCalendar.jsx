@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { DateTimePicker } from "./DateTimePicker";
 import { useToast } from "./ToastContext";
 import { formatMskDate } from "../utils/formatDate";
@@ -44,6 +45,7 @@ export function EventBookingCalendar() {
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [confirmCancelId, setConfirmCancelId] = useState(null);
 
   function load() {
     const rangeStart = startOfMonth(month);
@@ -142,6 +144,17 @@ export function EventBookingCalendar() {
     try {
       await api.decideEventBooking(token, bookingId, { status });
       showToast(status === "approved" ? "Бронь одобрена" : "Бронь отклонена");
+      load();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handleCancel(bookingId) {
+    try {
+      await api.cancelEventBooking(token, bookingId);
+      showToast("Бронь отменена");
+      setConfirmCancelId(null);
       load();
     } catch (e) {
       showToast(e.message, "error");
@@ -265,6 +278,39 @@ export function EventBookingCalendar() {
           </ul>
         </>
       )}
+
+      {access?.can_decide_event && bookings.some((b) => b.status === "approved") && (
+        <>
+          <h4>Одобренные брони</h4>
+          <ul className="member-report-list">
+            {bookings
+              .filter((b) => b.status === "approved")
+              .map((b) => (
+                <li key={b.id}>
+                  <span className="member-report-date">
+                    {formatMskDate(b.starts_at)} — {formatMskDate(b.ends_at)} МСК
+                  </span>
+                  <p className="member-report-content">
+                    {b.title} — {b.requested_by?.nickname_override || b.requested_by?.username}
+                  </p>
+                  <div className="report-form-actions">
+                    <button type="button" className="ghost error-text" onClick={() => setConfirmCancelId(b.id)}>
+                      Отменить
+                    </button>
+                  </div>
+                </li>
+              ))}
+          </ul>
+        </>
+      )}
+
+      <ConfirmDialog
+        open={confirmCancelId !== null}
+        message="Отменить эту одобренную бронь? Слот снова станет свободным."
+        confirmLabel="Отменить бронь"
+        onConfirm={() => handleCancel(confirmCancelId)}
+        onCancel={() => setConfirmCancelId(null)}
+      />
     </>
   );
 }

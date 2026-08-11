@@ -22,6 +22,9 @@ class EventRead(BaseModel):
     decided_at: datetime | None = None
     rejection_reason: str | None = None
     notified_at: datetime | None = None
+    cancelled_by: UserBrief | None = None
+    cancelled_at: datetime | None = None
+    cancellation_reason: str | None = None
 
 
 class EventCreate(BaseModel):
@@ -39,6 +42,10 @@ class EventUpdate(BaseModel):
 
 class EventRejectRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
+
+
+class EventCancelRequest(BaseModel):
+    reason: str | None = None
 
 
 class EventMessageRequest(BaseModel):

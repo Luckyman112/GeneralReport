@@ -65,3 +65,17 @@ async def decide(
     booking.rejection_reason = rejection_reason
     await db.commit()
     return await db.get(EventBooking, booking.id, options=_LOAD_OPTIONS, populate_existing=True)
+
+
+async def cancel(db: AsyncSession, booking: EventBooking, *, cancelled_by_user_id: int, reason: str | None) -> EventBooking:
+    """Отмена уже одобренной брони — переиспользует REJECTED (см. решение
+    пользователя), отдельный CANCELLED не нужен: у брони нет Discord-карточки,
+    которую надо специально помечать."""
+    if booking.status != EventBookingStatus.APPROVED:
+        raise AppError("Отменить можно только уже одобренную бронь")
+    booking.status = EventBookingStatus.REJECTED
+    booking.decided_by_user_id = cancelled_by_user_id
+    booking.decided_at = datetime.now(timezone.utc)
+    booking.rejection_reason = reason or "Отменено после одобрения"
+    await db.commit()
+    return await db.get(EventBooking, booking.id, options=_LOAD_OPTIONS, populate_existing=True)

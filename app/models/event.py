@@ -11,6 +11,7 @@ class EventStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    CANCELLED = "cancelled"
 
 
 class Event(Base):
@@ -42,9 +43,15 @@ class Event(Base):
     # одобрения бот РЕДАКТИРУЕТ это же сообщение вместо отправки нового (см.
     # решение пользователя); канал берётся из текущих настроек, не хранится тут
     discord_message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # отмена уже одобренной заявки (см. решение пользователя) — отдельные поля
+    # от decided_by/decided_at, чтобы не терять, кто и когда изначально одобрил
+    cancelled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     submitted_by: Mapped["User"] = relationship(foreign_keys=[submitted_by_user_id])
     decided_by: Mapped["User | None"] = relationship(foreign_keys=[decided_by_user_id])
+    cancelled_by: Mapped["User | None"] = relationship(foreign_keys=[cancelled_by_user_id])
 
 
 class EventMap(Base):

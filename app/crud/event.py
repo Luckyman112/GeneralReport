@@ -12,6 +12,7 @@ from app.models.user import User
 _LOAD_OPTIONS = [
     selectinload(Event.submitted_by).selectinload(User.rank),
     selectinload(Event.decided_by).selectinload(User.rank),
+    selectinload(Event.cancelled_by).selectinload(User.rank),
 ]
 
 
@@ -63,6 +64,20 @@ async def decide(
     event.decided_by_user_id = decided_by_user_id
     event.decided_at = datetime.now(timezone.utc)
     event.rejection_reason = rejection_reason
+    await db.commit()
+    return await db.get(Event, event.id, options=_LOAD_OPTIONS, populate_existing=True)
+
+
+async def cancel(db: AsyncSession, event: Event, *, cancelled_by_user_id: int, reason: str | None) -> Event:
+    """Отмена уже одобренной заявки (см. решение пользователя) — decided_by/
+    decided_at остаются как есть (кто изначально одобрил), отмена — отдельные
+    поля."""
+    if event.status != EventStatus.APPROVED:
+        raise AppError("Отменить можно только уже одобренную заявку")
+    event.status = EventStatus.CANCELLED
+    event.cancelled_by_user_id = cancelled_by_user_id
+    event.cancelled_at = datetime.now(timezone.utc)
+    event.cancellation_reason = reason
     await db.commit()
     return await db.get(Event, event.id, options=_LOAD_OPTIONS, populate_existing=True)
 

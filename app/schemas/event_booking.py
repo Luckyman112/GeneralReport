@@ -37,3 +37,7 @@ class EventBookingCreate(BaseModel):
 class EventBookingDecide(BaseModel):
     status: Literal["approved", "rejected"]
     rejection_reason: str | None = None
+
+
+class EventBookingCancelRequest(BaseModel):
+    reason: str | None = None

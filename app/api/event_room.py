@@ -27,6 +27,7 @@ from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.schemas.event import (
+    EventCancelRequest,
     EventCreate,
     EventMapCreate,
     EventMapRead,
@@ -607,6 +608,65 @@ async def reject_event(
         details=f"Отклонил заявку на ивент «{updated.title}» (#{updated.id}): {payload.reason.strip()}",
         target_user_id=updated.submitted_by_user_id,
     )
+    event_bus.publish("event_room")
+    return EventRead.model_validate(updated)
+
+
+@router.post("/{event_id}/cancel", response_model=EventRead)
+async def cancel_event(
+    event_id: int,
+    payload: EventCancelRequest,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventRead:
+    """Отмена уже одобренной заявки (см. решение пользователя) — редактирует
+    уже отправленную карточку в Discord, помечая её отменённой, вместо того
+    чтобы удалять сообщение или менять статус на "отклонено" (это разные вещи:
+    отклонили изначально или одобрили, а потом отменили)."""
+    if not access.can_decide_event:
+        raise ForbiddenError("Отменить одобренную заявку может только Ассистент/Куратор ивентологии")
+
+    row = await event_crud.get_by_id(db, event_id)
+    if row is None:
+        raise NotFoundError("Заявка не найдена")
+
+    reason = (payload.reason or "").strip() or None
+    updated = await event_crud.cancel(db, row, cancelled_by_user_id=access.user.id, reason=reason)
+    logger.info("%s отменил одобренный ивент «%s»", access.user.username, updated.title)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_cancel",
+        details=f"Отменил одобренную заявку на ивент «{updated.title}» (#{updated.id})"
+        + (f": {reason}" if reason else ""),
+        target_user_id=updated.submitted_by_user_id,
+    )
+
+    if updated.discord_message_id:
+        app_config = await app_settings_crud.get(db)
+        if app_config.event_notify_channel_id:
+            try:
+                map_row = await _get_selected_map(db, updated)
+                embed = _build_event_embed(updated, map_row)
+                embed["title"] = f"❌ ОТМЕНЕНО — {updated.title}"
+                embed["color"] = 0xB33A3A
+                image_bytes = await _render_event_image(
+                    db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
+                )
+                await discord_client.edit_channel_message(
+                    app_config.event_notify_channel_id,
+                    updated.discord_message_id,
+                    embed=embed,
+                    file_bytes=image_bytes,
+                    filename=f"operation-{updated.id}.png",
+                    content=_message_content(app_config),
+                )
+            except Exception:
+                # отмена в БД уже сохранена — сбой правки Discord-карточки не
+                # должен откатывать решение
+                logger.exception("Не удалось отметить ивент «%s» как отменённый в Discord", updated.title)
+
     event_bus.publish("event_room")
     return EventRead.model_validate(updated)
 
