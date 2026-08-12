@@ -107,5 +107,10 @@ class EventMemberDetail(BaseModel):
     username: str
     role: str
     rank: RankRead | None = None
+    # Для переключателя Ивентрум/РП на фронте — заполнено, только если
+    # человек реально состоит в каком-то формировании (см. решение
+    # пользователя, п.8 — тот же приём, что AdminMemberDetail).
+    regiment_id: int | None = None
+    regiment_name: str | None = None
     events: list["EventRead"] = Field(default_factory=list)
     activity_reports: list[EventActivityReportRead] = Field(default_factory=list)

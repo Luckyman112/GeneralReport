@@ -831,6 +831,7 @@ export const api = {
     return request("/api/admin-reports/attachments", { method: "POST", token, body: formData });
   },
   getAdminActivitySummary: (token) => request("/api/admin-reports/activity-summary", { token }),
+  getAdminRosterMemberDetail: (token, discordId) => request(`/api/admin-reports/roster/${discordId}`, { token }),
   getAdminActivityTrend: (token, { since, until }) =>
     request(`/api/admin-reports/activity-trend?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, {
       token,

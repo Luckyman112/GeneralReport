@@ -297,11 +297,23 @@ async def get_roster_member_detail(
             for r in await activity_report_crud.list_all(db, submitted_by_user_id=user.id)
         ]
 
+    regiment_id = None
+    regiment_name = None
+    regiment_map = await regiment_crud.resolve_regiments_for_discord_ids(db, [discord_id])
+    regiment_ids = regiment_map.get(discord_id) or []
+    if regiment_ids:
+        regiment = await regiment_crud.get_by_id(db, regiment_ids[0])
+        if regiment is not None:
+            regiment_id = regiment.id
+            regiment_name = regiment.name
+
     return EventMemberDetail(
         discord_id=discord_id,
         username=member["username"],
         role=role,
         rank=RankRead.model_validate(user.rank) if user and user.rank else None,
+        regiment_id=regiment_id,
+        regiment_name=regiment_name,
         events=events,
         activity_reports=activity_reports,
     )

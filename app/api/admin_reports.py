@@ -16,6 +16,7 @@ from app.core.uploads import read_file_upload, read_image_upload
 from app.crud import admin_report as admin_report_crud
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
+from app.crud import regiment as regiment_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
@@ -23,6 +24,7 @@ from app.schemas.admin_report import (
     AdminActivitySummaryEntry,
     AdminActivityTrendRead,
     AdminActivityTrendSeries,
+    AdminMemberDetail,
     AdminReportCreate,
     AdminReportDecide,
     AdminReportRead,
@@ -223,10 +225,77 @@ async def get_activity_summary(
                 username=member["username"],
                 rank_code=rank_code,
                 rank_label=rank_label_by_code[rank_code],
-                count_week=stats["count_week"] if stats else 0,
-                count_month=stats["count_month"] if stats else 0,
-                count_all_time=stats["count_all_time"] if stats else 0,
+                activity_count_week=stats["activity_count_week"] if stats else 0,
+                activity_count_month=stats["activity_count_month"] if stats else 0,
+                activity_count_all_time=stats["activity_count_all_time"] if stats else 0,
+                punishment_count_week=stats["punishment_count_week"] if stats else 0,
+                punishment_count_month=stats["punishment_count_month"] if stats else 0,
+                punishment_count_all_time=stats["punishment_count_all_time"] if stats else 0,
                 last_report_at=stats["last_report_at"] if stats else None,
             )
         )
     return entries
+
+
+@router.get("/roster/{discord_id}", response_model=AdminMemberDetail)
+async def get_admin_roster_member_detail(
+    discord_id: str,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> AdminMemberDetail:
+    """Досье по клику на ник в сводке активности — рапорта Администрации
+    этого бойца, раздельно деятельность/наказания, плюс regiment_id/
+    regiment_name (если человек реально состоит в каком-то формировании) для
+    переключателя Администрация/РП на фронте (см. решение пользователя, п.6/
+    п.8; тот же приём, что event_room.py::get_roster_member_detail)."""
+    _require_admin_staff(access)
+
+    app_config = await app_settings_crud.get(db)
+    role_ids_by_rank = {
+        "junior": app_config.admin_staff_junior_role_id,
+        "middle": app_config.admin_staff_middle_role_id,
+        "warden": app_config.admin_staff_warden_role_id,
+        "assistant": app_config.admin_staff_assistant_role_id,
+        "curator": app_config.admin_staff_curator_role_id,
+    }
+    rank_label_by_code = dict(_RANK_LABELS)
+
+    members = await discord_client.fetch_guild_members()
+    member = next((m for m in members if m["discord_id"] == discord_id), None)
+    if member is None:
+        raise NotFoundError("Участник не найден")
+    member_role_ids = set(member.get("roles") or [])
+    rank_code = next(
+        (code for code, role_id in role_ids_by_rank.items() if role_id in member_role_ids), None
+    )
+    if rank_code is None:
+        raise NotFoundError("Участник не входит в состав Администрации")
+
+    user = await user_crud.get_by_discord_id_with_rank(db, discord_id)
+    activity_reports: list[AdminReportRead] = []
+    punishment_reports: list[AdminReportRead] = []
+    if user is not None:
+        reports = await admin_report_crud.list_all(db, submitted_by_user_id=user.id)
+        activity_reports = [AdminReportRead.model_validate(r) for r in reports if r.report_type == "activity"]
+        punishment_reports = [AdminReportRead.model_validate(r) for r in reports if r.report_type == "punishment"]
+
+    regiment_id = None
+    regiment_name = None
+    regiment_map = await regiment_crud.resolve_regiments_for_discord_ids(db, [discord_id])
+    regiment_ids = regiment_map.get(discord_id) or []
+    if regiment_ids:
+        regiment = await regiment_crud.get_by_id(db, regiment_ids[0])
+        if regiment is not None:
+            regiment_id = regiment.id
+            regiment_name = regiment.name
+
+    return AdminMemberDetail(
+        discord_id=discord_id,
+        username=member["username"],
+        rank_code=rank_code,
+        rank_label=rank_label_by_code[rank_code],
+        regiment_id=regiment_id,
+        regiment_name=regiment_name,
+        activity_reports=activity_reports,
+        punishment_reports=punishment_reports,
+    )

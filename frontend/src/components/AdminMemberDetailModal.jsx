@@ -7,25 +7,24 @@ import { MemberDetailModal } from "./MemberDetailModal";
 import { StatusBadge } from "./StatusBadge";
 import { formatMskDate } from "../utils/formatDate";
 
-const EVENT_TYPE_LABELS = { mini: "Мини-ивент", combat: "Боевой вылет" };
-
 const TABS = [
-  { key: "event", label: "Ивентрум" },
+  { key: "admin", label: "Администрация" },
   { key: "rp", label: "РП" },
 ];
 
-/** Досье участника Ивентрума по клику на строку ростера — ранг + его заявки
- * на ивенты и отчёты о проведённых мероприятиях (см. решение пользователя:
- * агрегированных счётчиков в таблице недостаточно, нужно видеть детали).
- * Вкладка "РП" (см. решение пользователя, п.8) отдаёт управление
- * существующему MemberDetailModal целиком, если человек реально состоит в
- * каком-то формировании — тот же приём, что AdminMemberDetailModal. */
-export function EventMemberDetailModal({ discordId, onClose }) {
+/** Досье администратора по клику на ник в сводке активности — рапорта
+ * (раздельно деятельность/наказания) + переключатель на РП-профиль, если
+ * человек реально состоит в каком-то формировании (см. решение пользователя,
+ * п.6/п.8 — Администрация не привязана к формированию, это отдельная нон-РП
+ * должность). Вкладка "РП" отдаёт управление существующему MemberDetailModal
+ * целиком (не дублирует его логику) — свой "Закрыть" внутри неё возвращает на
+ * вкладку "Администрация", а не закрывает всё окно. */
+export function AdminMemberDetailModal({ discordId, onClose }) {
   const { token } = useAuth();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [tab, setTab] = useState("event");
+  const [tab, setTab] = useState("admin");
   const [rpMember, setRpMember] = useState(null);
   const [rpError, setRpError] = useState(null);
 
@@ -33,7 +32,7 @@ export function EventMemberDetailModal({ discordId, onClose }) {
     setLoading(true);
     setError(null);
     api
-      .getEventRosterMemberDetail(token, discordId)
+      .getAdminRosterMemberDetail(token, discordId)
       .then(setDetail)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -57,7 +56,7 @@ export function EventMemberDetailModal({ discordId, onClose }) {
         member={rpMember}
         regimentId={detail.regiment_id}
         canEdit={false}
-        onClose={() => setTab("event")}
+        onClose={() => setTab("admin")}
       />
     );
   }
@@ -75,10 +74,7 @@ export function EventMemberDetailModal({ discordId, onClose }) {
         ) : (
           <>
             <h3>{detail.username}</h3>
-            <p className="hint-text">
-              {detail.role}
-              {detail.rank && ` · ${detail.rank.code} — ${detail.rank.name}`}
-            </p>
+            <p className="hint-text">{detail.rank_label}</p>
 
             <div className="report-form-actions" style={{ marginBottom: "0.75rem" }}>
               {TABS.map((t) => (
@@ -93,27 +89,9 @@ export function EventMemberDetailModal({ discordId, onClose }) {
               ))}
             </div>
 
-            {tab === "event" && (
+            {tab === "admin" && (
               <>
-                <h4>Заявки на ивент ({detail.events.length})</h4>
-                {detail.events.length === 0 ? (
-                  <p className="hint-text">Заявок нет.</p>
-                ) : (
-                  <ul className="member-report-list">
-                    {detail.events.map((ev) => (
-                      <li key={ev.id}>
-                        <StatusBadge status={ev.status} />
-                        <span className="report-regiment">{ev.title}</span>
-                        <span className="member-report-date">{formatMskDate(ev.created_at)} МСК</span>
-                        {ev.status === "rejected" && ev.rejection_reason && (
-                          <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <h4>Отчёты о мероприятиях ({detail.activity_reports.length})</h4>
+                <h4>Отчёт деятельности ({detail.activity_reports.length})</h4>
                 {detail.activity_reports.length === 0 ? (
                   <p className="hint-text">Отчётов нет.</p>
                 ) : (
@@ -121,7 +99,23 @@ export function EventMemberDetailModal({ discordId, onClose }) {
                     {detail.activity_reports.map((r) => (
                       <li key={r.id}>
                         <StatusBadge status={r.status} />
-                        <span className="report-category">{EVENT_TYPE_LABELS[r.event_type] || r.event_type}</span>
+                        <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
+                        {r.status === "rejected" && r.rejection_reason && (
+                          <p className="report-rejection-reason">Причина отклонения: {r.rejection_reason}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <h4>Отчёт наказаний ({detail.punishment_reports.length})</h4>
+                {detail.punishment_reports.length === 0 ? (
+                  <p className="hint-text">Отчётов нет.</p>
+                ) : (
+                  <ul className="member-report-list">
+                    {detail.punishment_reports.map((r) => (
+                      <li key={r.id}>
+                        <StatusBadge status={r.status} />
                         <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
                         {r.status === "rejected" && r.rejection_reason && (
                           <p className="report-rejection-reason">Причина отклонения: {r.rejection_reason}</p>

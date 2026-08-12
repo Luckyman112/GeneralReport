@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ActivityTrendPanel } from "../components/ActivityTrendPanel";
+import { AdminMemberDetailModal } from "../components/AdminMemberDetailModal";
 import { EmptyState } from "../components/EmptyState";
 import { PageLoading } from "../components/PageLoading";
 import { useToast } from "../components/ToastContext";
@@ -48,6 +49,8 @@ export function AdminStaffPage() {
   const [summary, setSummary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const [selectedDiscordId, setSelectedDiscordId] = useState(null);
 
   const [reportType, setReportType] = useState("activity");
   const [fieldValues, setFieldValues] = useState({});
@@ -244,20 +247,26 @@ export function AdminStaffPage() {
               <tr>
                 <th>Боец</th>
                 <th>Должность</th>
-                <th>За неделю</th>
-                <th>За месяц</th>
-                <th>Всего</th>
+                <th>Деятельность (7д / 30д / всего)</th>
+                <th>Наказания (7д / 30д / всего)</th>
                 <th>Последний отчёт</th>
               </tr>
             </thead>
             <tbody>
               {summary.map((s) => (
                 <tr key={s.discord_id}>
-                  <td>{s.username}</td>
+                  <td>
+                    <span className="clickable-row" onClick={() => setSelectedDiscordId(s.discord_id)}>
+                      {s.username}
+                    </span>
+                  </td>
                   <td>{s.rank_label}</td>
-                  <td className="mono-num">{s.count_week}</td>
-                  <td className="mono-num">{s.count_month}</td>
-                  <td className="mono-num">{s.count_all_time}</td>
+                  <td className="mono-num">
+                    {s.activity_count_week} / {s.activity_count_month} / {s.activity_count_all_time}
+                  </td>
+                  <td className="mono-num">
+                    {s.punishment_count_week} / {s.punishment_count_month} / {s.punishment_count_all_time}
+                  </td>
                   <td>{s.last_report_at ? `${formatMskDate(s.last_report_at)} МСК` : "—"}</td>
                 </tr>
               ))}
@@ -267,6 +276,10 @@ export function AdminStaffPage() {
       )}
 
       <ActivityTrendPanel title="Активность по дням" fetchTrend={fetchTrend} />
+
+      {selectedDiscordId && (
+        <AdminMemberDetailModal discordId={selectedDiscordId} onClose={() => setSelectedDiscordId(null)} />
+      )}
     </div>
   );
 }

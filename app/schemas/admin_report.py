@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.admin_report import AdminReportStatus
 from app.schemas.user import UserBrief
@@ -43,10 +43,31 @@ class AdminActivitySummaryEntry(BaseModel):
     username: str
     rank_code: str
     rank_label: str
-    count_week: int
-    count_month: int
-    count_all_time: int
+    # Раздельно деятельность/наказания (см. решение пользователя, п.8) —
+    # раньше был один общий count_*.
+    activity_count_week: int
+    activity_count_month: int
+    activity_count_all_time: int
+    punishment_count_week: int
+    punishment_count_month: int
+    punishment_count_all_time: int
     last_report_at: datetime | None = None
+
+
+class AdminMemberDetail(BaseModel):
+    """Досье по клику на ник в сводке активности (см. решение пользователя,
+    п.6/п.8) — рапорта, раздельно деятельность/наказания, плюс
+    regiment_id/regiment_name (если человек реально состоит в каком-то
+    формировании) для переключателя на РП-профиль на фронте."""
+
+    discord_id: str
+    username: str
+    rank_code: str
+    rank_label: str
+    regiment_id: int | None = None
+    regiment_name: str | None = None
+    activity_reports: list[AdminReportRead] = Field(default_factory=list)
+    punishment_reports: list[AdminReportRead] = Field(default_factory=list)
 
 
 class AdminActivityTrendSeries(BaseModel):
