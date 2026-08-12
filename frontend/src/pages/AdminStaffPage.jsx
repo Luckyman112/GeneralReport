@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { ActivityTrendPanel } from "../components/ActivityTrendPanel";
 import { AdminMemberDetailModal } from "../components/AdminMemberDetailModal";
 import { EmptyState } from "../components/EmptyState";
+import { MemberSearchPicker } from "../components/MemberSearchPicker";
 import { PageLoading } from "../components/PageLoading";
 import { useToast } from "../components/ToastContext";
 import { formatMskDate } from "../utils/formatDate";
@@ -21,7 +22,6 @@ const PUNISHMENT_FIELDS = [
   { key: "nickname", label: "Игровой никнейм" },
   { key: "position", label: "Должность" },
   { key: "punishment_issued", label: "Выдано наказание" },
-  { key: "punishment_target", label: "Кому выдано наказание" },
   { key: "reason", label: "Причина наказания" },
   { key: "duration", label: "Срок наказания" },
 ];
@@ -57,6 +57,8 @@ export function AdminStaffPage() {
   const [attachmentUrl, setAttachmentUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [memberCandidates, setMemberCandidates] = useState([]);
+  const [punishmentTargetId, setPunishmentTargetId] = useState("");
 
   const fields = reportType === "activity" ? ACTIVITY_FIELDS : PUNISHMENT_FIELDS;
 
@@ -70,10 +72,11 @@ export function AdminStaffPage() {
   }
 
   useEffect(() => {
-    Promise.all([api.listAdminReports(token), api.getAdminActivitySummary(token)])
-      .then(([reportsData, summaryData]) => {
+    Promise.all([api.listAdminReports(token), api.getAdminActivitySummary(token), api.getAdminMemberCandidates(token)])
+      .then(([reportsData, summaryData, membersData]) => {
         setReports(reportsData);
         setSummary(summaryData);
+        setMemberCandidates(membersData);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -106,12 +109,25 @@ export function AdminStaffPage() {
     setSubmitting(true);
     setError(null);
     try {
+      const target = memberCandidates.find((m) => m.discord_id === punishmentTargetId);
       await api.createAdminReport(token, {
         reportType,
-        payload: { ...fieldValues, attachment_url: attachmentUrl || null },
+        payload: {
+          ...fieldValues,
+          attachment_url: attachmentUrl || null,
+          // Необязательное поле — кому выдано наказание (см. решение
+          // пользователя: может быть любого формирования, можно не указывать)
+          ...(reportType === "punishment"
+            ? {
+                punishment_target_discord_id: target?.discord_id || null,
+                punishment_target: target?.username || null,
+              }
+            : {}),
+        },
       });
       setFieldValues({});
       setAttachmentUrl("");
+      setPunishmentTargetId("");
       showToast("Отчёт отправлен");
       loadReports();
     } catch (err) {
@@ -141,7 +157,7 @@ export function AdminStaffPage() {
         <p className="report-byline">Подал: {r.submitted_by?.nickname_override || r.submitted_by?.username}</p>
         <ul className="member-report-list">
           {Object.entries(r.payload)
-            .filter(([key, value]) => key !== "attachment_url" && value)
+            .filter(([key, value]) => key !== "attachment_url" && key !== "punishment_target_discord_id" && value)
             .map(([key, value]) => (
               <li key={key}>{value}</li>
             ))}
@@ -184,7 +200,14 @@ export function AdminStaffPage() {
           <h3>Подать отчёт</h3>
           <label>
             Тип отчёта
-            <select value={reportType} onChange={(e) => { setReportType(e.target.value); setFieldValues({}); }}>
+            <select
+              value={reportType}
+              onChange={(e) => {
+                setReportType(e.target.value);
+                setFieldValues({});
+                setPunishmentTargetId("");
+              }}
+            >
               <option value="activity">Отчёт деятельности</option>
               <option value="punishment">Отчёт наказаний</option>
             </select>
@@ -199,6 +222,12 @@ export function AdminStaffPage() {
               />
             </label>
           ))}
+          {reportType === "punishment" && (
+            <label>
+              Кому выдано наказание (необязательно — любое формирование)
+              <MemberSearchPicker members={memberCandidates} selectedId={punishmentTargetId} onSelect={setPunishmentTargetId} />
+            </label>
+          )}
           <label>
             Прикреплённое доказательство (скриншот/видео)
             <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={handleAttachmentUpload} />

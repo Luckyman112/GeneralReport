@@ -830,6 +830,7 @@ export const api = {
     formData.append("file", file);
     return request("/api/admin-reports/attachments", { method: "POST", token, body: formData });
   },
+  getAdminMemberCandidates: (token) => request("/api/admin-reports/member-candidates", { token }),
   getAdminActivitySummary: (token) => request("/api/admin-reports/activity-summary", { token }),
   getAdminRosterMemberDetail: (token, discordId) => request(`/api/admin-reports/roster/${discordId}`, { token }),
   issueAdminReprimand: (token, { targetDiscordId, reason, severity }) =>

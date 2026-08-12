@@ -31,6 +31,7 @@ from app.schemas.admin_report import (
     AdminReportRead,
 )
 from app.schemas.admin_reprimand import AdminReprimandCreate, AdminReprimandRead
+from app.schemas.regiment_commander import GuildMemberRead
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,21 @@ async def upload_admin_report_attachment(
     filename = f"{uuid.uuid4()}{ext}"
     (_UPLOAD_ROOT / filename).write_bytes(content)
     return {"url": f"/uploads/admin-reports/{filename}"}
+
+
+@router.get("/member-candidates", response_model=list[GuildMemberRead])
+async def get_member_candidates(
+    access: AccessContext = Depends(get_access_context),
+) -> list[GuildMemberRead]:
+    """Весь состав сервера — для выбора цели наказания в "Отчёт наказаний"
+    (Администрация не привязана к формированию, цель может быть из любого —
+    см. решение пользователя; копия event_room.py::get_member_candidates)."""
+    _require_admin_staff(access)
+    members = await discord_client.fetch_guild_members()
+    return [
+        GuildMemberRead(discord_id=m["discord_id"], username=m["username"], discord_username=m["username"], avatar_url=m["avatar_url"])
+        for m in members
+    ]
 
 
 @router.get("/activity-trend", response_model=AdminActivityTrendRead)
