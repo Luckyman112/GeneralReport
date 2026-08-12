@@ -742,6 +742,10 @@ export const api = {
   deleteEventMap: (token, mapId) => request(`/api/event-room/maps/${mapId}`, { method: "DELETE", token }),
   getEventRoster: (token) => request("/api/event-room/roster", { token }),
   getEventRosterMemberDetail: (token, discordId) => request(`/api/event-room/roster/${discordId}`, { token }),
+  getEventRosterTrend: (token, { since, until }) =>
+    request(`/api/event-room/roster/trend?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, {
+      token,
+    }),
   uploadEventMapImage: (token, file) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -827,6 +831,10 @@ export const api = {
     return request("/api/admin-reports/attachments", { method: "POST", token, body: formData });
   },
   getAdminActivitySummary: (token) => request("/api/admin-reports/activity-summary", { token }),
+  getAdminActivityTrend: (token, { since, until }) =>
+    request(`/api/admin-reports/activity-trend?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, {
+      token,
+    }),
 };
 
 export { ApiError };

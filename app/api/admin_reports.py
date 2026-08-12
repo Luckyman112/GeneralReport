@@ -4,9 +4,10 @@
 сущность, тот же принцип, что у Event/Ивентрума (см. app/models/admin_report.py)."""
 import logging
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AccessContext, get_access_context
@@ -20,6 +21,8 @@ from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.schemas.admin_report import (
     AdminActivitySummaryEntry,
+    AdminActivityTrendRead,
+    AdminActivityTrendSeries,
     AdminReportCreate,
     AdminReportDecide,
     AdminReportRead,
@@ -133,6 +136,43 @@ async def upload_admin_report_attachment(
     filename = f"{uuid.uuid4()}{ext}"
     (_UPLOAD_ROOT / filename).write_bytes(content)
     return {"url": f"/uploads/admin-reports/{filename}"}
+
+
+@router.get("/activity-trend", response_model=AdminActivityTrendRead)
+async def get_activity_trend(
+    since: datetime = Query(...),
+    until: datetime = Query(...),
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> AdminActivityTrendRead:
+    """График активности (TrendChart на фронте) — Деятельность/Наказания по
+    дням за произвольный диапазон (см. решение пользователя: неделя/месяц/
+    свои даты)."""
+    _require_admin_staff(access)
+    if until <= since:
+        raise AppError("Некорректный диапазон дат")
+
+    by_day = await admin_report_crud.daily_type_counts(db, since=since, until=until)
+    # Полный список дней диапазона, а не только те, где есть данные — иначе
+    # нулевые дни выпадали бы из графика
+    dates = []
+    cur = since.date()
+    last_day = until.date()
+    while cur <= last_day:
+        dates.append(cur.isoformat())
+        cur += timedelta(days=1)
+
+    return AdminActivityTrendRead(
+        dates=dates,
+        series=[
+            AdminActivityTrendSeries(
+                id="activity", label="Деятельность", points=[by_day.get(d, {}).get("activity", 0) for d in dates]
+            ),
+            AdminActivityTrendSeries(
+                id="punishment", label="Наказания", points=[by_day.get(d, {}).get("punishment", 0) for d in dates]
+            ),
+        ],
+    )
 
 
 @router.get("/activity-summary", response_model=list[AdminActivitySummaryEntry])

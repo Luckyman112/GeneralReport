@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ActivityTrendPanel } from "../components/ActivityTrendPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DateTimePicker } from "../components/DateTimePicker";
 import { EmptyState } from "../components/EmptyState";
@@ -822,6 +823,8 @@ function RosterPanel() {
     api.getEventRoster(token).then(setRoster).catch(() => setRoster([])).finally(() => setLoading(false));
   }, [token]);
 
+  const fetchTrend = useCallback((range) => api.getEventRosterTrend(token, range), [token]);
+
   if (loading) return <InlineSpinner />;
 
   const periodOption = PERIOD_OPTIONS.find((p) => p.key === period) ?? PERIOD_OPTIONS[0];
@@ -883,6 +886,8 @@ function RosterPanel() {
           <HorizontalBarChart data={miniChartData} />
           <h4>Боевой вылет за период</h4>
           <HorizontalBarChart data={combatChartData} />
+
+          <ActivityTrendPanel title="Активность по дням" fetchTrend={fetchTrend} />
         </>
       )}
 

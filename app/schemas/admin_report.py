@@ -47,3 +47,17 @@ class AdminActivitySummaryEntry(BaseModel):
     count_month: int
     count_all_time: int
     last_report_at: datetime | None = None
+
+
+class AdminActivityTrendSeries(BaseModel):
+    id: str
+    label: str
+    points: list[int]
+
+
+class AdminActivityTrendRead(BaseModel):
+    """Для графика активности (TrendChart на фронте) — по дням, раздельно
+    "Деятельность"/"Наказания", см. app/crud/admin_report.py::daily_type_counts."""
+
+    dates: list[str]
+    series: list[AdminActivityTrendSeries]

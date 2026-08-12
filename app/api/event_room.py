@@ -5,10 +5,10 @@ Discord-канал (см. app/core/discord_client.py::send_channel_message).
 конструктором в БД (см. Event.payload), см. решение пользователя."""
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,7 +39,11 @@ from app.schemas.event import (
     EventRosterEntry,
     EventUpdate,
 )
-from app.schemas.event_activity_report import EventActivityReportRead
+from app.schemas.event_activity_report import (
+    EventActivityReportRead,
+    EventActivityTrendRead,
+    EventActivityTrendSeries,
+)
 from app.schemas.event_message import EventMessageCreate, EventMessageDecide, EventMessageRead
 from app.schemas.rank import RankRead
 from app.schemas.regiment_commander import GuildMemberRead
@@ -211,6 +215,45 @@ async def get_roster(
         key=lambda e: (role_order.get(e.role, 9), -(e.mini_count_all_time + e.combat_count_all_time), e.username)
     )
     return entries
+
+
+@router.get("/roster/trend", response_model=EventActivityTrendRead)
+async def get_roster_trend(
+    since: datetime = Query(...),
+    until: datetime = Query(...),
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventActivityTrendRead:
+    """График активности (TrendChart на фронте) — Мини-ивент/Боевой вылет по
+    дням за произвольный диапазон (см. решение пользователя: неделя/месяц/
+    свои даты)."""
+    if not access.can_access_event_room:
+        raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
+    if until <= since:
+        raise AppError("Некорректный диапазон дат")
+
+    by_day = await activity_report_crud.daily_type_counts(db, since=since, until=until)
+    # Полный список дней диапазона, а не только те, где есть данные — иначе
+    # нулевые дни выпадали бы из графика (см. app/api/stats.py::get_formation_stats
+    # для того же приёма с trend_dates)
+    dates = []
+    cur = since.date()
+    last_day = until.date()
+    while cur <= last_day:
+        dates.append(cur.isoformat())
+        cur += timedelta(days=1)
+
+    return EventActivityTrendRead(
+        dates=dates,
+        series=[
+            EventActivityTrendSeries(
+                id="mini", label="Мини-ивент", points=[by_day.get(d, {}).get("mini", 0) for d in dates]
+            ),
+            EventActivityTrendSeries(
+                id="combat", label="Боевой вылет", points=[by_day.get(d, {}).get("combat", 0) for d in dates]
+            ),
+        ],
+    )
 
 
 @router.get("/roster/{discord_id}", response_model=EventMemberDetail)

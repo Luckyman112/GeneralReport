@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ActivityTrendPanel } from "../components/ActivityTrendPanel";
 import { EmptyState } from "../components/EmptyState";
 import { PageLoading } from "../components/PageLoading";
 import { useToast } from "../components/ToastContext";
@@ -45,6 +46,8 @@ export function AdminStaffPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const fields = reportType === "activity" ? ACTIVITY_FIELDS : PUNISHMENT_FIELDS;
+
+  const fetchTrend = useCallback((range) => api.getAdminActivityTrend(token, range), [token]);
 
   function loadReports() {
     api
@@ -233,6 +236,8 @@ export function AdminStaffPage() {
           </table>
         </div>
       )}
+
+      <ActivityTrendPanel title="Активность по дням" fetchTrend={fetchTrend} />
     </div>
   );
 }

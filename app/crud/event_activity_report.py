@@ -119,3 +119,25 @@ async def activity_summary_for_user_ids(db: AsyncSession, user_ids: list[int]) -
         }
         for user_id in user_ids
     }
+
+
+async def daily_type_counts(db: AsyncSession, *, since: datetime, until: datetime) -> dict[str, dict[str, int]]:
+    """Кол-во ОДОБРЕННЫХ отчётов по дням, раздельно Мини-ивент/Боевой вылет —
+    для графика активности (TrendChart), см. app/api/event_room.py. Не
+    завязано на конкретного бойца — весь Ивентрум разом, тот же приём, что
+    stats_crud.count_by_regiment_daily."""
+    day_expr = func.to_char(EventActivityReport.created_at, "YYYY-MM-DD")
+    query = (
+        select(day_expr, EventActivityReport.event_type, func.count(EventActivityReport.id))
+        .where(
+            EventActivityReport.status == EventActivityReportStatus.APPROVED,
+            EventActivityReport.created_at >= since,
+            EventActivityReport.created_at < until,
+        )
+        .group_by(day_expr, EventActivityReport.event_type)
+    )
+    result = await db.execute(query)
+    by_day: dict[str, dict[str, int]] = {}
+    for day, event_type, count in result.all():
+        by_day.setdefault(day, {})[event_type] = count
+    return by_day

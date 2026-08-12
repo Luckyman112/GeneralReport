@@ -38,3 +38,17 @@ class EventActivityReportCreate(BaseModel):
 class EventActivityReportDecide(BaseModel):
     status: Literal["approved", "rejected"]
     rejection_reason: str | None = None
+
+
+class EventActivityTrendSeries(BaseModel):
+    id: str
+    label: str
+    points: list[int]
+
+
+class EventActivityTrendRead(BaseModel):
+    """Для графика активности (TrendChart на фронте) — по дням, раздельно
+    Мини-ивент/Боевой вылет, см. app/crud/event_activity_report.py::daily_type_counts."""
+
+    dates: list[str]
+    series: list[EventActivityTrendSeries]
