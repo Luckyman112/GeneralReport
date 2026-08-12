@@ -44,10 +44,15 @@ async def create(db: AsyncSession, *, report_type: str, payload: dict, submitted
 async def decide(
     db: AsyncSession, report: AdminReport, *, approve: bool, decided_by_user_id: int, rejection_reason: str | None = None
 ) -> AdminReport:
-    # Защита от повторного решения (двойной клик/повтор запроса) — см.
-    # app/crud/event.py::decide и promotion_crud.decide, тот же паттерн
-    if report.status != AdminReportStatus.PENDING:
-        raise AppError("Отчёт уже решён — повторное решение по нему невозможно")
+    # Асимметричный guard — тот же приём, что update_report_status/was_approved
+    # (app/api/reports.py): блокируем только повторное ОДОБРЕНИЕ уже
+    # одобренного отчёта; отклонить уже одобренный отчёт можно всегда (см.
+    # решение пользователя, п.9 — Асик+ может передумать в любой момент после
+    # одобрения). Остальные переходы (в т.ч. rejected -> approved) намеренно
+    # не блокируются — реф-паттерн их тоже не блокирует.
+    was_approved = report.status == AdminReportStatus.APPROVED
+    if approve and was_approved:
+        raise AppError("Отчёт уже одобрен — повторное одобрение невозможно")
     report.status = AdminReportStatus.APPROVED if approve else AdminReportStatus.REJECTED
     report.decided_by_user_id = decided_by_user_id
     report.decided_at = datetime.now(timezone.utc)

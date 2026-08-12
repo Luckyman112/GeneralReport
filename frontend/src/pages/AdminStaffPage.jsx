@@ -180,6 +180,13 @@ export function AdminStaffPage() {
             </button>
           </div>
         )}
+        {r.status === "approved" && access?.can_decide_admin_report && (
+          <div className="report-form-actions">
+            <button type="button" className="ghost error-text" onClick={() => handleDecide(r.id, "rejected")}>
+              Отклонить (передумали)
+            </button>
+          </div>
+        )}
       </div>
     );
   }
