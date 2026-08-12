@@ -27,6 +27,16 @@ const PUNISHMENT_FIELDS = [
 
 const TYPE_LABELS = { activity: "Отчёт деятельности", punishment: "Отчёт наказаний" };
 
+// Решённый отчёт старше этого срока уходит в свёрнутый архив, чтобы список не
+// захламлялся (см. решение пользователя, п.3 из батча правок) — pending всегда активен.
+const ARCHIVE_AFTER_DAYS = 14;
+
+function isArchivedReport(r) {
+  if (r.status === "pending" || !r.decided_at) return false;
+  const ageMs = Date.now() - new Date(r.decided_at).getTime();
+  return ageMs > ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
+
 /** Администрация — нон-РП должность (модерация сервера: баны/муты/выдача
  * предметов), не связана с РП-формированиями (см. решение пользователя —
  * можно одновременно быть сержантом полка и Куратором Администрации). Своя
@@ -119,6 +129,45 @@ export function AdminStaffPage() {
     }
   }
 
+  function renderReportRow(r) {
+    return (
+      <div key={r.id} className="report-row">
+        <span className={`status-badge status-${r.status}`}>{STATUS_LABELS[r.status] || r.status}</span>
+        <span className="report-category">{TYPE_LABELS[r.report_type] || r.report_type}</span>
+        <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
+        <p className="report-byline">Подал: {r.submitted_by?.nickname_override || r.submitted_by?.username}</p>
+        <ul className="member-report-list">
+          {Object.entries(r.payload)
+            .filter(([key, value]) => key !== "attachment_url" && value)
+            .map(([key, value]) => (
+              <li key={key}>{value}</li>
+            ))}
+        </ul>
+        {r.payload.attachment_url && (
+          <a href={r.payload.attachment_url} target="_blank" rel="noreferrer">
+            Вложение
+          </a>
+        )}
+        {r.status === "rejected" && r.rejection_reason && (
+          <p className="report-rejection-reason">Причина отклонения: {r.rejection_reason}</p>
+        )}
+        {r.status === "pending" && access?.can_decide_admin_report && (
+          <div className="report-form-actions">
+            <button type="button" onClick={() => handleDecide(r.id, "approved")}>
+              Одобрить
+            </button>
+            <button type="button" className="ghost error-text" onClick={() => handleDecide(r.id, "rejected")}>
+              Отклонить
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const activeReports = reports.filter((r) => !isArchivedReport(r));
+  const archivedReports = reports.filter(isArchivedReport);
+
   if (loading) return <PageLoading />;
 
   return (
@@ -168,41 +217,21 @@ export function AdminStaffPage() {
       {reports.length === 0 ? (
         <EmptyState text="Отчётов пока нет." />
       ) : (
-        <div className="report-list">
-          {reports.map((r) => (
-            <div key={r.id} className="report-row">
-              <span className={`status-badge status-${r.status}`}>{STATUS_LABELS[r.status] || r.status}</span>
-              <span className="report-category">{TYPE_LABELS[r.report_type] || r.report_type}</span>
-              <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
-              <p className="report-byline">Подал: {r.submitted_by?.nickname_override || r.submitted_by?.username}</p>
-              <ul className="member-report-list">
-                {Object.entries(r.payload)
-                  .filter(([key, value]) => key !== "attachment_url" && value)
-                  .map(([key, value]) => (
-                    <li key={key}>{value}</li>
-                  ))}
-              </ul>
-              {r.payload.attachment_url && (
-                <a href={r.payload.attachment_url} target="_blank" rel="noreferrer">
-                  Вложение
-                </a>
-              )}
-              {r.status === "rejected" && r.rejection_reason && (
-                <p className="report-rejection-reason">Причина отклонения: {r.rejection_reason}</p>
-              )}
-              {r.status === "pending" && access?.can_decide_admin_report && (
-                <div className="report-form-actions">
-                  <button type="button" onClick={() => handleDecide(r.id, "approved")}>
-                    Одобрить
-                  </button>
-                  <button type="button" className="ghost error-text" onClick={() => handleDecide(r.id, "rejected")}>
-                    Отклонить
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        <>
+          {activeReports.length === 0 ? (
+            <EmptyState text="Активных отчётов нет." />
+          ) : (
+            <div className="report-list">{activeReports.map(renderReportRow)}</div>
+          )}
+          {archivedReports.length > 0 && (
+            <details className="event-archive-strip" style={{ marginTop: "0.75rem" }}>
+              <summary>
+                <span className="event-archive-strip-title">Архив ({archivedReports.length})</span>
+              </summary>
+              <div className="event-archive-list">{archivedReports.map(renderReportRow)}</div>
+            </details>
+          )}
+        </>
       )}
 
       <h3>Сводка активности</h3>
