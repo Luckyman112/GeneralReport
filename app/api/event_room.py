@@ -17,6 +17,7 @@ from app.core import discord_client
 from app.core.event_card import render_operation_dossier
 from app.core.events import event_bus
 from app.core.uploads import read_image_upload
+from app.crud import admin_reprimand as admin_reprimand_crud
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import event as event_crud
@@ -27,6 +28,7 @@ from app.crud import regiment as regiment_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
+from app.schemas.admin_reprimand import AdminReprimandRead
 from app.schemas.event import (
     EventCancelRequest,
     EventCreate,
@@ -290,11 +292,16 @@ async def get_roster_member_detail(
     user = await user_crud.get_by_discord_id_with_rank(db, discord_id)
     events: list[EventRead] = []
     activity_reports: list[EventActivityReportRead] = []
+    reprimands: list[AdminReprimandRead] = []
     if user is not None:
         events = await _events_to_read(db, await event_crud.list_all(db, submitted_by_user_id=user.id))
         activity_reports = [
             EventActivityReportRead.model_validate(r)
             for r in await activity_report_crud.list_all(db, submitted_by_user_id=user.id)
+        ]
+        reprimands = [
+            AdminReprimandRead.model_validate(r)
+            for r in await admin_reprimand_crud.list_for_target(db, target_user_id=user.id)
         ]
 
     regiment_id = None
@@ -316,6 +323,7 @@ async def get_roster_member_detail(
         regiment_name=regiment_name,
         events=events,
         activity_reports=activity_reports,
+        reprimands=reprimands,
     )
 
 

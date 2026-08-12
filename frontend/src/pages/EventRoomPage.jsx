@@ -941,8 +941,12 @@ export function EventRoomPage() {
   const editingEvent = events.find((e) => e.id === editingId);
 
   // Архив — заявки, у которых брифинг уже прошёл (см. решение пользователя);
-  // без даты или в будущем — считаются актуальными
+  // без даты или в будущем — считаются актуальными. Отменённые/отклонённые —
+  // архивируются сразу независимо от даты брифинга: решение уже финальное,
+  // ждать несуществующую/прошедшую дату незачем (баг-репорт: отменённая
+  // заявка без даты брифинга навсегда висела в активном списке).
   function isArchived(ev) {
+    if (ev.status === "cancelled" || ev.status === "rejected") return true;
     const briefingStart = ev.payload?.briefing_start;
     if (!briefingStart) return false;
     return new Date(briefingStart).getTime() < Date.now();

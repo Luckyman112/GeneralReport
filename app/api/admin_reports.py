@@ -58,6 +58,14 @@ def _require_admin_staff(access: AccessContext) -> None:
         raise ForbiddenError("Доступно только персоналу Администрации")
 
 
+def _can_manage_reprimands(access: AccessContext) -> bool:
+    """Выговор — общая нон-РП сущность (см. решение пользователя: "выговоры
+    можно получить как за РП, так и за нон-РП профу"), не только про
+    Администрацию — старший состав Ивентрума тоже должен уметь выдавать их
+    своим (и наоборот, видно/выдаётся из обоих профилей)."""
+    return access.can_decide_admin_report or access.can_decide_event
+
+
 @router.get("", response_model=list[AdminReportRead])
 async def list_admin_reports(
     db: AsyncSession = Depends(get_db),
@@ -332,11 +340,12 @@ async def issue_admin_reprimand(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> AdminReprimandRead:
-    """Выдать выговор Администрации — тот же гейт, что решает отчёты (старший
-    состав), Администрация не привязана к формированию (см. решение
-    пользователя, п.7)."""
-    if not access.can_decide_admin_report:
-        raise ForbiddenError("Выдавать выговоры Администрации может Senior+ или ответственный Middle")
+    """Выдать выговор — общая нон-РП сущность, не только для Администрации:
+    старший состав Ивентрума может выдавать их тоже (см. решение
+    пользователя). Цель не обязана состоять в Администрации/Ивентруме —
+    payload.target_discord_id это вообще любой участник сервера."""
+    if not _can_manage_reprimands(access):
+        raise ForbiddenError("Выдавать выговоры может старший состав Администрации или Ивентрума")
 
     members = await discord_client.fetch_guild_members()
     target = next((m for m in members if m["discord_id"] == payload.target_discord_id), None)
@@ -376,8 +385,8 @@ async def revoke_admin_reprimand(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> None:
-    if not access.can_decide_admin_report:
-        raise ForbiddenError("Снимать выговоры Администрации может Senior+ или ответственный Middle")
+    if not _can_manage_reprimands(access):
+        raise ForbiddenError("Снимать выговоры может старший состав Администрации или Ивентрума")
     reprimand = await admin_reprimand_crud.get_by_id(db, reprimand_id)
     if reprimand is None:
         raise NotFoundError("Выговор не найден")

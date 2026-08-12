@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { AdminMemberDetailModal } from "./AdminMemberDetailModal";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { EventMemberDetailModal } from "./EventMemberDetailModal";
 import { InlineSpinner } from "./InlineSpinner";
+import { PeriodFilterBar } from "./PeriodFilterBar";
 import { SaveBar } from "./SaveBar";
 import { useToast } from "./ToastContext";
 import { StatusBadge } from "./StatusBadge";
 import { useLiveEvents } from "../hooks/useLiveEvents";
+import { usePeriodFilter } from "../hooks/usePeriodFilter";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName, formatFullNameAtRank } from "../utils/formatName";
 import { steamProfileUrl } from "../utils/steam";
@@ -69,11 +73,42 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   const [newBanReason, setNewBanReason] = useState("");
   const [jediTrials, setJediTrials] = useState(null);
 
+  // Переключатель РП -> Администрация/Ивентрум (см. решение пользователя —
+  // раньше свитч работал только в одну сторону, из нон-РП профиля в РП; сам
+  // человек может состоять и там, и там одновременно). Пробуем оба
+  // нон-РП-досье только если у смотрящего вообще есть шанс их увидеть —
+  // иначе не гоняем лишние 403 запросы; null = ещё не знаем/недоступно.
+  const [profileTab, setProfileTab] = useState("rp");
+  const [hasAdminProfile, setHasAdminProfile] = useState(false);
+  const [hasEventProfile, setHasEventProfile] = useState(false);
+
+  useEffect(() => {
+    if (access?.is_admin_staff || access?.is_admin) {
+      api
+        .getAdminRosterMemberDetail(token, member.discord_id)
+        .then(() => setHasAdminProfile(true))
+        .catch(() => setHasAdminProfile(false));
+    }
+    if (access?.can_access_event_room) {
+      api
+        .getEventRosterMemberDetail(token, member.discord_id)
+        .then(() => setHasEventProfile(true))
+        .catch(() => setHasEventProfile(false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, member.discord_id]);
+
+  const reportsPeriod = usePeriodFilter("all");
+  const periodFilteredReports = useMemo(
+    () => reports.filter((r) => reportsPeriod.isInPeriod(r.created_at)),
+    [reports, reportsPeriod]
+  );
+
   // Баллы за рапорт (Report.points) относятся к автору рапорта — для рапортов, где
   // боец лишь указан участником, здесь этой суммы нет (баллы участника хранятся
   // отдельно на ReportParticipant.points, эта ручка их не отдаёт), поэтому в общий
   // итог их не включаем, чтобы не приписывать бойцу чужие баллы за рапорт
-  const totalPoints = reports
+  const totalPoints = periodFilteredReports
     .filter((r) => r.author?.discord_id === member.discord_id)
     .reduce((sum, r) => sum + (r.points ?? 0), 0);
 
@@ -81,7 +116,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   // открывает список рапортов, поданных в этом звании (не показываем все сразу)
   const reportsByRank = useMemo(() => {
     const groups = new Map();
-    for (const r of reports) {
+    for (const r of periodFilteredReports) {
       const key = r.author_rank?.id ?? "none";
       if (!groups.has(key)) {
         groups.set(key, { key, rank: r.author_rank, reports: [] });
@@ -89,7 +124,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
       groups.get(key).reports.push(r);
     }
     return Array.from(groups.values());
-  }, [reports]);
+  }, [periodFilteredReports]);
   const memberReprimands = reprimands.filter((r) => r.target.discord_id === member.discord_id);
   const activeReprimands = memberReprimands.filter((r) => !r.revoked_at);
   const hasActiveReprimand = memberReprimands.some((r) => !r.revoked_at && r.severity !== "verbal");
@@ -427,6 +462,17 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
     }
   }
 
+  if (profileTab === "admin" && hasAdminProfile) {
+    return (
+      <AdminMemberDetailModal discordId={member.discord_id} onClose={() => setProfileTab("rp")} />
+    );
+  }
+  if (profileTab === "event" && hasEventProfile) {
+    return (
+      <EventMemberDetailModal discordId={member.discord_id} onClose={() => setProfileTab("rp")} />
+    );
+  }
+
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -441,6 +487,23 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
         >
           Печать / PDF
         </button>
+        {(hasAdminProfile || hasEventProfile) && (
+          <div className="report-form-actions no-print" style={{ marginBottom: "0.75rem" }}>
+            <button type="button" className="primary">
+              РП
+            </button>
+            {hasAdminProfile && (
+              <button type="button" className="ghost" onClick={() => setProfileTab("admin")}>
+                Администрация
+              </button>
+            )}
+            {hasEventProfile && (
+              <button type="button" className="ghost" onClick={() => setProfileTab("event")}>
+                Ивентрум
+              </button>
+            )}
+          </div>
+        )}
         <div className="member-detail-header">
           {(photoUrl || member.avatar_url) && (
             <img src={photoUrl || member.avatar_url} alt="" className="member-detail-photo" />
@@ -1001,11 +1064,23 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           </ul>
         )}
 
-        <h4>Рапорты {!loading && reports.length > 0 && <span className="category-points-badge">— всего баллов: {totalPoints}</span>}</h4>
+        <h4>Рапорты {!loading && periodFilteredReports.length > 0 && <span className="category-points-badge">— всего баллов: {totalPoints}</span>}</h4>
+        {!loading && reports.length > 0 && (
+          <PeriodFilterBar
+            preset={reportsPeriod.preset}
+            setPreset={reportsPeriod.setPreset}
+            customFrom={reportsPeriod.customFrom}
+            setCustomFrom={reportsPeriod.setCustomFrom}
+            customTo={reportsPeriod.customTo}
+            setCustomTo={reportsPeriod.setCustomTo}
+          />
+        )}
         {loading ? (
           <InlineSpinner />
         ) : reports.length === 0 ? (
           <p className="hint-text">Рапортов нет.</p>
+        ) : periodFilteredReports.length === 0 ? (
+          <p className="hint-text">Рапортов за этот период нет.</p>
         ) : (
           <ul className="rank-accordion">
             {reportsByRank.map((group) => {

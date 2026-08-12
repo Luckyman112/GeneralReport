@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { InlineSpinner } from "./InlineSpinner";
 import { MemberDetailModal } from "./MemberDetailModal";
+import { PeriodFilterBar } from "./PeriodFilterBar";
 import { StatusBadge } from "./StatusBadge";
 import { useToast } from "./ToastContext";
+import { usePeriodFilter } from "../hooks/usePeriodFilter";
 import { formatMskDate } from "../utils/formatDate";
 
 const TABS = [
@@ -35,6 +37,18 @@ export function AdminMemberDetailModal({ discordId, onClose }) {
   const [reprimandReason, setReprimandReason] = useState("");
   const [reprimandSeverity, setReprimandSeverity] = useState("strict");
   const [issuingReprimand, setIssuingReprimand] = useState(false);
+
+  const canManageReprimands = Boolean(access?.can_decide_admin_report || access?.can_decide_event);
+
+  const reportsPeriod = usePeriodFilter("all");
+  const filteredActivityReports = useMemo(
+    () => (detail ? detail.activity_reports.filter((r) => reportsPeriod.isInPeriod(r.created_at)) : []),
+    [detail, reportsPeriod]
+  );
+  const filteredPunishmentReports = useMemo(
+    () => (detail ? detail.punishment_reports.filter((r) => reportsPeriod.isInPeriod(r.created_at)) : []),
+    [detail, reportsPeriod]
+  );
 
   function loadDetail() {
     setLoading(true);
@@ -134,12 +148,23 @@ export function AdminMemberDetailModal({ discordId, onClose }) {
 
             {tab === "admin" && (
               <>
-                <h4>Отчёт деятельности ({detail.activity_reports.length})</h4>
-                {detail.activity_reports.length === 0 ? (
+                {(detail.activity_reports.length > 0 || detail.punishment_reports.length > 0) && (
+                  <PeriodFilterBar
+                    preset={reportsPeriod.preset}
+                    setPreset={reportsPeriod.setPreset}
+                    customFrom={reportsPeriod.customFrom}
+                    setCustomFrom={reportsPeriod.setCustomFrom}
+                    customTo={reportsPeriod.customTo}
+                    setCustomTo={reportsPeriod.setCustomTo}
+                  />
+                )}
+
+                <h4>Отчёт деятельности ({filteredActivityReports.length})</h4>
+                {filteredActivityReports.length === 0 ? (
                   <p className="hint-text">Отчётов нет.</p>
                 ) : (
                   <ul className="member-report-list">
-                    {detail.activity_reports.map((r) => (
+                    {filteredActivityReports.map((r) => (
                       <li key={r.id}>
                         <StatusBadge status={r.status} />
                         <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
@@ -151,12 +176,12 @@ export function AdminMemberDetailModal({ discordId, onClose }) {
                   </ul>
                 )}
 
-                <h4>Отчёт наказаний ({detail.punishment_reports.length})</h4>
-                {detail.punishment_reports.length === 0 ? (
+                <h4>Отчёт наказаний ({filteredPunishmentReports.length})</h4>
+                {filteredPunishmentReports.length === 0 ? (
                   <p className="hint-text">Отчётов нет.</p>
                 ) : (
                   <ul className="member-report-list">
-                    {detail.punishment_reports.map((r) => (
+                    {filteredPunishmentReports.map((r) => (
                       <li key={r.id}>
                         <StatusBadge status={r.status} />
                         <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
@@ -181,7 +206,7 @@ export function AdminMemberDetailModal({ discordId, onClose }) {
                         <span className="report-category">{SEVERITY_LABELS[r.severity] || r.severity}</span>
                         <span className="member-report-date">{formatMskDate(r.issued_at)} МСК</span>
                         <p>{r.reason}</p>
-                        {!r.revoked_at && access?.can_decide_admin_report && (
+                        {!r.revoked_at && canManageReprimands && (
                           <div className="report-form-actions">
                             <button type="button" className="ghost error-text" onClick={() => handleRevokeReprimand(r.id)}>
                               Снять
@@ -193,7 +218,7 @@ export function AdminMemberDetailModal({ discordId, onClose }) {
                   </ul>
                 )}
 
-                {access?.can_decide_admin_report && (
+                {canManageReprimands && (
                   <form className="report-form" onSubmit={handleIssueReprimand}>
                     <h4>Выдать выговор</h4>
                     <label>

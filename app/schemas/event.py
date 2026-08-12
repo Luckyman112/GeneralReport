@@ -4,6 +4,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.event import EventStatus
+from app.schemas.admin_reprimand import AdminReprimandRead
 from app.schemas.event_activity_report import EventActivityReportRead
 from app.schemas.event_message import EventMessageRead
 from app.schemas.rank import RankRead
@@ -114,3 +115,6 @@ class EventMemberDetail(BaseModel):
     regiment_name: str | None = None
     events: list["EventRead"] = Field(default_factory=list)
     activity_reports: list[EventActivityReportRead] = Field(default_factory=list)
+    # Выговоры — общая нон-РП сущность, не только Администрации (см. решение
+    # пользователя: старший состав Ивентрума тоже выдаёт/видит их)
+    reprimands: list[AdminReprimandRead] = Field(default_factory=list)
