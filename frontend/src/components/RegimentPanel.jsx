@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
+import { commanderRoleLabel } from "../utils/regimentRoles";
 import { safeUrl } from "../utils/safeUrl";
 import { EmptyState } from "./EmptyState";
 import { InlineSpinner } from "./InlineSpinner";
@@ -130,19 +131,32 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
   const inactiveCount = members.filter((m) => m.is_inactive).length;
   const visibleMembers = showInactive ? members : members.filter((m) => !m.is_inactive);
 
-  // Командир формирования — отдельной группой сверху независимо от звания (даже
-  // если он, например, сержант) — не теряется среди обычного состава своего
-  // тира (см. решение пользователя)
-  const commanderDiscordId = useMemo(
-    () => commanders.find((c) => c.role_type === "commander")?.discord_id ?? null,
+  // Командование формирования (командир/заместитель/наставник) — отдельной
+  // группой сверху независимо от звания (даже если, например, сержант) — не
+  // теряются среди обычного состава своего тира, каждый подписан ролью (см.
+  // решение пользователя — раньше вытаскивался только командир, зам/наставник
+  // оставались похоронены в обычном тире без подписи).
+  const LEADERSHIP_ORDER = { commander: 0, deputy: 1, mentor: 2 };
+  const leadership = useMemo(
+    () =>
+      commanders
+        .filter((c) => c.role_type in LEADERSHIP_ORDER)
+        .slice()
+        .sort((a, b) => LEADERSHIP_ORDER[a.role_type] - LEADERSHIP_ORDER[b.role_type]),
     [commanders]
   );
 
   const groups = useMemo(() => {
-    const commanderMember = commanderDiscordId
-      ? visibleMembers.find((m) => m.discord_id === commanderDiscordId)
-      : null;
-    const rest = commanderMember ? visibleMembers.filter((m) => m.discord_id !== commanderDiscordId) : visibleMembers;
+    const leadershipDiscordIds = new Set(leadership.map((c) => c.discord_id));
+    const leadershipMembers = leadership
+      .map((c) => {
+        const member = visibleMembers.find((m) => m.discord_id === c.discord_id);
+        return member
+          ? { ...member, roleLabel: commanderRoleLabel(c.role_type, currentRegiment?.is_jedi_order) }
+          : null;
+      })
+      .filter(Boolean);
+    const rest = visibleMembers.filter((m) => !leadershipDiscordIds.has(m.discord_id));
 
     const byTier = new Map();
     for (const m of rest) {
@@ -164,11 +178,11 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
       ordered.push({ title: NO_RANK_GROUP, members: byTier.get(NO_RANK_GROUP) });
     }
 
-    if (commanderMember) {
-      ordered.unshift({ title: "Командование", members: [commanderMember] });
+    if (leadershipMembers.length > 0) {
+      ordered.unshift({ title: "Командование", members: leadershipMembers });
     }
     return ordered;
-  }, [visibleMembers, tiers, commanderDiscordId]);
+  }, [visibleMembers, tiers, leadership, currentRegiment]);
 
   return (
     <div className="regiment-panel">
@@ -231,6 +245,7 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
                             <span style={regimentColor ? { color: regimentColor } : undefined}>
                               {formatFullName(m)}
                             </span>
+                            {m.roleLabel && <span className="squad-badge">{m.roleLabel}</span>}
                             {m.jedi_title && <span className="squad-badge">{m.jedi_title.code}</span>}
                             {m.is_inactive && <span className="member-inactive-badge">разжалован</span>}
                             {m.registration_status === "rejected" && (
