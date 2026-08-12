@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -32,11 +31,6 @@ class EventBookingCreate(BaseModel):
     title: str
     starts_at: datetime
     ends_at: datetime
-
-
-class EventBookingDecide(BaseModel):
-    status: Literal["approved", "rejected"]
-    rejection_reason: str | None = None
 
 
 class EventBookingCancelRequest(BaseModel):

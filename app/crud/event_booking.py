@@ -52,25 +52,20 @@ async def list_for_user(
 async def create(
     db: AsyncSession, *, title: str, starts_at: datetime, ends_at: datetime, requested_by_user_id: int
 ) -> EventBooking:
-    row = EventBooking(title=title, starts_at=starts_at, ends_at=ends_at, requested_by_user_id=requested_by_user_id)
+    # Бронь сразу approved — одобрение убрано как отдельный шаг (см. решение
+    # пользователя): overlap-check в create_booking (app/api/event_bookings.py)
+    # уже не пускает пересекающиеся брони, дальше решать нечего. decided_by/
+    # decided_at остаются пустыми — это не решение живого человека.
+    row = EventBooking(
+        title=title,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        requested_by_user_id=requested_by_user_id,
+        status=EventBookingStatus.APPROVED,
+    )
     db.add(row)
     await db.commit()
     return await db.get(EventBooking, row.id, options=_LOAD_OPTIONS, populate_existing=True)
-
-
-async def decide(
-    db: AsyncSession, booking: EventBooking, *, approve: bool, decided_by_user_id: int, rejection_reason: str | None = None
-) -> EventBooking:
-    # Защита от повторного решения (двойной клик/повтор запроса) — см.
-    # app/crud/event.py::decide и promotion_crud.decide, тот же паттерн
-    if booking.status != EventBookingStatus.PENDING:
-        raise AppError("Бронь уже решена — повторное решение по ней невозможно")
-    booking.status = EventBookingStatus.APPROVED if approve else EventBookingStatus.REJECTED
-    booking.decided_by_user_id = decided_by_user_id
-    booking.decided_at = datetime.now(timezone.utc)
-    booking.rejection_reason = rejection_reason
-    await db.commit()
-    return await db.get(EventBooking, booking.id, options=_LOAD_OPTIONS, populate_existing=True)
 
 
 async def cancel(db: AsyncSession, booking: EventBooking, *, cancelled_by_user_id: int, reason: str | None) -> EventBooking:

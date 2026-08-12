@@ -31,9 +31,10 @@ function formatDayLabel(d) {
   return `${d.getDate()} ${MONTH_NAMES[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
 }
 
-/** Календарь бронирования дат/времени под ивенты — до проведения слот нужно
- * забронировать, одобряет Ассистент/Куратор ивентологии (см. решение
- * пользователя), чтобы брони не пересекались. */
+/** Календарь бронирования дат/времени под ивенты — бронь занимает слот сразу,
+ * без отдельного одобрения (см. решение пользователя, отдельный шаг решения
+ * убран); overlap-check на сервере не даёт двум ивентологам забронировать
+ * пересекающееся время. */
 export function EventBookingCalendar() {
   const { token, user, access } = useAuth();
   const showToast = useToast();
@@ -41,10 +42,10 @@ export function EventBookingCalendar() {
   const [bookings, setBookings] = useState([]);
   // Отдельно от bookings (та привязана к текущему отображаемому месяцу
   // календаря) — широкое окно на год вперёд, НЕ зависящее от того, какой
-  // месяц сейчас пролистан. Без этого "Ожидают решения"/"Одобренные брони"/
-  // "Мои брони" были видны только если решающий/автор случайно смотрели тот
-  // же месяц, что и дата брони — баг-репорт: бронь "не видна" ни автору, ни
-  // Асику+, хотя реально была создана (просто в другом месяце).
+  // месяц сейчас пролистан. Без этого "Одобренные брони"/"Мои брони" были
+  // видны только если смотрящий случайно открыл тот же месяц, что и дата
+  // брони — баг-репорт: бронь "не видна", хотя реально была создана (просто
+  // в другом месяце).
   const [upcomingBookings, setUpcomingBookings] = useState([]);
   const [error, setError] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -152,7 +153,7 @@ export function EventBookingCalendar() {
         startsAt: new Date(startsAt).toISOString(),
         endsAt: new Date(endsAt).toISOString(),
       });
-      showToast("Бронь отправлена на одобрение");
+      showToast("Время забронировано");
       setSelectedDate(null);
       load();
       loadUpcoming();
@@ -161,17 +162,6 @@ export function EventBookingCalendar() {
       showToast(err.message, "error");
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handleDecide(bookingId, status) {
-    try {
-      await api.decideEventBooking(token, bookingId, { status });
-      showToast(status === "approved" ? "Бронь одобрена" : "Бронь отклонена");
-      load();
-      loadUpcoming();
-    } catch (e) {
-      showToast(e.message, "error");
     }
   }
 
@@ -294,34 +284,6 @@ export function EventBookingCalendar() {
                   {b.status === "rejected" && b.rejection_reason && (
                     <p className="report-rejection-reason">Причина отклонения: {b.rejection_reason}</p>
                   )}
-                </li>
-              ))}
-          </ul>
-        </>
-      )}
-
-      {access?.can_decide_event && upcomingBookings.some((b) => b.status === "pending") && (
-        <>
-          <h4>Ожидают решения</h4>
-          <ul className="member-report-list">
-            {upcomingBookings
-              .filter((b) => b.status === "pending")
-              .map((b) => (
-                <li key={b.id}>
-                  <span className="member-report-date">
-                    {formatMskDate(b.starts_at)} — {formatMskDate(b.ends_at)} МСК
-                  </span>
-                  <p className="member-report-content">
-                    {b.title} — запросил {b.requested_by?.nickname_override || b.requested_by?.username}
-                  </p>
-                  <div className="report-form-actions">
-                    <button type="button" onClick={() => handleDecide(b.id, "approved")}>
-                      Одобрить
-                    </button>
-                    <button type="button" className="ghost error-text" onClick={() => handleDecide(b.id, "rejected")}>
-                      Отклонить
-                    </button>
-                  </div>
                 </li>
               ))}
           </ul>

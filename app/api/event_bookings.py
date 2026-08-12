@@ -1,6 +1,7 @@
 """Календарь бронирования дат/времени под ивенты — до проведения слот нужно
-занять, одобряет Ассистент/Куратор ивентологии (см. решение пользователя),
-чтобы два ивентолога не забронировали пересекающееся время."""
+занять; бронь сразу одобрена (см. решение пользователя — отдельный шаг
+одобрения убран), а overlap-check не пускает два ивентолога забронировать
+пересекающееся время."""
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -12,7 +13,7 @@ from app.crud import audit_log as audit_log_crud
 from app.crud import event_booking as event_booking_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
-from app.schemas.event_booking import EventBookingCancelRequest, EventBookingCreate, EventBookingDecide, EventBookingRead
+from app.schemas.event_booking import EventBookingCancelRequest, EventBookingCreate, EventBookingRead
 
 logger = logging.getLogger(__name__)
 
@@ -84,36 +85,6 @@ async def create_booking(
         details=f"Бронь {booking.id} ({payload.title})",
     )
     return EventBookingRead.model_validate(booking)
-
-
-@router.patch("/{booking_id}", response_model=EventBookingRead)
-async def decide_booking(
-    booking_id: int,
-    payload: EventBookingDecide,
-    db: AsyncSession = Depends(get_db),
-    access: AccessContext = Depends(get_access_context),
-) -> EventBookingRead:
-    if not access.can_decide_event:
-        raise ForbiddenError("Одобрять брони может Ассистент/Куратор ивентологии")
-    booking = await event_booking_crud.get_by_id(db, booking_id)
-    if booking is None:
-        raise NotFoundError("Бронь не найдена")
-    updated = await event_booking_crud.decide(
-        db,
-        booking,
-        approve=payload.status == "approved",
-        decided_by_user_id=access.user.id,
-        rejection_reason=payload.rejection_reason,
-    )
-    logger.info("%s решил по брони %s: %s", access.user.username, booking_id, payload.status)
-    await audit_log_crud.log(
-        db,
-        actor_user_id=access.user.id,
-        actor_is_admin=access.is_admin,
-        action="event_booking_decide",
-        details=f"Бронь {booking_id} ({booking.title}) -> {payload.status}",
-    )
-    return EventBookingRead.model_validate(updated)
 
 
 @router.post("/{booking_id}/cancel", response_model=EventBookingRead)

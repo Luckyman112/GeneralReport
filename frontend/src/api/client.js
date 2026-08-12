@@ -809,12 +809,6 @@ export const api = {
       token,
       body: { title, starts_at: startsAt, ends_at: endsAt },
     }),
-  decideEventBooking: (token, bookingId, { status, rejectionReason }) =>
-    request(`/api/event-bookings/${bookingId}`, {
-      method: "PATCH",
-      token,
-      body: { status, rejection_reason: rejectionReason || null },
-    }),
   cancelEventBooking: (token, bookingId, reason) =>
     request(`/api/event-bookings/${bookingId}/cancel`, { method: "POST", token, body: { reason: reason || null } }),
 
