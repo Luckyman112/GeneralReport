@@ -672,6 +672,114 @@ position badge, `SettingsPage.jsx` role-config card header) to avoid clashing
 with the new "Администрация" name — `is_admin`/`admin_role_id`/error-message
 strings deliberately untouched (explicit user decision, minimal-diff option).
 
+### Ивентрум/Администрация batch (2026-08): booking auto-approve, activity trends, archives, RP-profile switch, reprimands
+
+Nine-stage batch, each stage independently committed/pushed. Together they
+established several new reusable patterns:
+
+- **`EventBooking` no longer needs approval** — `event_booking_crud.create`
+  sets `status=APPROVED` directly (was `PENDING`); the overlap check alone
+  prevents double-booking. `EventBookingDecide`/`decide()`/`PATCH
+  /event-bookings/{id}` were removed as dead code — a booking can now only be
+  cancelled (`POST .../cancel`), never explicitly approved/rejected.
+- **Archive-as-collapsible-strip, two variants of the same idea** — Ивентрум
+  (`EventRoomPage.jsx`) wraps each archived `EventRow` in its own `<details
+  className="event-archive-strip">` (one strip per item, title+time summary);
+  Администрация (`AdminStaffPage.jsx`) instead wraps the WHOLE archived list
+  in a single `<details>` labeled "Архив (N)" (one strip total). Both reuse
+  the same `.event-archive-strip`/`.event-archive-list` CSS (visually generic
+  despite the `event-` prefix in the class name — not renamed to keep the
+  diff minimal). Администрация's archive cutoff is 14 days since
+  `decided_at` on a resolved (`approved`/`rejected`) report — `pending` never
+  archives; it's pure frontend filtering, no backend change.
+- **`TrendChart` (existing component) now also drives an activity graph with
+  its own independent period state** — `ActivityTrendPanel.jsx` (Неделя/
+  Месяц/Свои даты) is used identically in `EventRoomPage.jsx`'s `RosterPanel`
+  and `AdminStaffPage.jsx`. Deliberately NOT wired to the existing
+  week/month/all `PERIOD_OPTIONS` selector that already drives the roster
+  table/bars — that selector's fields (`mini_count_week` etc.) are
+  pre-computed fixed windows on the backend and can't retroactively serve an
+  arbitrary custom date range, so a genuinely separate period control was the
+  only option. Backend: `daily_type_counts(db, *, since, until)` in both
+  `event_activity_report_crud` and `admin_report_crud` (`GROUP BY
+  to_char(created_at, 'YYYY-MM-DD'), <type column>`, APPROVED only) feeds
+  `GET /event-room/roster/trend` / `GET /admin-reports/activity-trend` —
+  both always emit the FULL day range (including zero-activity days), same
+  precedent as `stats.py::get_formation_stats`.
+- **`AdminMemberDetailModal.jsx`** (new) — click a username in Администрация's
+  "Сводка активности" to open a досье with an Администрация/РП tab switch.
+  "Администрация" tab shows rapports (split `activity_reports`/
+  `punishment_reports`) + reprimand history, backed by `GET
+  /admin-reports/roster/{discord_id}` (mirrors `event_room.py`'s
+  `get_roster_member_detail`). "РП" tab, if `regiment_id` resolved (see
+  below), hands off ENTIRELY to the existing `MemberDetailModal` — that
+  component's own `onClose` is wired to flip the tab back to "Администрация"
+  rather than closing the whole thing, since `MemberDetailModal` renders as
+  its own independent portal/overlay, not something nested visually inside
+  the parent modal. `EventMemberDetailModal.jsx` got the identical
+  Ивентрум/РП switch retrofitted (same tab-swap-via-onClose trick). Both
+  `AdminMemberDetail`/`EventMemberDetail` schemas gained `regiment_id`/
+  `regiment_name`, resolved via the pre-existing
+  `regiment_crud.resolve_regiments_for_discord_ids` (previously only used for
+  joint-report participant resolution) — first non-null regiment wins, since
+  Администрация/Ивентрум membership has no inherent tie to exactly one RP
+  formation.
+- **`AdminReprimand`** (`app/models/admin_reprimand.py`, migration 0092) — a
+  deliberately separate table from `app/models/reprimand.py::Reprimand`, not
+  a reuse: `Reprimand.regiment_id` is a non-nullable FK and its permission
+  gate (`_is_commander_anywhere`/`can_reprimand`) is RegimentCommander-based,
+  neither of which fits Администрация (not tied to one formation). No
+  `points_required`/`auto_escalated` either — that machinery depended on a
+  formation's report-points system, which doesn't exist here. Just
+  `target_user_id, reason, severity (verbal|strict), issued_by_user_id,
+  issued_at, revoked_at, revoked_by_user_id`; issue/revoke gated on
+  `access.can_decide_admin_report`; revoke has the same
+  already-revoked-raises guard as `reprimand_crud.revoke`. Surfaced as an
+  `active_reprimand_count` badge in `AdminActivitySummaryEntry` and full
+  history in `AdminMemberDetail.reprimands`.
+- **Punishment report target field** (`AdminStaffPage.jsx`'s
+  `PUNISHMENT_FIELDS`) is an optional `MemberSearchPicker` sourced from a new
+  `GET /admin-reports/member-candidates` (copy of
+  `event_room.py::get_member_candidates` — whole live guild roster, not
+  scoped to one formation) rather than the existing
+  `getViolationTargetCandidates` (which IS formation-scoped and wouldn't fit
+  — a punishment target can be anyone). Stores `punishment_target_discord_id`
+  + `punishment_target` (display username) in the freeform `payload`;
+  `punishment_target_discord_id` is excluded from the generic
+  payload-key-dump rendering in the report list (same exclusion list as
+  `attachment_url`) so it doesn't show as a second raw-ID line under the
+  human-readable name.
+- **`admin_report_crud.decide` asymmetric guard** — changed from blocking
+  ANY re-decision of a non-pending report to the same `was_approved` pattern
+  `update_report_status` (`app/api/reports.py`) already used: only
+  re-*approving* an already-approved report is blocked; rejecting an
+  already-approved one (Senior+ changed their mind) is always allowed, and so
+  is re-deciding an already-rejected one in either direction — the reference
+  pattern doesn't block those either. `AdminStaffPage.jsx` grew a second
+  action row ("Отклонить (передумали)") that appears on `approved` rows.
+- **`RegimentPanel.jsx`'s "Командование" group** now pulls in commander
+  **and** deputy **and** mentor (previously only `role_type === "commander"`
+  — deputy/mentor were silently left buried, unlabeled, in their normal
+  rank-tier group). Each row gets a `roleLabel` (via the existing
+  `commanderRoleLabel(roleType, isJediOrder)`) rendered as a `.squad-badge`
+  next to the name; group order is always Командир → Заместитель →
+  Наставник. A leadership member who hasn't completed site registration
+  still renders (with the pre-existing "не зарегистрирован" badge) — this
+  was the original bug report, an anonymous unlabeled row with no indication
+  of which leadership seat it was.
+
+**Gotcha hit while testing this batch**: `app_settings_crud.get()` caches the
+singleton `AppSettings` row in a 30s in-process memory cache
+(`_cached_row`/`_cached_at` module globals, see the docstring above `get()`).
+Mutating the row directly via `db.get(AppSettings, id)` + `setattr` +
+`commit()` (bypassing `app_settings_crud.update()`, which correctly calls the
+private `_remember()` refresher) leaves the cache stale for up to 30s —
+reads through `get()` (which is what every permission/role check in the app
+uses) silently keep returning the old values. Relevant any time role-id
+config is changed outside the normal `update()` path (test scripts,
+one-off DB fixes) — either go through `update()` or reset
+`app_settings_crud._cached_row = None` afterward.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
