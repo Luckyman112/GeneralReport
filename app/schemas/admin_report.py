@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.admin_report import AdminReportStatus
+from app.schemas.admin_reprimand import AdminReprimandRead
 from app.schemas.user import UserBrief
 
 AdminReportType = Literal["activity", "punishment"]
@@ -52,6 +53,8 @@ class AdminActivitySummaryEntry(BaseModel):
     punishment_count_month: int
     punishment_count_all_time: int
     last_report_at: datetime | None = None
+    # Активные (не снятые) выговоры — бейдж в сводке (см. решение пользователя, п.7)
+    active_reprimand_count: int = 0
 
 
 class AdminMemberDetail(BaseModel):
@@ -68,6 +71,7 @@ class AdminMemberDetail(BaseModel):
     regiment_name: str | None = None
     activity_reports: list[AdminReportRead] = Field(default_factory=list)
     punishment_reports: list[AdminReportRead] = Field(default_factory=list)
+    reprimands: list[AdminReprimandRead] = Field(default_factory=list)
 
 
 class AdminActivityTrendSeries(BaseModel):

@@ -5,12 +5,15 @@ import { useAuth } from "../auth/AuthContext";
 import { InlineSpinner } from "./InlineSpinner";
 import { MemberDetailModal } from "./MemberDetailModal";
 import { StatusBadge } from "./StatusBadge";
+import { useToast } from "./ToastContext";
 import { formatMskDate } from "../utils/formatDate";
 
 const TABS = [
   { key: "admin", label: "Администрация" },
   { key: "rp", label: "РП" },
 ];
+
+const SEVERITY_LABELS = { verbal: "Устный", strict: "Строгий" };
 
 /** Досье администратора по клику на ник в сводке активности — рапорта
  * (раздельно деятельность/наказания) + переключатель на РП-профиль, если
@@ -20,7 +23,8 @@ const TABS = [
  * целиком (не дублирует его логику) — свой "Закрыть" внутри неё возвращает на
  * вкладку "Администрация", а не закрывает всё окно. */
 export function AdminMemberDetailModal({ discordId, onClose }) {
-  const { token } = useAuth();
+  const { token, access } = useAuth();
+  const showToast = useToast();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -28,15 +32,54 @@ export function AdminMemberDetailModal({ discordId, onClose }) {
   const [rpMember, setRpMember] = useState(null);
   const [rpError, setRpError] = useState(null);
 
-  useEffect(() => {
+  const [reprimandReason, setReprimandReason] = useState("");
+  const [reprimandSeverity, setReprimandSeverity] = useState("strict");
+  const [issuingReprimand, setIssuingReprimand] = useState(false);
+
+  function loadDetail() {
     setLoading(true);
     setError(null);
-    api
+    return api
       .getAdminRosterMemberDetail(token, discordId)
       .then(setDetail)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, discordId]);
+
+  async function handleIssueReprimand(e) {
+    e.preventDefault();
+    if (!reprimandReason.trim()) return;
+    setIssuingReprimand(true);
+    try {
+      await api.issueAdminReprimand(token, {
+        targetDiscordId: discordId,
+        reason: reprimandReason.trim(),
+        severity: reprimandSeverity,
+      });
+      setReprimandReason("");
+      showToast("Выговор выдан");
+      loadDetail();
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setIssuingReprimand(false);
+    }
+  }
+
+  async function handleRevokeReprimand(reprimandId) {
+    try {
+      await api.revokeAdminReprimand(token, reprimandId);
+      showToast("Выговор снят");
+      loadDetail();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  }
 
   useEffect(() => {
     if (tab !== "rp" || !detail?.regiment_id || rpMember || rpError) return;
@@ -123,6 +166,57 @@ export function AdminMemberDetailModal({ discordId, onClose }) {
                       </li>
                     ))}
                   </ul>
+                )}
+
+                <h4>Выговоры ({detail.reprimands.length})</h4>
+                {detail.reprimands.length === 0 ? (
+                  <p className="hint-text">Выговоров нет.</p>
+                ) : (
+                  <ul className="member-report-list">
+                    {detail.reprimands.map((r) => (
+                      <li key={r.id}>
+                        <span className={`status-badge ${r.revoked_at ? "status-rejected" : "status-approved"}`}>
+                          {r.revoked_at ? "Снят" : "Активен"}
+                        </span>
+                        <span className="report-category">{SEVERITY_LABELS[r.severity] || r.severity}</span>
+                        <span className="member-report-date">{formatMskDate(r.issued_at)} МСК</span>
+                        <p>{r.reason}</p>
+                        {!r.revoked_at && access?.can_decide_admin_report && (
+                          <div className="report-form-actions">
+                            <button type="button" className="ghost error-text" onClick={() => handleRevokeReprimand(r.id)}>
+                              Снять
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {access?.can_decide_admin_report && (
+                  <form className="report-form" onSubmit={handleIssueReprimand}>
+                    <h4>Выдать выговор</h4>
+                    <label>
+                      Причина
+                      <textarea
+                        value={reprimandReason}
+                        onChange={(e) => setReprimandReason(e.target.value)}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Тип
+                      <select value={reprimandSeverity} onChange={(e) => setReprimandSeverity(e.target.value)}>
+                        <option value="strict">Строгий</option>
+                        <option value="verbal">Устный</option>
+                      </select>
+                    </label>
+                    <div className="report-form-actions">
+                      <button className="primary" type="submit" disabled={issuingReprimand}>
+                        Выдать
+                      </button>
+                    </div>
+                  </form>
                 )}
               </>
             )}

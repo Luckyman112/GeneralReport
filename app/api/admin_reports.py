@@ -14,6 +14,7 @@ from app.api.deps import AccessContext, get_access_context
 from app.core import discord_client
 from app.core.uploads import read_file_upload, read_image_upload
 from app.crud import admin_report as admin_report_crud
+from app.crud import admin_reprimand as admin_reprimand_crud
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import regiment as regiment_crud
@@ -29,6 +30,7 @@ from app.schemas.admin_report import (
     AdminReportDecide,
     AdminReportRead,
 )
+from app.schemas.admin_reprimand import AdminReprimandCreate, AdminReprimandRead
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +216,7 @@ async def get_activity_summary(
 
     user_ids = [user_by_discord_id[m["discord_id"]].id for m, _ in staff_members if m["discord_id"] in user_by_discord_id]
     stats_by_user_id = await admin_report_crud.activity_summary_for_user_ids(db, user_ids)
+    active_reprimands_by_user_id = await admin_reprimand_crud.count_active_for_user_ids(db, user_ids)
 
     entries = []
     for member, rank_code in staff_members:
@@ -232,6 +235,7 @@ async def get_activity_summary(
                 punishment_count_month=stats["punishment_count_month"] if stats else 0,
                 punishment_count_all_time=stats["punishment_count_all_time"] if stats else 0,
                 last_report_at=stats["last_report_at"] if stats else None,
+                active_reprimand_count=active_reprimands_by_user_id.get(user.id, 0) if user else 0,
             )
         )
     return entries
@@ -274,10 +278,14 @@ async def get_admin_roster_member_detail(
     user = await user_crud.get_by_discord_id_with_rank(db, discord_id)
     activity_reports: list[AdminReportRead] = []
     punishment_reports: list[AdminReportRead] = []
+    reprimands: list[AdminReprimandRead] = []
     if user is not None:
         reports = await admin_report_crud.list_all(db, submitted_by_user_id=user.id)
         activity_reports = [AdminReportRead.model_validate(r) for r in reports if r.report_type == "activity"]
         punishment_reports = [AdminReportRead.model_validate(r) for r in reports if r.report_type == "punishment"]
+        reprimands = [
+            AdminReprimandRead.model_validate(r) for r in await admin_reprimand_crud.list_for_target(db, target_user_id=user.id)
+        ]
 
     regiment_id = None
     regiment_name = None
@@ -298,4 +306,72 @@ async def get_admin_roster_member_detail(
         regiment_name=regiment_name,
         activity_reports=activity_reports,
         punishment_reports=punishment_reports,
+        reprimands=reprimands,
+    )
+
+
+@router.post("/reprimands", response_model=AdminReprimandRead, status_code=201)
+async def issue_admin_reprimand(
+    payload: AdminReprimandCreate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> AdminReprimandRead:
+    """Выдать выговор Администрации — тот же гейт, что решает отчёты (старший
+    состав), Администрация не привязана к формированию (см. решение
+    пользователя, п.7)."""
+    if not access.can_decide_admin_report:
+        raise ForbiddenError("Выдавать выговоры Администрации может Senior+ или ответственный Middle")
+
+    members = await discord_client.fetch_guild_members()
+    target = next((m for m in members if m["discord_id"] == payload.target_discord_id), None)
+    if target is None:
+        raise NotFoundError("Участник не найден на сервере")
+
+    target_user = await user_crud.get_by_discord_id(db, payload.target_discord_id)
+    if target_user is None:
+        target_user = await user_crud.update_profile(
+            db, discord_id=payload.target_discord_id, fallback_username=target["username"], changes={}
+        )
+
+    reprimand = await admin_reprimand_crud.create(
+        db,
+        target_user_id=target_user.id,
+        reason=payload.reason,
+        severity=payload.severity,
+        issued_by_user_id=access.user.id,
+    )
+    logger.info(
+        "%s выдал %s выговор Администрации участнику %s: %s",
+        access.user.username, payload.severity, target["username"], payload.reason,
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="admin_reprimand_issue",
+        details=f"Выдал {payload.severity} выговор Администрации {target['username']} ({payload.reason})",
+    )
+    return AdminReprimandRead.model_validate(reprimand)
+
+
+@router.delete("/reprimands/{reprimand_id}", status_code=204)
+async def revoke_admin_reprimand(
+    reprimand_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> None:
+    if not access.can_decide_admin_report:
+        raise ForbiddenError("Снимать выговоры Администрации может Senior+ или ответственный Middle")
+    reprimand = await admin_reprimand_crud.get_by_id(db, reprimand_id)
+    if reprimand is None:
+        raise NotFoundError("Выговор не найден")
+
+    await admin_reprimand_crud.revoke(db, reprimand, revoked_by_user_id=access.user.id)
+    logger.info("%s снял выговор Администрации %s", access.user.username, reprimand_id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="admin_reprimand_revoke",
+        details=f"Снял выговор Администрации #{reprimand_id}",
     )

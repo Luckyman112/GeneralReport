@@ -249,6 +249,7 @@ export function AdminStaffPage() {
                 <th>Должность</th>
                 <th>Деятельность (7д / 30д / всего)</th>
                 <th>Наказания (7д / 30д / всего)</th>
+                <th>Выговоры</th>
                 <th>Последний отчёт</th>
               </tr>
             </thead>
@@ -266,6 +267,13 @@ export function AdminStaffPage() {
                   </td>
                   <td className="mono-num">
                     {s.punishment_count_week} / {s.punishment_count_month} / {s.punishment_count_all_time}
+                  </td>
+                  <td>
+                    {s.active_reprimand_count > 0 ? (
+                      <span className="status-badge status-rejected">{s.active_reprimand_count}</span>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td>{s.last_report_at ? `${formatMskDate(s.last_report_at)} МСК` : "—"}</td>
                 </tr>

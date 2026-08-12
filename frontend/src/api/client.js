@@ -832,6 +832,14 @@ export const api = {
   },
   getAdminActivitySummary: (token) => request("/api/admin-reports/activity-summary", { token }),
   getAdminRosterMemberDetail: (token, discordId) => request(`/api/admin-reports/roster/${discordId}`, { token }),
+  issueAdminReprimand: (token, { targetDiscordId, reason, severity }) =>
+    request("/api/admin-reports/reprimands", {
+      method: "POST",
+      token,
+      body: { target_discord_id: targetDiscordId, reason, severity },
+    }),
+  revokeAdminReprimand: (token, reprimandId) =>
+    request(`/api/admin-reports/reprimands/${reprimandId}`, { method: "DELETE", token }),
   getAdminActivityTrend: (token, { since, until }) =>
     request(`/api/admin-reports/activity-trend?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, {
       token,
