@@ -630,6 +630,23 @@ const MESSAGE_STATUS_LABELS = {
   rejected: "Отклонено",
 };
 
+/** Архивная заявка — свёрнута в одну строку (название + время брифинга),
+ * весь функционал (карточка/дозаполнить/отменить/сообщения) доступен по
+ * клику разворачиванием, а не сразу — см. решение пользователя: архив не
+ * должен выглядеть так же тяжело, как активный список. */
+function ArchivedEventRow(props) {
+  const { ev } = props;
+  return (
+    <details className="event-archive-strip">
+      <summary>
+        <span className="event-archive-strip-title">{ev.title}</span>
+        <span className="event-archive-strip-time">{formatMskDate(ev.payload?.briefing_start)} МСК</span>
+      </summary>
+      <EventRow {...props} />
+    </details>
+  );
+}
+
 function EventRow({ ev, user, canDecide, onEdit, onCancel, onSubmitMessage, onDecideMessage, onSendMessage }) {
   return (
     <div className="report-row">
@@ -1142,9 +1159,9 @@ export function EventRoomPage() {
                 <summary>
                   Архив <span className="category-points-badge">{archivedEvents.length}</span>
                 </summary>
-                <div className="report-list">
+                <div className="event-archive-list">
                   {archivedEvents.map((ev) => (
-                    <EventRow
+                    <ArchivedEventRow
                       key={ev.id}
                       ev={ev}
                       user={user}
