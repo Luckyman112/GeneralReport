@@ -191,11 +191,16 @@ formation up front — `RECRUIT_REGIMENT_NAME` constant (`app/crud/regiment.py`,
 resolved to an id and cached per-request as `AccessContext.recruit_regiment_id`,
 computed in `_compute_permission_fields`/`app/api/deps.py`). Three places key off it,
 each a narrow carve-out rather than a broad permission change:
-- `POST /me/registration` (`app/api/registration.py`) best-effort assigns the regiment's
-  Discord role via `discord_client.add_member_role` — the only *write* call in
-  `discord_client.py` (everything else there is GET); never blocks registration if it
-  fails (missing bot permission/role hierarchy is a Discord-server config issue, not
-  something to surface as a 500).
+- `POST /me/registration` (`app/api/registration.py`) used to best-effort assign the
+  17th's Discord role via `discord_client.add_member_role` on every submission,
+  regardless of whether the registrant already held another formation's role —
+  removed (see решение пользователя): Discord roles are already synced from the
+  in-game state by a separate mechanism outside this app, and this auto-grant was
+  stacking the 17th's role on top of a real formation role, producing the
+  two-formation-roles state `hasRoleConflict` (`App.jsx`) exists to catch.
+  `discord_client.py` is now fully read-only (no write calls at all) — membership
+  in the 17th (and every other regiment) is entirely driven by whatever Discord role
+  the external sync/staff assign, same as any other formation.
 - `ReportCategory.is_recruit_promotion` ("Курс молодого бойца") — any CPL+ (via
   `min_rank_id`), regardless of their own regiment, can file it against a recruit;
   auto-approves on submit like `is_training`, but instead of granting a specialization
