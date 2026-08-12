@@ -11,6 +11,7 @@ class EventStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    CANCELLED = "cancelled"
 
 
 class Event(Base):
@@ -42,9 +43,15 @@ class Event(Base):
     # одобрения бот РЕДАКТИРУЕТ это же сообщение вместо отправки нового (см.
     # решение пользователя); канал берётся из текущих настроек, не хранится тут
     discord_message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # отмена уже одобренной заявки (см. решение пользователя) — отдельные поля
+    # от decided_by/decided_at, чтобы не терять, кто и когда изначально одобрил
+    cancelled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     submitted_by: Mapped["User"] = relationship(foreign_keys=[submitted_by_user_id])
     decided_by: Mapped["User | None"] = relationship(foreign_keys=[decided_by_user_id])
+    cancelled_by: Mapped["User | None"] = relationship(foreign_keys=[cancelled_by_user_id])
 
 
 class EventMap(Base):
@@ -52,17 +59,13 @@ class EventMap(Base):
     Ассистент/Куратор ивентологии (см. решение пользователя).
 
     url — ссылка на карту, вставляется как гиперссылка в поле "Карта" карточки
-    в Discord. planet_name/landscape/weather/star_system — необязательная
-    справочная информация о планете, в саму карточку НЕ попадает — идёт
-    отдельным текстом в теле сообщения (см. app/api/event_room.py::_planet_info_text,
-    решение пользователя)."""
+    в Discord. Информация о планете (название/система/ландшафт/погода/флора и
+    фауна) раньше жила здесь, на карте — переехала в саму заявку на ивент
+    (Event.payload), потому что планета привязана к конкретному ивенту, а не
+    к переиспользуемой карте (см. решение пользователя)."""
 
     __tablename__ = "event_maps"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    planet_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    landscape: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    weather: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    star_system: Mapped[str | None] = mapped_column(String(255), nullable=True)

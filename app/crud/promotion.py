@@ -533,10 +533,15 @@ async def update_mandatory_category_requirement(
     if not rows:
         return []
 
-    for row in rows:
-        row.rank_id = rank_id
-        row.count_required = count_required
-
+    # Существующие категории переименовываются по category_id (не по имени) и
+    # СНАЧАЛА, до бэкфилла новых формирований ниже — по имени, до этого шага,
+    # искать было бы нечего под новым именем, и get_or_create_in_all_regiments
+    # создал бы под ним ДУБЛИКАТ, а старая категория осталась бы непереименованной
+    # (или, того хуже, переименование в неё после наткнулось бы на IntegrityError
+    # уникального индекса (regiment_id, name) из-за уже созданного дубликата —
+    # баг-репорт при разработке). flush(), не commit() — изменения должны быть
+    # видны следующему запросу в этой же транзакции, но не обязаны быть отдельным
+    # коммитом.
     category_ids = {row.category_id for row in rows}
     for category_id in category_ids:
         category = await db.get(ReportCategory, category_id)
@@ -548,6 +553,39 @@ async def update_mandatory_category_requirement(
         # unlike create: None here means "clear it", not "leave unchanged"
         category.min_rank_id = category_min_rank_id
         category.commander_only = category_commander_only
+    await db.flush()
+
+    # Формирование, заведённое ПОСЛЕ создания обязательного требования, никогда
+    # не получало свою категорию (в отличие от create_mandatory_category_requirement,
+    # это раньше не перезапускалось на update) — без этого правка требования
+    # молча не долетала до новых формирований. Теперь, когда уже существующие
+    # категории переименованы выше, они находятся здесь по (уже актуальному)
+    # имени — реально создаются только категории недостающих формирований.
+    existing_regiment_ids = {row.regiment_id for row in rows}
+    categories_by_regiment = await report_category_crud.get_or_create_in_all_regiments(
+        db,
+        name=category_name,
+        fields=category_fields,
+        min_rank_id=category_min_rank_id,
+        commander_only=category_commander_only,
+    )
+    for regiment_id, category in categories_by_regiment.items():
+        if regiment_id in existing_regiment_ids:
+            continue
+        new_row = PromotionCategoryRequirement(
+            regiment_id=regiment_id,
+            rank_id=rank_id,
+            category_id=category.id,
+            count_required=count_required,
+            is_mandatory=True,
+            mandatory_group_id=group_id,
+        )
+        db.add(new_row)
+        rows.append(new_row)
+
+    for row in rows:
+        row.rank_id = rank_id
+        row.count_required = count_required
 
     await db.commit()
     for row in rows:

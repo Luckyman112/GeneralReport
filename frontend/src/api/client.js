@@ -713,37 +713,39 @@ export const api = {
   approveEvent: (token, eventId) => request(`/api/event-room/${eventId}/approve`, { method: "POST", token }),
   rejectEvent: (token, eventId, reason) =>
     request(`/api/event-room/${eventId}/reject`, { method: "POST", token, body: { reason } }),
+  createEventMessage: (token, eventId, content) =>
+    request(`/api/event-room/${eventId}/messages`, { method: "POST", token, body: { content } }),
+  decideEventMessage: (token, messageId, { status, rejectionReason }) =>
+    request(`/api/event-room/messages/${messageId}`, {
+      method: "PATCH",
+      token,
+      body: { status, rejection_reason: rejectionReason || null },
+    }),
+  sendEventMessage: (token, messageId) =>
+    request(`/api/event-room/messages/${messageId}/send`, { method: "POST", token }),
+  cancelEvent: (token, eventId, reason) =>
+    request(`/api/event-room/${eventId}/cancel`, { method: "POST", token, body: { reason: reason || null } }),
   getEventMemberCandidates: (token) => request("/api/event-room/member-candidates", { token }),
   listEventMaps: (token) => request("/api/event-room/maps/all", { token }),
-  createEventMap: (token, { name, url, planetName, landscape, weather, starSystem }) =>
+  createEventMap: (token, { name, url }) =>
     request("/api/event-room/maps", {
       method: "POST",
       token,
-      body: {
-        name,
-        url: url || null,
-        planet_name: planetName || null,
-        landscape: landscape || null,
-        weather: weather || null,
-        star_system: starSystem || null,
-      },
+      body: { name, url: url || null },
     }),
-  updateEventMap: (token, mapId, { name, url, planetName, landscape, weather, starSystem }) =>
+  updateEventMap: (token, mapId, { name, url }) =>
     request(`/api/event-room/maps/${mapId}`, {
       method: "PATCH",
       token,
-      body: {
-        name,
-        url: url || null,
-        planet_name: planetName || null,
-        landscape: landscape || null,
-        weather: weather || null,
-        star_system: starSystem || null,
-      },
+      body: { name, url: url || null },
     }),
   deleteEventMap: (token, mapId) => request(`/api/event-room/maps/${mapId}`, { method: "DELETE", token }),
   getEventRoster: (token) => request("/api/event-room/roster", { token }),
   getEventRosterMemberDetail: (token, discordId) => request(`/api/event-room/roster/${discordId}`, { token }),
+  getEventRosterTrend: (token, { since, until }) =>
+    request(`/api/event-room/roster/trend?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, {
+      token,
+    }),
   uploadEventMapImage: (token, file) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -804,18 +806,15 @@ export const api = {
       `/api/event-bookings?range_start=${encodeURIComponent(rangeStart)}&range_end=${encodeURIComponent(rangeEnd)}`,
       { token }
     ),
+  listMyEventBookings: (token) => request("/api/event-bookings/mine", { token }),
   createEventBooking: (token, { title, startsAt, endsAt }) =>
     request("/api/event-bookings", {
       method: "POST",
       token,
       body: { title, starts_at: startsAt, ends_at: endsAt },
     }),
-  decideEventBooking: (token, bookingId, { status, rejectionReason }) =>
-    request(`/api/event-bookings/${bookingId}`, {
-      method: "PATCH",
-      token,
-      body: { status, rejection_reason: rejectionReason || null },
-    }),
+  cancelEventBooking: (token, bookingId, reason) =>
+    request(`/api/event-bookings/${bookingId}/cancel`, { method: "POST", token, body: { reason: reason || null } }),
 
   listAdminReports: (token) => request("/api/admin-reports", { token }),
   createAdminReport: (token, { reportType, payload }) =>
@@ -831,7 +830,21 @@ export const api = {
     formData.append("file", file);
     return request("/api/admin-reports/attachments", { method: "POST", token, body: formData });
   },
+  getAdminMemberCandidates: (token) => request("/api/admin-reports/member-candidates", { token }),
   getAdminActivitySummary: (token) => request("/api/admin-reports/activity-summary", { token }),
+  getAdminRosterMemberDetail: (token, discordId) => request(`/api/admin-reports/roster/${discordId}`, { token }),
+  issueAdminReprimand: (token, { targetDiscordId, reason, severity }) =>
+    request("/api/admin-reports/reprimands", {
+      method: "POST",
+      token,
+      body: { target_discord_id: targetDiscordId, reason, severity },
+    }),
+  revokeAdminReprimand: (token, reprimandId) =>
+    request(`/api/admin-reports/reprimands/${reprimandId}`, { method: "DELETE", token }),
+  getAdminActivityTrend: (token, { since, until }) =>
+    request(`/api/admin-reports/activity-trend?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, {
+      token,
+    }),
 };
 
 export { ApiError };

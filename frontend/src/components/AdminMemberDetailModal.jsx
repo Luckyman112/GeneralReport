@@ -10,29 +10,27 @@ import { useToast } from "./ToastContext";
 import { usePeriodFilter } from "../hooks/usePeriodFilter";
 import { formatMskDate } from "../utils/formatDate";
 
-const EVENT_TYPE_LABELS = { mini: "Мини-ивент", combat: "Боевой вылет" };
-const SEVERITY_LABELS = { verbal: "Устный", strict: "Строгий" };
-
 const TABS = [
-  { key: "event", label: "Ивентрум" },
+  { key: "admin", label: "Администрация" },
   { key: "rp", label: "РП" },
 ];
 
-/** Досье участника Ивентрума по клику на строку ростера — ранг + его заявки
- * на ивенты и отчёты о проведённых мероприятиях (см. решение пользователя:
- * агрегированных счётчиков в таблице недостаточно, нужно видеть детали).
- * Вкладка "РП" (см. решение пользователя, п.8) отдаёт управление
- * существующему MemberDetailModal целиком, если человек реально состоит в
- * каком-то формировании — тот же приём, что AdminMemberDetailModal.
- * Выговоры — общая нон-РП сущность (не только Администрации, см. решение
- * пользователя), поэтому выдаются/видны и отсюда тоже. */
-export function EventMemberDetailModal({ discordId, onClose }) {
+const SEVERITY_LABELS = { verbal: "Устный", strict: "Строгий" };
+
+/** Досье администратора по клику на ник в сводке активности — рапорта
+ * (раздельно деятельность/наказания) + переключатель на РП-профиль, если
+ * человек реально состоит в каком-то формировании (см. решение пользователя,
+ * п.6/п.8 — Администрация не привязана к формированию, это отдельная нон-РП
+ * должность). Вкладка "РП" отдаёт управление существующему MemberDetailModal
+ * целиком (не дублирует его логику) — свой "Закрыть" внутри неё возвращает на
+ * вкладку "Администрация", а не закрывает всё окно. */
+export function AdminMemberDetailModal({ discordId, onClose }) {
   const { token, access } = useAuth();
   const showToast = useToast();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [tab, setTab] = useState("event");
+  const [tab, setTab] = useState("admin");
   const [rpMember, setRpMember] = useState(null);
   const [rpError, setRpError] = useState(null);
 
@@ -43,12 +41,12 @@ export function EventMemberDetailModal({ discordId, onClose }) {
   const canManageReprimands = Boolean(access?.can_decide_admin_report || access?.can_decide_event);
 
   const reportsPeriod = usePeriodFilter("all");
-  const filteredEvents = useMemo(
-    () => (detail ? detail.events.filter((ev) => reportsPeriod.isInPeriod(ev.created_at)) : []),
-    [detail, reportsPeriod]
-  );
   const filteredActivityReports = useMemo(
     () => (detail ? detail.activity_reports.filter((r) => reportsPeriod.isInPeriod(r.created_at)) : []),
+    [detail, reportsPeriod]
+  );
+  const filteredPunishmentReports = useMemo(
+    () => (detail ? detail.punishment_reports.filter((r) => reportsPeriod.isInPeriod(r.created_at)) : []),
     [detail, reportsPeriod]
   );
 
@@ -56,7 +54,7 @@ export function EventMemberDetailModal({ discordId, onClose }) {
     setLoading(true);
     setError(null);
     return api
-      .getEventRosterMemberDetail(token, discordId)
+      .getAdminRosterMemberDetail(token, discordId)
       .then(setDetail)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -66,18 +64,6 @@ export function EventMemberDetailModal({ discordId, onClose }) {
     loadDetail();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, discordId]);
-
-  useEffect(() => {
-    if (tab !== "rp" || !detail?.regiment_id || rpMember || rpError) return;
-    api
-      .getMembers(token, detail.regiment_id)
-      .then((members) => {
-        const found = members.find((m) => m.discord_id === discordId);
-        if (found) setRpMember(found);
-        else setRpError("Участник не найден в составе формирования");
-      })
-      .catch((e) => setRpError(e.message));
-  }, [tab, detail, token, discordId, rpMember, rpError]);
 
   async function handleIssueReprimand(e) {
     e.preventDefault();
@@ -109,13 +95,25 @@ export function EventMemberDetailModal({ discordId, onClose }) {
     }
   }
 
+  useEffect(() => {
+    if (tab !== "rp" || !detail?.regiment_id || rpMember || rpError) return;
+    api
+      .getMembers(token, detail.regiment_id)
+      .then((members) => {
+        const found = members.find((m) => m.discord_id === discordId);
+        if (found) setRpMember(found);
+        else setRpError("Участник не найден в составе формирования");
+      })
+      .catch((e) => setRpError(e.message));
+  }, [tab, detail, token, discordId, rpMember, rpError]);
+
   if (tab === "rp" && rpMember) {
     return (
       <MemberDetailModal
         member={rpMember}
         regimentId={detail.regiment_id}
         canEdit={false}
-        onClose={() => setTab("event")}
+        onClose={() => setTab("admin")}
       />
     );
   }
@@ -133,10 +131,7 @@ export function EventMemberDetailModal({ discordId, onClose }) {
         ) : (
           <>
             <h3>{detail.username}</h3>
-            <p className="hint-text">
-              {detail.role}
-              {detail.rank && ` · ${detail.rank.code} — ${detail.rank.name}`}
-            </p>
+            <p className="hint-text">{detail.rank_label}</p>
 
             <div className="report-form-actions" style={{ marginBottom: "0.75rem" }}>
               {TABS.map((t) => (
@@ -151,9 +146,9 @@ export function EventMemberDetailModal({ discordId, onClose }) {
               ))}
             </div>
 
-            {tab === "event" && (
+            {tab === "admin" && (
               <>
-                {(detail.events.length > 0 || detail.activity_reports.length > 0) && (
+                {(detail.activity_reports.length > 0 || detail.punishment_reports.length > 0) && (
                   <PeriodFilterBar
                     preset={reportsPeriod.preset}
                     setPreset={reportsPeriod.setPreset}
@@ -164,25 +159,7 @@ export function EventMemberDetailModal({ discordId, onClose }) {
                   />
                 )}
 
-                <h4>Заявки на ивент ({filteredEvents.length})</h4>
-                {filteredEvents.length === 0 ? (
-                  <p className="hint-text">Заявок нет.</p>
-                ) : (
-                  <ul className="member-report-list">
-                    {filteredEvents.map((ev) => (
-                      <li key={ev.id}>
-                        <StatusBadge status={ev.status} />
-                        <span className="report-regiment">{ev.title}</span>
-                        <span className="member-report-date">{formatMskDate(ev.created_at)} МСК</span>
-                        {ev.status === "rejected" && ev.rejection_reason && (
-                          <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <h4>Отчёты о мероприятиях ({filteredActivityReports.length})</h4>
+                <h4>Отчёт деятельности ({filteredActivityReports.length})</h4>
                 {filteredActivityReports.length === 0 ? (
                   <p className="hint-text">Отчётов нет.</p>
                 ) : (
@@ -190,7 +167,23 @@ export function EventMemberDetailModal({ discordId, onClose }) {
                     {filteredActivityReports.map((r) => (
                       <li key={r.id}>
                         <StatusBadge status={r.status} />
-                        <span className="report-category">{EVENT_TYPE_LABELS[r.event_type] || r.event_type}</span>
+                        <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
+                        {r.status === "rejected" && r.rejection_reason && (
+                          <p className="report-rejection-reason">Причина отклонения: {r.rejection_reason}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <h4>Отчёт наказаний ({filteredPunishmentReports.length})</h4>
+                {filteredPunishmentReports.length === 0 ? (
+                  <p className="hint-text">Отчётов нет.</p>
+                ) : (
+                  <ul className="member-report-list">
+                    {filteredPunishmentReports.map((r) => (
+                      <li key={r.id}>
+                        <StatusBadge status={r.status} />
                         <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
                         {r.status === "rejected" && r.rejection_reason && (
                           <p className="report-rejection-reason">Причина отклонения: {r.rejection_reason}</p>

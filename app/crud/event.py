@@ -12,6 +12,7 @@ from app.models.user import User
 _LOAD_OPTIONS = [
     selectinload(Event.submitted_by).selectinload(User.rank),
     selectinload(Event.decided_by).selectinload(User.rank),
+    selectinload(Event.cancelled_by).selectinload(User.rank),
 ]
 
 
@@ -67,6 +68,20 @@ async def decide(
     return await db.get(Event, event.id, options=_LOAD_OPTIONS, populate_existing=True)
 
 
+async def cancel(db: AsyncSession, event: Event, *, cancelled_by_user_id: int, reason: str | None) -> Event:
+    """Отмена уже одобренной заявки (см. решение пользователя) — decided_by/
+    decided_at остаются как есть (кто изначально одобрил), отмена — отдельные
+    поля."""
+    if event.status != EventStatus.APPROVED:
+        raise AppError("Отменить можно только уже одобренную заявку")
+    event.status = EventStatus.CANCELLED
+    event.cancelled_by_user_id = cancelled_by_user_id
+    event.cancelled_at = datetime.now(timezone.utc)
+    event.cancellation_reason = reason
+    await db.commit()
+    return await db.get(Event, event.id, options=_LOAD_OPTIONS, populate_existing=True)
+
+
 async def mark_notified(db: AsyncSession, event: Event, *, discord_message_id: str | None = None) -> None:
     event.notified_at = datetime.now(timezone.utc)
     if discord_message_id is not None:
@@ -87,19 +102,8 @@ async def create_map(
     *,
     name: str,
     url: str | None = None,
-    planet_name: str | None = None,
-    landscape: str | None = None,
-    weather: str | None = None,
-    star_system: str | None = None,
 ) -> EventMap:
-    row = EventMap(
-        name=name,
-        url=url,
-        planet_name=planet_name,
-        landscape=landscape,
-        weather=weather,
-        star_system=star_system,
-    )
+    row = EventMap(name=name, url=url)
     db.add(row)
     try:
         await db.commit()

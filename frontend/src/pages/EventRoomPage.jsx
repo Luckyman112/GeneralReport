@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ActivityTrendPanel } from "../components/ActivityTrendPanel";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DateTimePicker } from "../components/DateTimePicker";
 import { EmptyState } from "../components/EmptyState";
 import { EventActivityReports } from "../components/EventActivityReports";
@@ -16,6 +18,7 @@ const STATUS_LABELS = {
   pending: "Ожидает решения",
   approved: "Одобрено",
   rejected: "Отклонено",
+  cancelled: "Отменено",
 };
 
 const ROLE_LABELS = {
@@ -39,6 +42,14 @@ function emptyAudience() {
   return { mode: "role", regiment_id: null, custom_name: "", discord_ids: [] };
 }
 
+// Формат, который понимает DateTimePicker (см. его собственный formatValue) —
+// нужен здесь отдельно, чтобы подставлять starts_at выбранной брони в
+// "Начало брифинга" тем же форматом, что вводит сам пользователь
+function toPickerValue(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function emptyForm() {
   return {
     title: "",
@@ -53,6 +64,12 @@ function emptyForm() {
     commander_discord_id: "",
     map_id: "",
     map_image_url: "",
+    planet_name: "",
+    star_system: "",
+    landscape: "",
+    weather: "",
+    flora_fauna: "",
+    booking_id: "",
   };
 }
 
@@ -79,6 +96,12 @@ function formToPayload(form) {
     commander_discord_id: form.commander_discord_id || null,
     map_id: form.map_id ? Number(form.map_id) : null,
     map_image_url: form.map_image_url || null,
+    planet_name: form.planet_name.trim() || null,
+    star_system: form.star_system.trim() || null,
+    landscape: form.landscape.trim() || null,
+    weather: form.weather.trim() || null,
+    flora_fauna: form.flora_fauna.trim() || null,
+    booking_id: form.booking_id ? Number(form.booking_id) : null,
   };
 }
 
@@ -97,6 +120,12 @@ function payloadToForm(event) {
     commander_discord_id: p.commander_discord_id || "",
     map_id: p.map_id ? String(p.map_id) : "",
     map_image_url: p.map_image_url || "",
+    planet_name: p.planet_name || "",
+    star_system: p.star_system || "",
+    landscape: p.landscape || "",
+    weather: p.weather || "",
+    flora_fauna: p.flora_fauna || "",
+    booking_id: p.booking_id ? String(p.booking_id) : "",
   };
 }
 
@@ -284,6 +313,20 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const previewRequestRef = useRef(0);
+  const [myBookings, setMyBookings] = useState([]);
+
+  useEffect(() => {
+    api.listMyEventBookings(token).then(setMyBookings).catch(() => setMyBookings([]));
+  }, [token]);
+
+  function handleBookingSelect(bookingId) {
+    const booking = myBookings.find((b) => String(b.id) === bookingId);
+    setForm((f) => ({
+      ...f,
+      booking_id: bookingId,
+      briefing_start: booking ? toPickerValue(new Date(booking.starts_at)) : f.briefing_start,
+    }));
+  }
 
   const isValid = form.title.trim().length > 0;
 
@@ -380,6 +423,20 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
         Угрозы и вражеские силы
         <input type="text" value={form.threat} onChange={(e) => setForm((f) => ({ ...f, threat: e.target.value }))} />
       </label>
+      {myBookings.length > 0 && (
+        <label>
+          Забронированное время
+          <span className="hint-text"> Одобренная бронь — выбор подставит время в поле ниже.</span>
+          <select value={form.booking_id} onChange={(e) => handleBookingSelect(e.target.value)}>
+            <option value="">— не выбрано —</option>
+            {myBookings.map((b) => (
+              <option key={b.id} value={b.id}>
+                {formatMskDate(b.starts_at)}–{formatMskDate(b.ends_at)} МСК — {b.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         Начало брифинга
         <DateTimePicker
@@ -426,6 +483,47 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
       </label>
 
       <MapImageField value={form.map_image_url} onChange={(url) => setForm((f) => ({ ...f, map_image_url: url }))} />
+
+      <label>
+        Название планеты
+        <input
+          type="text"
+          value={form.planet_name}
+          onChange={(e) => setForm((f) => ({ ...f, planet_name: e.target.value }))}
+        />
+      </label>
+      <label>
+        Система
+        <input
+          type="text"
+          value={form.star_system}
+          onChange={(e) => setForm((f) => ({ ...f, star_system: e.target.value }))}
+        />
+      </label>
+      <label>
+        Ландшафт
+        <input
+          type="text"
+          value={form.landscape}
+          onChange={(e) => setForm((f) => ({ ...f, landscape: e.target.value }))}
+        />
+      </label>
+      <label>
+        Погодные условия
+        <input
+          type="text"
+          value={form.weather}
+          onChange={(e) => setForm((f) => ({ ...f, weather: e.target.value }))}
+        />
+      </label>
+      <label>
+        Флора и фауна
+        <input
+          type="text"
+          value={form.flora_fauna}
+          onChange={(e) => setForm((f) => ({ ...f, flora_fauna: e.target.value }))}
+        />
+      </label>
 
       {error && <p className="error-text">{error}</p>}
 
@@ -527,25 +625,172 @@ function RejectInline({ onReject }) {
   );
 }
 
+const MESSAGE_STATUS_LABELS = {
+  pending: "Ожидает решения",
+  approved: "Одобрено",
+  rejected: "Отклонено",
+};
+
+/** Архивная заявка — свёрнута в одну строку (название + время брифинга),
+ * весь функционал (карточка/дозаполнить/отменить/сообщения) доступен по
+ * клику разворачиванием, а не сразу — см. решение пользователя: архив не
+ * должен выглядеть так же тяжело, как активный список. */
+function ArchivedEventRow(props) {
+  const { ev } = props;
+  return (
+    <details className="event-archive-strip">
+      <summary>
+        <span className="event-archive-strip-title">{ev.title}</span>
+        <span className="event-archive-strip-time">{formatMskDate(ev.payload?.briefing_start)} МСК</span>
+      </summary>
+      <EventRow {...props} />
+    </details>
+  );
+}
+
+function EventRow({ ev, user, canDecide, onEdit, onCancel, onSubmitMessage, onDecideMessage, onSendMessage }) {
+  return (
+    <div className="report-row">
+      <div className="report-row-header">
+        <span className="report-regiment">{ev.title}</span>
+        <span className="report-category">{STATUS_LABELS[ev.status]}</span>
+      </div>
+      <p className="member-report-date">{formatMskDate(ev.created_at)} МСК</p>
+      {ev.status === "rejected" && ev.rejection_reason && (
+        <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
+      )}
+      {ev.status === "cancelled" && (
+        <p className="report-rejection-reason">
+          Отменено{ev.cancelled_by ? ` (${formatFullName(ev.cancelled_by)})` : ""}
+          {ev.cancellation_reason ? `: ${ev.cancellation_reason}` : ""}
+        </p>
+      )}
+      <div className="report-row-actions">
+        <CardViewButton eventId={ev.id} />
+        {(ev.status === "pending" || ev.status === "approved") && (
+          <button type="button" onClick={onEdit}>
+            {ev.status === "approved" ? "Дозаполнить" : "Редактировать"}
+          </button>
+        )}
+        {ev.status === "approved" && canDecide && (
+          <button type="button" className="ghost error-text" onClick={onCancel}>
+            Отменить
+          </button>
+        )}
+      </div>
+      {ev.status === "approved" && (ev.submitted_by.id === user.id || canDecide) && (
+        <EventMessagesPanel
+          ev={ev}
+          user={user}
+          canDecide={canDecide}
+          onSubmit={(content) => onSubmitMessage(ev.id, content)}
+          onDecide={onDecideMessage}
+          onSend={onSendMessage}
+        />
+      )}
+    </div>
+  );
+}
+
+function EventMessagesPanel({ ev, user, canDecide, onSubmit, onDecide, onSend }) {
+  const [composing, setComposing] = useState(false);
+  const isAuthor = ev.submitted_by.id === user.id;
+
+  async function handleCompose(content) {
+    await onSubmit(content);
+    setComposing(false);
+  }
+
+  return (
+    <div className="event-messages-panel">
+      {ev.messages.length > 0 && (
+        <ul className="member-report-list">
+          {ev.messages.map((m) => (
+            <li key={m.id}>
+              <span className="report-category">{MESSAGE_STATUS_LABELS[m.status]}</span>
+              <p className="report-row-content">{m.content}</p>
+              <p className="hint-text">
+                {formatMskDate(m.created_at)} МСК — {formatFullName(m.submitted_by)}
+                {m.status === "rejected" && m.rejection_reason ? ` · Причина: ${m.rejection_reason}` : ""}
+                {m.sent_at ? ` · Отправлено ${formatMskDate(m.sent_at)} МСК (${formatFullName(m.sent_by)})` : ""}
+              </p>
+              <div className="report-form-actions">
+                {m.status === "pending" && canDecide && (
+                  <>
+                    <button type="button" onClick={() => onDecide(m.id, "approved")}>
+                      Одобрить
+                    </button>
+                    <RejectInline onReject={(reason) => onDecide(m.id, "rejected", reason)} />
+                  </>
+                )}
+                {m.status === "approved" && !m.sent_at && (isAuthor || canDecide) && (
+                  <button type="button" className="primary" onClick={() => onSend(m.id)}>
+                    Отправить
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {isAuthor &&
+        (composing ? (
+          <MessageComposeForm onSubmit={handleCompose} onCancel={() => setComposing(false)} />
+        ) : (
+          <button type="button" onClick={() => setComposing(true)}>
+            Написать сообщение
+          </button>
+        ))}
+    </div>
+  );
+}
+
+function MessageComposeForm({ onSubmit, onCancel }) {
+  const [content, setContent] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(content.trim());
+    } catch (e) {
+      setError(e.message);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <span className="reject-inline">
+      <input
+        type="text"
+        placeholder="Текст сообщения"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+      />
+      <button type="button" disabled={!content.trim() || submitting} onClick={submit}>
+        {submitting ? "Подача…" : "Подать"}
+      </button>
+      <button type="button" className="ghost" onClick={onCancel} disabled={submitting}>
+        Отмена
+      </button>
+      {error && <p className="error-text">{error}</p>}
+    </span>
+  );
+}
+
 function emptyMapForm() {
-  return { id: null, name: "", url: "", planetName: "", landscape: "", weather: "", starSystem: "" };
+  return { id: null, name: "", url: "" };
 }
 
 function mapToForm(m) {
-  return {
-    id: m.id,
-    name: m.name,
-    url: m.url || "",
-    planetName: m.planet_name || "",
-    landscape: m.landscape || "",
-    weather: m.weather || "",
-    starSystem: m.star_system || "",
-  };
+  return { id: m.id, name: m.name, url: m.url || "" };
 }
 
 /** Карта каталога — название+ссылка попадают в карточку операции в Discord
- * (ссылка гиперссылкой в поле "Карта"), справка о планете — отдельным текстом
- * в сообщении, не в саму карточку (см. решение пользователя). */
+ * (ссылка гиперссылкой в поле "Карта"). Справка о планете переехала в саму
+ * заявку на ивент (см. EventForm) — карта теперь только название+ссылка. */
 function MapForm({ initial, onSubmit, onCancel }) {
   const [form, setForm] = useState(initial);
 
@@ -557,30 +802,6 @@ function MapForm({ initial, onSubmit, onCancel }) {
     <div className="picker-row" style={{ flexWrap: "wrap" }}>
       <input type="text" placeholder="Название карты" value={form.name} onChange={(e) => setField("name", e.target.value)} />
       <input type="text" placeholder="Ссылка на карту" value={form.url} onChange={(e) => setField("url", e.target.value)} />
-      <input
-        type="text"
-        placeholder="Название планеты"
-        value={form.planetName}
-        onChange={(e) => setField("planetName", e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Система"
-        value={form.starSystem}
-        onChange={(e) => setField("starSystem", e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Ландшафт"
-        value={form.landscape}
-        onChange={(e) => setField("landscape", e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Погодные условия"
-        value={form.weather}
-        onChange={(e) => setField("weather", e.target.value)}
-      />
       <button type="button" disabled={!form.name.trim()} onClick={() => onSubmit(form)}>
         {form.id ? "Сохранить" : "Добавить карту"}
       </button>
@@ -601,6 +822,8 @@ function RosterPanel() {
   useEffect(() => {
     api.getEventRoster(token).then(setRoster).catch(() => setRoster([])).finally(() => setLoading(false));
   }, [token]);
+
+  const fetchTrend = useCallback((range) => api.getEventRosterTrend(token, range), [token]);
 
   if (loading) return <InlineSpinner />;
 
@@ -663,6 +886,8 @@ function RosterPanel() {
           <HorizontalBarChart data={miniChartData} />
           <h4>Боевой вылет за период</h4>
           <HorizontalBarChart data={combatChartData} />
+
+          <ActivityTrendPanel title="Активность по дням" fetchTrend={fetchTrend} />
         </>
       )}
 
@@ -679,7 +904,7 @@ function RosterPanel() {
  * Многие поля (например, командующего) часто узнают только по ходу брифинга —
  * заявку можно редактировать и до, и после одобрения (см. решение пользователя). */
 export function EventRoomPage() {
-  const { token, access, regiments } = useAuth();
+  const { token, user, access, regiments } = useAuth();
   const [events, setEvents] = useState([]);
   const [maps, setMaps] = useState([]);
   const [members, setMembers] = useState([]);
@@ -688,6 +913,7 @@ export function EventRoomPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [mapDraft, setMapDraft] = useState(null); // null — форма закрыта, {} — создание, {id,...} — редактирование
+  const [confirmCancelId, setConfirmCancelId] = useState(null);
 
 
   const canDecide = Boolean(access?.can_decide_event);
@@ -713,6 +939,21 @@ export function EventRoomPage() {
   const pendingEvents = useMemo(() => events.filter((e) => e.status === "pending"), [events]);
   const decidedEvents = useMemo(() => events.filter((e) => e.status !== "pending"), [events]);
   const editingEvent = events.find((e) => e.id === editingId);
+
+  // Архив — заявки, у которых брифинг уже прошёл (см. решение пользователя);
+  // без даты или в будущем — считаются актуальными. Отменённые/отклонённые —
+  // архивируются сразу независимо от даты брифинга: решение уже финальное,
+  // ждать несуществующую/прошедшую дату незачем (баг-репорт: отменённая
+  // заявка без даты брифинга навсегда висела в активном списке).
+  function isArchived(ev) {
+    if (ev.status === "cancelled" || ev.status === "rejected") return true;
+    const briefingStart = ev.payload?.briefing_start;
+    if (!briefingStart) return false;
+    return new Date(briefingStart).getTime() < Date.now();
+  }
+  const visibleEvents = canDecide ? decidedEvents : events;
+  const activeEvents = useMemo(() => visibleEvents.filter((e) => !isArchived(e)), [visibleEvents]);
+  const archivedEvents = useMemo(() => visibleEvents.filter((e) => isArchived(e)), [visibleEvents]);
 
   async function handleCreate(body) {
     await api.createEvent(token, body);
@@ -744,16 +985,43 @@ export function EventRoomPage() {
     }
   }
 
+  async function handleSubmitMessage(eventId, content) {
+    // без try/catch — форма (MessageComposeForm) сама ловит ошибку и показывает инлайн
+    await api.createEventMessage(token, eventId, content);
+    load();
+  }
+
+  async function handleDecideMessage(messageId, status, reason) {
+    try {
+      await api.decideEventMessage(token, messageId, { status, rejectionReason: reason });
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleSendMessage(messageId) {
+    try {
+      await api.sendEventMessage(token, messageId);
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleCancel(id) {
+    try {
+      await api.cancelEvent(token, id);
+      setConfirmCancelId(null);
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function handleSaveMap(form) {
     if (!form.name.trim()) return;
-    const body = {
-      name: form.name.trim(),
-      url: form.url.trim(),
-      planetName: form.planetName.trim(),
-      landscape: form.landscape.trim(),
-      weather: form.weather.trim(),
-      starSystem: form.starSystem.trim(),
-    };
+    const body = { name: form.name.trim(), url: form.url.trim() };
     try {
       if (form.id) {
         await api.updateEventMap(token, form.id, body);
@@ -879,29 +1147,53 @@ export function EventRoomPage() {
         {events.length === 0 ? (
           <EmptyState text="Заявок пока нет." />
         ) : (
-          <div className="report-list">
-            {(canDecide ? decidedEvents : events).map((ev) => (
-              <div key={ev.id} className="report-row">
-                <div className="report-row-header">
-                  <span className="report-regiment">{ev.title}</span>
-                  <span className="report-category">{STATUS_LABELS[ev.status]}</span>
+          <>
+            <div className="report-list">
+              {activeEvents.map((ev) => (
+                <EventRow
+                  key={ev.id}
+                  ev={ev}
+                  user={user}
+                  canDecide={canDecide}
+                  onEdit={() => setEditingId(ev.id)}
+                  onCancel={() => setConfirmCancelId(ev.id)}
+                  onSubmitMessage={handleSubmitMessage}
+                  onDecideMessage={handleDecideMessage}
+                  onSendMessage={handleSendMessage}
+                />
+              ))}
+            </div>
+            {archivedEvents.length > 0 && (
+              <details className="training-spec-group">
+                <summary>
+                  Архив <span className="category-points-badge">{archivedEvents.length}</span>
+                </summary>
+                <div className="event-archive-list">
+                  {archivedEvents.map((ev) => (
+                    <ArchivedEventRow
+                      key={ev.id}
+                      ev={ev}
+                      user={user}
+                      canDecide={canDecide}
+                      onEdit={() => setEditingId(ev.id)}
+                      onCancel={() => setConfirmCancelId(ev.id)}
+                      onSubmitMessage={handleSubmitMessage}
+                      onDecideMessage={handleDecideMessage}
+                      onSendMessage={handleSendMessage}
+                    />
+                  ))}
                 </div>
-                <p className="member-report-date">{formatMskDate(ev.created_at)} МСК</p>
-                {ev.status === "rejected" && ev.rejection_reason && (
-                  <p className="report-rejection-reason">Причина отклонения: {ev.rejection_reason}</p>
-                )}
-                <div className="report-row-actions">
-                  <CardViewButton eventId={ev.id} />
-                  {(ev.status === "pending" || ev.status === "approved") && (
-                    <button type="button" onClick={() => setEditingId(ev.id)}>
-                      {ev.status === "approved" ? "Дозаполнить" : "Редактировать"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+              </details>
+            )}
+          </>
         )}
+        <ConfirmDialog
+          open={confirmCancelId !== null}
+          message="Отменить эту одобренную заявку? Карточка в Discord будет отмечена «Отменено»."
+          confirmLabel="Отменить заявку"
+          onConfirm={() => handleCancel(confirmCancelId)}
+          onCancel={() => setConfirmCancelId(null)}
+        />
       </div>
 
       {canDecide && <RosterPanel />}

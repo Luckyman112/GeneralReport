@@ -4,7 +4,9 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.event import EventStatus
+from app.schemas.admin_reprimand import AdminReprimandRead
 from app.schemas.event_activity_report import EventActivityReportRead
+from app.schemas.event_message import EventMessageRead
 from app.schemas.rank import RankRead
 from app.schemas.user import UserBrief
 
@@ -22,6 +24,12 @@ class EventRead(BaseModel):
     decided_at: datetime | None = None
     rejection_reason: str | None = None
     notified_at: datetime | None = None
+    cancelled_by: UserBrief | None = None
+    cancelled_at: datetime | None = None
+    cancellation_reason: str | None = None
+    # Заявки на свободное сообщение по этой заявке (см. app/models/event_message.py)
+    # — заполняется вручную в эндпоинте (batch-запросом), не через relationship
+    messages: list[EventMessageRead] = Field(default_factory=list)
 
 
 class EventCreate(BaseModel):
@@ -41,25 +49,21 @@ class EventRejectRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class EventCancelRequest(BaseModel):
+    reason: str | None = None
+
+
 class EventMapRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
     url: str | None = None
-    planet_name: str | None = None
-    landscape: str | None = None
-    weather: str | None = None
-    star_system: str | None = None
 
 
 class EventMapCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     url: str | None = Field(default=None, max_length=500)
-    planet_name: str | None = Field(default=None, max_length=255)
-    landscape: str | None = Field(default=None, max_length=255)
-    weather: str | None = Field(default=None, max_length=255)
-    star_system: str | None = Field(default=None, max_length=255)
 
 
 class EventMapUpdate(BaseModel):
@@ -67,10 +71,6 @@ class EventMapUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     url: str | None = Field(default=None, max_length=500)
-    planet_name: str | None = Field(default=None, max_length=255)
-    landscape: str | None = Field(default=None, max_length=255)
-    weather: str | None = Field(default=None, max_length=255)
-    star_system: str | None = Field(default=None, max_length=255)
 
 
 class EventRosterEntry(BaseModel):
@@ -108,5 +108,13 @@ class EventMemberDetail(BaseModel):
     username: str
     role: str
     rank: RankRead | None = None
+    # Для переключателя Ивентрум/РП на фронте — заполнено, только если
+    # человек реально состоит в каком-то формировании (см. решение
+    # пользователя, п.8 — тот же приём, что AdminMemberDetail).
+    regiment_id: int | None = None
+    regiment_name: str | None = None
     events: list["EventRead"] = Field(default_factory=list)
     activity_reports: list[EventActivityReportRead] = Field(default_factory=list)
+    # Выговоры — общая нон-РП сущность, не только Администрации (см. решение
+    # пользователя: старший состав Ивентрума тоже выдаёт/видит их)
+    reprimands: list[AdminReprimandRead] = Field(default_factory=list)

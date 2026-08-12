@@ -2626,6 +2626,65 @@ label {
   margin-bottom: 0.5rem;
 }
 
+/* Архивная заявка Ивентрума — свёрнута в тонкую полосу (название + время),
+ * полный report-row внутри раскрывается по клику (см. решение пользователя:
+ * архив не должен занимать столько же места, сколько активный список) */
+.event-archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.event-archive-strip {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.event-archive-strip summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.9rem;
+}
+
+.event-archive-strip summary::-webkit-details-marker {
+  display: none;
+}
+
+.event-archive-strip summary::before {
+  content: "▸";
+  color: var(--text-muted);
+  margin-right: 0.5rem;
+  transition: transform 0.15s ease;
+}
+
+.event-archive-strip[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.event-archive-strip-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-archive-strip-time {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  flex: none;
+}
+
+.event-archive-strip .report-row {
+  margin: 0 0.6rem 0.6rem;
+}
+
 .member-inactive {
   opacity: 0.55;
 }
@@ -3809,6 +3868,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .add-field-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
   margin-top: 0.4rem;
 }

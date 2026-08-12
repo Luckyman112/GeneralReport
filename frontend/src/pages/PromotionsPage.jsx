@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { MandatoryRequirementModal } from "../components/MandatoryRequirementModal";
+import { MemberDetailModal } from "../components/MemberDetailModal";
 import { PageLoading } from "../components/PageLoading";
 import { PromotionReviewModal } from "../components/PromotionReviewModal";
 import { SaveBar } from "../components/SaveBar";
@@ -507,8 +508,30 @@ export function PromotionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [previewAsSoldier, setPreviewAsSoldier] = useState(true);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [loadingMemberDiscordId, setLoadingMemberDiscordId] = useState(null);
 
   const isAdminOrHighCommand = access?.is_admin || access?.is_high_command;
+
+  function canManageMembers(targetRegimentId) {
+    return access?.is_admin || access?.is_high_command || (access?.commander_regiment_ids || []).includes(targetRegimentId);
+  }
+
+  // См. HqLeadershipPanel::openMember — та же схема: список отдаёт только
+  // UserBrief, для личного дела нужен полный GuildMemberRead, догружаем по клику
+  async function openMember(discordId, targetRegimentId) {
+    if (!targetRegimentId || loadingMemberDiscordId) return;
+    setLoadingMemberDiscordId(discordId);
+    try {
+      const members = await api.getMembers(token, targetRegimentId);
+      const member = members.find((m) => m.discord_id === discordId);
+      if (member) setSelectedMember({ member, regimentId: targetRegimentId });
+    } catch {
+      // тихо игнорируем — личное дело просто не откроется
+    } finally {
+      setLoadingMemberDiscordId(null);
+    }
+  }
 
   const visibleRegiments = useMemo(() => {
     if (isAdminOrHighCommand) return regiments;
@@ -582,7 +605,12 @@ export function PromotionsPage() {
             {requests.map((r) => (
               <div key={r.id} className="report-row">
                 <div className="report-row-header">
-                  <span className="report-regiment">{formatFullName(r.user)}</span>
+                  <span
+                    className="report-regiment clickable-row"
+                    onClick={() => openMember(r.user.discord_id, r.regiment_id)}
+                  >
+                    {formatFullName(r.user)}
+                  </span>
                   <span className="report-category">
                     {r.from_rank?.code || "—"} → {r.to_rank.code}
                   </span>
@@ -625,6 +653,20 @@ export function PromotionsPage() {
 
       {reviewRequestId && (
         <PromotionReviewModal requestId={reviewRequestId} onClose={() => setReviewRequestId(null)} />
+      )}
+
+      {selectedMember && (
+        <MemberDetailModal
+          key={selectedMember.member.discord_id}
+          member={selectedMember.member}
+          regimentId={selectedMember.regimentId}
+          canEdit={canManageMembers(selectedMember.regimentId)}
+          onClose={() => setSelectedMember(null)}
+          onSaved={() => {
+            openMember(selectedMember.member.discord_id, selectedMember.regimentId);
+            loadRequests();
+          }}
+        />
       )}
     </div>
   );

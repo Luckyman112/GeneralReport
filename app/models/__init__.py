@@ -1,10 +1,12 @@
 from app.models.admin_report import AdminReport, AdminReportStatus
+from app.models.admin_reprimand import AdminReprimand
 from app.models.app_settings import AppSettings
 from app.models.audit_log import AuditLog
 from app.models.character import Character
 from app.models.event import Event, EventMap, EventStatus
 from app.models.event_activity_report import EventActivityReport, EventActivityReportStatus
 from app.models.event_booking import EventBooking, EventBookingStatus
+from app.models.event_message import EventMessage, EventMessageStatus
 from app.models.jedi_trial import JediTrial
 from app.models.leave_request import LeaveRequest
 from app.models.notification import Notification, NotificationRead
@@ -52,6 +54,7 @@ __all__ = [
     "Notification",
     "NotificationRead",
     "Reprimand",
+    "AdminReprimand",
     "PromotionRequirement",
     "PromotionRequest",
     "PromotionCategoryRequirement",
@@ -68,6 +71,8 @@ __all__ = [
     "Event",
     "EventStatus",
     "EventMap",
+    "EventMessage",
+    "EventMessageStatus",
     "WantedEntry",
     "Squad",
     "SquadMembership",

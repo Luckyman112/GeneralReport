@@ -5,10 +5,10 @@ Discord-канал (см. app/core/discord_client.py::send_channel_message).
 конструктором в БД (см. Event.payload), см. решение пользователя."""
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,15 +17,20 @@ from app.core import discord_client
 from app.core.event_card import render_operation_dossier
 from app.core.events import event_bus
 from app.core.uploads import read_image_upload
+from app.crud import admin_reprimand as admin_reprimand_crud
 from app.crud import app_settings as app_settings_crud
 from app.crud import audit_log as audit_log_crud
 from app.crud import event as event_crud
 from app.crud import event_activity_report as activity_report_crud
+from app.crud import event_message as event_message_crud
+from app.crud import notification as notification_crud
 from app.crud import regiment as regiment_crud
 from app.crud import user as user_crud
 from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
+from app.schemas.admin_reprimand import AdminReprimandRead
 from app.schemas.event import (
+    EventCancelRequest,
     EventCreate,
     EventMapCreate,
     EventMapRead,
@@ -36,7 +41,12 @@ from app.schemas.event import (
     EventRosterEntry,
     EventUpdate,
 )
-from app.schemas.event_activity_report import EventActivityReportRead
+from app.schemas.event_activity_report import (
+    EventActivityReportRead,
+    EventActivityTrendRead,
+    EventActivityTrendSeries,
+)
+from app.schemas.event_message import EventMessageCreate, EventMessageDecide, EventMessageRead
 from app.schemas.rank import RankRead
 from app.schemas.regiment_commander import GuildMemberRead
 
@@ -53,6 +63,23 @@ _ALLOWED_IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp":
 _MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 МБ, как у картинок рапортов
 
 
+async def _event_to_read(db: AsyncSession, row) -> EventRead:
+    messages = await event_message_crud.list_for_event(db, event_id=row.id)
+    read = EventRead.model_validate(row)
+    read.messages = [EventMessageRead.model_validate(m) for m in messages]
+    return read
+
+
+async def _events_to_read(db: AsyncSession, rows: list) -> list[EventRead]:
+    messages_by_event = await event_message_crud.list_for_events(db, event_ids=[r.id for r in rows])
+    result = []
+    for row in rows:
+        read = EventRead.model_validate(row)
+        read.messages = [EventMessageRead.model_validate(m) for m in messages_by_event.get(row.id, [])]
+        result.append(read)
+    return result
+
+
 @router.get("", response_model=list[EventRead])
 async def list_events(
     db: AsyncSession = Depends(get_db),
@@ -64,7 +91,7 @@ async def list_events(
         rows = await event_crud.list_all(db, submitted_by_user_id=access.user.id)
     else:
         raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
-    return [EventRead.model_validate(r) for r in rows]
+    return await _events_to_read(db, rows)
 
 
 @router.post("", response_model=EventRead, status_code=201)
@@ -88,7 +115,7 @@ async def create_event(
         details=f"Подал заявку на ивент «{row.title}» (#{row.id})",
     )
     event_bus.publish("event_room")
-    return EventRead.model_validate(row)
+    return await _event_to_read(db, row)
 
 
 @router.get("/member-candidates", response_model=list[GuildMemberRead])
@@ -192,6 +219,45 @@ async def get_roster(
     return entries
 
 
+@router.get("/roster/trend", response_model=EventActivityTrendRead)
+async def get_roster_trend(
+    since: datetime = Query(...),
+    until: datetime = Query(...),
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventActivityTrendRead:
+    """График активности (TrendChart на фронте) — Мини-ивент/Боевой вылет по
+    дням за произвольный диапазон (см. решение пользователя: неделя/месяц/
+    свои даты)."""
+    if not access.can_access_event_room:
+        raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
+    if until <= since:
+        raise AppError("Некорректный диапазон дат")
+
+    by_day = await activity_report_crud.daily_type_counts(db, since=since, until=until)
+    # Полный список дней диапазона, а не только те, где есть данные — иначе
+    # нулевые дни выпадали бы из графика (см. app/api/stats.py::get_formation_stats
+    # для того же приёма с trend_dates)
+    dates = []
+    cur = since.date()
+    last_day = until.date()
+    while cur <= last_day:
+        dates.append(cur.isoformat())
+        cur += timedelta(days=1)
+
+    return EventActivityTrendRead(
+        dates=dates,
+        series=[
+            EventActivityTrendSeries(
+                id="mini", label="Мини-ивент", points=[by_day.get(d, {}).get("mini", 0) for d in dates]
+            ),
+            EventActivityTrendSeries(
+                id="combat", label="Боевой вылет", points=[by_day.get(d, {}).get("combat", 0) for d in dates]
+            ),
+        ],
+    )
+
+
 @router.get("/roster/{discord_id}", response_model=EventMemberDetail)
 async def get_roster_member_detail(
     discord_id: str,
@@ -226,20 +292,38 @@ async def get_roster_member_detail(
     user = await user_crud.get_by_discord_id_with_rank(db, discord_id)
     events: list[EventRead] = []
     activity_reports: list[EventActivityReportRead] = []
+    reprimands: list[AdminReprimandRead] = []
     if user is not None:
-        events = [EventRead.model_validate(r) for r in await event_crud.list_all(db, submitted_by_user_id=user.id)]
+        events = await _events_to_read(db, await event_crud.list_all(db, submitted_by_user_id=user.id))
         activity_reports = [
             EventActivityReportRead.model_validate(r)
             for r in await activity_report_crud.list_all(db, submitted_by_user_id=user.id)
         ]
+        reprimands = [
+            AdminReprimandRead.model_validate(r)
+            for r in await admin_reprimand_crud.list_for_target(db, target_user_id=user.id)
+        ]
+
+    regiment_id = None
+    regiment_name = None
+    regiment_map = await regiment_crud.resolve_regiments_for_discord_ids(db, [discord_id])
+    regiment_ids = regiment_map.get(discord_id) or []
+    if regiment_ids:
+        regiment = await regiment_crud.get_by_id(db, regiment_ids[0])
+        if regiment is not None:
+            regiment_id = regiment.id
+            regiment_name = regiment.name
 
     return EventMemberDetail(
         discord_id=discord_id,
         username=member["username"],
         role=role,
         rank=RankRead.model_validate(user.rank) if user and user.rank else None,
+        regiment_id=regiment_id,
+        regiment_name=regiment_name,
         events=events,
         activity_reports=activity_reports,
+        reprimands=reprimands,
     )
 
 
@@ -313,8 +397,8 @@ async def update_event(
     row = await event_crud.get_by_id(db, event_id)
     if row is None:
         raise NotFoundError("Заявка не найдена")
-    if row.status == "rejected":
-        raise ForbiddenError("Отклонённую заявку менять нельзя")
+    if row.status in ("rejected", "cancelled"):
+        raise ForbiddenError("Отклонённую или отменённую заявку менять нельзя")
     if row.submitted_by_user_id != access.user.id and not access.can_decide_event:
         raise ForbiddenError("Редактировать заявку может только её автор или Ассистент/Куратор ивентологии")
 
@@ -338,7 +422,7 @@ async def update_event(
                 image_bytes = await _render_event_image(
                     db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
                 )
-                content = _message_content(app_config, map_row)
+                content = _message_content(app_config)
                 if updated.discord_message_id:
                     try:
                         await discord_client.edit_channel_message(
@@ -377,7 +461,7 @@ async def update_event(
                 logger.exception("Не удалось отправить обновление ивента «%s» в Discord", updated.title)
 
     event_bus.publish("event_room")
-    return EventRead.model_validate(updated)
+    return await _event_to_read(db, updated)
 
 
 def _ping_content(app_config) -> str | None:
@@ -433,11 +517,13 @@ async def _get_selected_map(db: AsyncSession, row):
 
 
 def _build_event_embed(row, map_row) -> dict:
-    """Метаданные операции — живые Discord-поля (упоминания, дата) сверху
-    сообщения; содержательная часть (сводка/цель/задача/состав/угроза) —
-    в приложенной картинке-досье, см. render_operation_dossier. Справка о
-    планете сюда НЕ входит — идёт отдельным текстом в content, см.
-    _planet_info_text (решение пользователя)."""
+    """Метаданные операции — живые Discord-поля (упоминания, дата, планета)
+    сверху сообщения; содержательная часть (сводка/цель/задача/состав/угроза)
+    — в приложенной картинке-досье, см. render_operation_dossier. Планета —
+    поля самой заявки (row.payload), не карты (см. решение пользователя:
+    планета привязана к конкретному ивенту, а не к переиспользуемой карте) —
+    раньше шла отдельным текстом в content, теперь встроена в embed как
+    обычные структурные поля."""
     payload = row.payload or {}
 
     fields = []
@@ -457,6 +543,12 @@ def _build_event_embed(row, map_row) -> dict:
         map_value = f"[{map_row.name}]({map_row.url})" if map_row.url else map_row.name
     add_field("🗺️ Карта", map_value)
 
+    add_field("🪐 Планета", payload.get("planet_name"))
+    add_field("Система", payload.get("star_system"))
+    add_field("Ландшафт", payload.get("landscape"))
+    add_field("Погодные условия", payload.get("weather"))
+    add_field("Флора и фауна", payload.get("flora_fauna"), inline=False)
+
     return {
         "title": row.title,
         "color": 0x3B6FD6,
@@ -465,26 +557,8 @@ def _build_event_embed(row, map_row) -> dict:
     }
 
 
-def _planet_info_text(map_row) -> str | None:
-    """Справочная информация о планете карты — не для карточки, отдельным
-    текстом в теле сообщения (см. решение пользователя)."""
-    if map_row is None:
-        return None
-    lines = []
-    if map_row.planet_name:
-        lines.append(f"🪐 Планета: {map_row.planet_name}")
-    if map_row.star_system:
-        lines.append(f"Система: {map_row.star_system}")
-    if map_row.landscape:
-        lines.append(f"Ландшафт: {map_row.landscape}")
-    if map_row.weather:
-        lines.append(f"Погодные условия: {map_row.weather}")
-    return "\n".join(lines) if lines else None
-
-
-def _message_content(app_config, map_row) -> str | None:
-    parts = [p for p in (_ping_content(app_config), _planet_info_text(map_row)) if p]
-    return "\n\n".join(parts) if parts else None
+def _message_content(app_config) -> str | None:
+    return _ping_content(app_config)
 
 
 def _read_map_image(payload: dict) -> bytes | None:
@@ -556,6 +630,13 @@ async def approve_event(
         details=f"Одобрил заявку на ивент «{updated.title}» (#{updated.id})",
         target_user_id=updated.submitted_by_user_id,
     )
+    await notification_crud.create_personal_notification(
+        db,
+        target_user_id=updated.submitted_by_user_id,
+        title="Заявка на ивент одобрена",
+        body=f"«{updated.title}» одобрена.",
+        created_by=access.user.id,
+    )
 
     app_config = await app_settings_crud.get(db)
     if app_config.event_notify_channel_id:
@@ -570,7 +651,7 @@ async def approve_event(
                 embed=embed,
                 file_bytes=image_bytes,
                 filename=f"operation-{updated.id}.png",
-                content=_message_content(app_config, map_row),
+                content=_message_content(app_config),
             )
             await event_crud.mark_notified(db, updated, discord_message_id=message_id)
         except Exception:
@@ -579,7 +660,7 @@ async def approve_event(
             logger.exception("Не удалось отправить уведомление об ивенте «%s» в Discord", updated.title)
 
     event_bus.publish("event_room")
-    return EventRead.model_validate(updated)
+    return await _event_to_read(db, updated)
 
 
 @router.post("/{event_id}/reject", response_model=EventRead)
@@ -609,7 +690,181 @@ async def reject_event(
         target_user_id=updated.submitted_by_user_id,
     )
     event_bus.publish("event_room")
-    return EventRead.model_validate(updated)
+    return await _event_to_read(db, updated)
+
+
+@router.post("/{event_id}/cancel", response_model=EventRead)
+async def cancel_event(
+    event_id: int,
+    payload: EventCancelRequest,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventRead:
+    """Отмена уже одобренной заявки (см. решение пользователя) — редактирует
+    уже отправленную карточку в Discord, помечая её отменённой, вместо того
+    чтобы удалять сообщение или менять статус на "отклонено" (это разные вещи:
+    отклонили изначально или одобрили, а потом отменили)."""
+    if not access.can_decide_event:
+        raise ForbiddenError("Отменить одобренную заявку может только Ассистент/Куратор ивентологии")
+
+    row = await event_crud.get_by_id(db, event_id)
+    if row is None:
+        raise NotFoundError("Заявка не найдена")
+
+    reason = (payload.reason or "").strip() or None
+    updated = await event_crud.cancel(db, row, cancelled_by_user_id=access.user.id, reason=reason)
+    logger.info("%s отменил одобренный ивент «%s»", access.user.username, updated.title)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_cancel",
+        details=f"Отменил одобренную заявку на ивент «{updated.title}» (#{updated.id})"
+        + (f": {reason}" if reason else ""),
+        target_user_id=updated.submitted_by_user_id,
+    )
+
+    if updated.discord_message_id:
+        app_config = await app_settings_crud.get(db)
+        if app_config.event_notify_channel_id:
+            try:
+                map_row = await _get_selected_map(db, updated)
+                embed = _build_event_embed(updated, map_row)
+                embed["title"] = f"❌ ОТМЕНЕНО — {updated.title}"
+                embed["color"] = 0xB33A3A
+                image_bytes = await _render_event_image(
+                    db, event_id=updated.id, title=updated.title, payload=updated.payload or {}
+                )
+                await discord_client.edit_channel_message(
+                    app_config.event_notify_channel_id,
+                    updated.discord_message_id,
+                    embed=embed,
+                    file_bytes=image_bytes,
+                    filename=f"operation-{updated.id}.png",
+                    content=_message_content(app_config),
+                )
+            except Exception:
+                # отмена в БД уже сохранена — сбой правки Discord-карточки не
+                # должен откатывать решение
+                logger.exception("Не удалось отметить ивент «%s» как отменённый в Discord", updated.title)
+
+    event_bus.publish("event_room")
+    return await _event_to_read(db, updated)
+
+
+@router.post("/{event_id}/messages", response_model=EventMessageRead, status_code=201)
+async def create_event_message(
+    event_id: int,
+    payload: EventMessageCreate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventMessageRead:
+    """Заявка на свободное сообщение по одобренной заявке — не отправляется
+    сразу, а идёт на решение Ассистенту+/Куратору (см. решение пользователя),
+    как и сама заявка на ивент. Подать может только автор заявки."""
+    row = await event_crud.get_by_id(db, event_id)
+    if row is None:
+        raise NotFoundError("Заявка не найдена")
+    if row.submitted_by_user_id != access.user.id:
+        raise ForbiddenError("Подать заявку на сообщение может только автор заявки на ивент")
+    if row.status != "approved":
+        raise AppError("Заявка ещё не одобрена")
+
+    message = await event_message_crud.create(
+        db, event_id=event_id, content=payload.content.strip(), submitted_by_user_id=access.user.id
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_message_create",
+        details=f"Подал заявку на сообщение по заявке «{row.title}» (#{row.id})",
+    )
+    event_bus.publish("event_room")
+    return EventMessageRead.model_validate(message)
+
+
+@router.patch("/messages/{message_id}", response_model=EventMessageRead)
+async def decide_event_message(
+    message_id: int,
+    payload: EventMessageDecide,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventMessageRead:
+    if not access.can_decide_event:
+        raise ForbiddenError("Решить по заявке на сообщение может только Ассистент/Куратор ивентологии")
+    message = await event_message_crud.get_by_id(db, message_id)
+    if message is None:
+        raise NotFoundError("Заявка на сообщение не найдена")
+
+    updated = await event_message_crud.decide(
+        db,
+        message,
+        approve=payload.status == "approved",
+        decided_by_user_id=access.user.id,
+        rejection_reason=payload.rejection_reason,
+    )
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_message_decide",
+        details=f"Заявка на сообщение {message_id} (событие #{updated.event_id}) -> {payload.status}",
+    )
+    if updated.status == "approved":
+        await notification_crud.create_personal_notification(
+            db,
+            target_user_id=updated.submitted_by_user_id,
+            title="Заявка на сообщение одобрена",
+            body="Ваше сообщение по ивенту одобрено — теперь его можно отправить.",
+            created_by=access.user.id,
+        )
+    event_bus.publish("event_room")
+    return EventMessageRead.model_validate(updated)
+
+
+@router.post("/messages/{message_id}/send", response_model=EventMessageRead)
+async def send_event_message(
+    message_id: int,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventMessageRead:
+    """Реальная отправка в Discord — доступна и автору заявки на сообщение, и
+    Ассистенту+/Куратору (см. решение пользователя), но только после
+    одобрения; повторно отправить нельзя. Статус/sent_at проверяются ЗДЕСЬ,
+    до вызова Discord — если положиться только на guard внутри mark_sent
+    (который срабатывает ПОСЛЕ фактической отправки), то по клику на уже
+    отправленное или ещё не одобренное сообщение бот всё равно шлёт реальное
+    сообщение в канал, а уже потом падает с ошибкой (баг-репорт при
+    разработке — 3 реальных отправки на 1 успешный сценарий в тесте)."""
+    message = await event_message_crud.get_by_id(db, message_id)
+    if message is None:
+        raise NotFoundError("Заявка на сообщение не найдена")
+    if message.submitted_by_user_id != access.user.id and not access.can_decide_event:
+        raise ForbiddenError("Отправить сообщение может автор заявки или Ассистент/Куратор ивентологии")
+    if message.status != "approved":
+        raise AppError("Отправить можно только одобренное сообщение")
+    if message.sent_at is not None:
+        raise AppError("Сообщение уже отправлено")
+
+    app_config = await app_settings_crud.get(db)
+    if not app_config.event_notify_channel_id:
+        raise AppError("Канал уведомлений Ивентрума не настроен")
+
+    await discord_client.send_channel_message(
+        app_config.event_notify_channel_id,
+        content=f"💬 {message.submitted_by.username}: {message.content}",
+    )
+    updated = await event_message_crud.mark_sent(db, message, sent_by_user_id=access.user.id)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_message_send",
+        details=f"Отправил сообщение {message_id} по ивенту #{updated.event_id}",
+    )
+    event_bus.publish("event_room")
+    return EventMessageRead.model_validate(updated)
 
 
 # --- Каталог карт (правят только Ассистент/Куратор ивентологии) -------------
@@ -638,10 +893,6 @@ async def create_map(
         db,
         name=payload.name.strip(),
         url=(payload.url or "").strip() or None,
-        planet_name=(payload.planet_name or "").strip() or None,
-        landscape=(payload.landscape or "").strip() or None,
-        weather=(payload.weather or "").strip() or None,
-        star_system=(payload.star_system or "").strip() or None,
     )
     return EventMapRead.model_validate(row)
 
@@ -659,7 +910,7 @@ async def update_map(
     if row is None:
         raise NotFoundError("Карта не найдена")
     changes = payload.model_dump(exclude_unset=True)
-    for key in ("name", "url", "planet_name", "landscape", "weather", "star_system"):
+    for key in ("name", "url"):
         if key in changes and isinstance(changes[key], str):
             changes[key] = changes[key].strip() or None
     updated = await event_crud.update_map(db, row, **changes)

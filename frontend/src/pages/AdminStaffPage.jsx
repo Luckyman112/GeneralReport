@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ActivityTrendPanel } from "../components/ActivityTrendPanel";
+import { AdminMemberDetailModal } from "../components/AdminMemberDetailModal";
 import { EmptyState } from "../components/EmptyState";
+import { MemberSearchPicker } from "../components/MemberSearchPicker";
 import { PageLoading } from "../components/PageLoading";
 import { useToast } from "../components/ToastContext";
 import { formatMskDate } from "../utils/formatDate";
@@ -19,12 +22,21 @@ const PUNISHMENT_FIELDS = [
   { key: "nickname", label: "Игровой никнейм" },
   { key: "position", label: "Должность" },
   { key: "punishment_issued", label: "Выдано наказание" },
-  { key: "punishment_target", label: "Кому выдано наказание" },
   { key: "reason", label: "Причина наказания" },
   { key: "duration", label: "Срок наказания" },
 ];
 
 const TYPE_LABELS = { activity: "Отчёт деятельности", punishment: "Отчёт наказаний" };
+
+// Решённый отчёт старше этого срока уходит в свёрнутый архив, чтобы список не
+// захламлялся (см. решение пользователя, п.3 из батча правок) — pending всегда активен.
+const ARCHIVE_AFTER_DAYS = 14;
+
+function isArchivedReport(r) {
+  if (r.status === "pending" || !r.decided_at) return false;
+  const ageMs = Date.now() - new Date(r.decided_at).getTime();
+  return ageMs > ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
 
 /** Администрация — нон-РП должность (модерация сервера: баны/муты/выдача
  * предметов), не связана с РП-формированиями (см. решение пользователя —
@@ -38,13 +50,19 @@ export function AdminStaffPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const [selectedDiscordId, setSelectedDiscordId] = useState(null);
+
   const [reportType, setReportType] = useState("activity");
   const [fieldValues, setFieldValues] = useState({});
   const [attachmentUrl, setAttachmentUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [memberCandidates, setMemberCandidates] = useState([]);
+  const [punishmentTargetId, setPunishmentTargetId] = useState("");
 
   const fields = reportType === "activity" ? ACTIVITY_FIELDS : PUNISHMENT_FIELDS;
+
+  const fetchTrend = useCallback((range) => api.getAdminActivityTrend(token, range), [token]);
 
   function loadReports() {
     api
@@ -54,10 +72,11 @@ export function AdminStaffPage() {
   }
 
   useEffect(() => {
-    Promise.all([api.listAdminReports(token), api.getAdminActivitySummary(token)])
-      .then(([reportsData, summaryData]) => {
+    Promise.all([api.listAdminReports(token), api.getAdminActivitySummary(token), api.getAdminMemberCandidates(token)])
+      .then(([reportsData, summaryData, membersData]) => {
         setReports(reportsData);
         setSummary(summaryData);
+        setMemberCandidates(membersData);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -90,12 +109,25 @@ export function AdminStaffPage() {
     setSubmitting(true);
     setError(null);
     try {
+      const target = memberCandidates.find((m) => m.discord_id === punishmentTargetId);
       await api.createAdminReport(token, {
         reportType,
-        payload: { ...fieldValues, attachment_url: attachmentUrl || null },
+        payload: {
+          ...fieldValues,
+          attachment_url: attachmentUrl || null,
+          // Необязательное поле — кому выдано наказание (см. решение
+          // пользователя: может быть любого формирования, можно не указывать)
+          ...(reportType === "punishment"
+            ? {
+                punishment_target_discord_id: target?.discord_id || null,
+                punishment_target: target?.username || null,
+              }
+            : {}),
+        },
       });
       setFieldValues({});
       setAttachmentUrl("");
+      setPunishmentTargetId("");
       showToast("Отчёт отправлен");
       loadReports();
     } catch (err) {
@@ -116,6 +148,52 @@ export function AdminStaffPage() {
     }
   }
 
+  function renderReportRow(r) {
+    return (
+      <div key={r.id} className="report-row">
+        <span className={`status-badge status-${r.status}`}>{STATUS_LABELS[r.status] || r.status}</span>
+        <span className="report-category">{TYPE_LABELS[r.report_type] || r.report_type}</span>
+        <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
+        <p className="report-byline">Подал: {r.submitted_by?.nickname_override || r.submitted_by?.username}</p>
+        <ul className="member-report-list">
+          {Object.entries(r.payload)
+            .filter(([key, value]) => key !== "attachment_url" && key !== "punishment_target_discord_id" && value)
+            .map(([key, value]) => (
+              <li key={key}>{value}</li>
+            ))}
+        </ul>
+        {r.payload.attachment_url && (
+          <a href={r.payload.attachment_url} target="_blank" rel="noreferrer">
+            Вложение
+          </a>
+        )}
+        {r.status === "rejected" && r.rejection_reason && (
+          <p className="report-rejection-reason">Причина отклонения: {r.rejection_reason}</p>
+        )}
+        {r.status === "pending" && access?.can_decide_admin_report && (
+          <div className="report-form-actions">
+            <button type="button" onClick={() => handleDecide(r.id, "approved")}>
+              Одобрить
+            </button>
+            <button type="button" className="ghost error-text" onClick={() => handleDecide(r.id, "rejected")}>
+              Отклонить
+            </button>
+          </div>
+        )}
+        {r.status === "approved" && access?.can_decide_admin_report && (
+          <div className="report-form-actions">
+            <button type="button" className="ghost error-text" onClick={() => handleDecide(r.id, "rejected")}>
+              Отклонить (передумали)
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const activeReports = reports.filter((r) => !isArchivedReport(r));
+  const archivedReports = reports.filter(isArchivedReport);
+
   if (loading) return <PageLoading />;
 
   return (
@@ -129,7 +207,14 @@ export function AdminStaffPage() {
           <h3>Подать отчёт</h3>
           <label>
             Тип отчёта
-            <select value={reportType} onChange={(e) => { setReportType(e.target.value); setFieldValues({}); }}>
+            <select
+              value={reportType}
+              onChange={(e) => {
+                setReportType(e.target.value);
+                setFieldValues({});
+                setPunishmentTargetId("");
+              }}
+            >
               <option value="activity">Отчёт деятельности</option>
               <option value="punishment">Отчёт наказаний</option>
             </select>
@@ -144,6 +229,12 @@ export function AdminStaffPage() {
               />
             </label>
           ))}
+          {reportType === "punishment" && (
+            <label>
+              Кому выдано наказание (необязательно — любое формирование)
+              <MemberSearchPicker members={memberCandidates} selectedId={punishmentTargetId} onSelect={setPunishmentTargetId} />
+            </label>
+          )}
           <label>
             Прикреплённое доказательство (скриншот/видео)
             <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={handleAttachmentUpload} />
@@ -165,41 +256,21 @@ export function AdminStaffPage() {
       {reports.length === 0 ? (
         <EmptyState text="Отчётов пока нет." />
       ) : (
-        <div className="report-list">
-          {reports.map((r) => (
-            <div key={r.id} className="report-row">
-              <span className={`status-badge status-${r.status}`}>{STATUS_LABELS[r.status] || r.status}</span>
-              <span className="report-category">{TYPE_LABELS[r.report_type] || r.report_type}</span>
-              <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
-              <p className="report-byline">Подал: {r.submitted_by?.nickname_override || r.submitted_by?.username}</p>
-              <ul className="member-report-list">
-                {Object.entries(r.payload)
-                  .filter(([key, value]) => key !== "attachment_url" && value)
-                  .map(([key, value]) => (
-                    <li key={key}>{value}</li>
-                  ))}
-              </ul>
-              {r.payload.attachment_url && (
-                <a href={r.payload.attachment_url} target="_blank" rel="noreferrer">
-                  Вложение
-                </a>
-              )}
-              {r.status === "rejected" && r.rejection_reason && (
-                <p className="report-rejection-reason">Причина отклонения: {r.rejection_reason}</p>
-              )}
-              {r.status === "pending" && access?.can_decide_admin_report && (
-                <div className="report-form-actions">
-                  <button type="button" onClick={() => handleDecide(r.id, "approved")}>
-                    Одобрить
-                  </button>
-                  <button type="button" className="ghost error-text" onClick={() => handleDecide(r.id, "rejected")}>
-                    Отклонить
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        <>
+          {activeReports.length === 0 ? (
+            <EmptyState text="Активных отчётов нет." />
+          ) : (
+            <div className="report-list">{activeReports.map(renderReportRow)}</div>
+          )}
+          {archivedReports.length > 0 && (
+            <details className="event-archive-strip" style={{ marginTop: "0.75rem" }}>
+              <summary>
+                <span className="event-archive-strip-title">Архив ({archivedReports.length})</span>
+              </summary>
+              <div className="event-archive-list">{archivedReports.map(renderReportRow)}</div>
+            </details>
+          )}
+        </>
       )}
 
       <h3>Сводка активности</h3>
@@ -212,26 +283,46 @@ export function AdminStaffPage() {
               <tr>
                 <th>Боец</th>
                 <th>Должность</th>
-                <th>За неделю</th>
-                <th>За месяц</th>
-                <th>Всего</th>
+                <th>Деятельность (7д / 30д / всего)</th>
+                <th>Наказания (7д / 30д / всего)</th>
+                <th>Выговоры</th>
                 <th>Последний отчёт</th>
               </tr>
             </thead>
             <tbody>
               {summary.map((s) => (
                 <tr key={s.discord_id}>
-                  <td>{s.username}</td>
+                  <td>
+                    <span className="clickable-row" onClick={() => setSelectedDiscordId(s.discord_id)}>
+                      {s.username}
+                    </span>
+                  </td>
                   <td>{s.rank_label}</td>
-                  <td className="mono-num">{s.count_week}</td>
-                  <td className="mono-num">{s.count_month}</td>
-                  <td className="mono-num">{s.count_all_time}</td>
+                  <td className="mono-num">
+                    {s.activity_count_week} / {s.activity_count_month} / {s.activity_count_all_time}
+                  </td>
+                  <td className="mono-num">
+                    {s.punishment_count_week} / {s.punishment_count_month} / {s.punishment_count_all_time}
+                  </td>
+                  <td>
+                    {s.active_reprimand_count > 0 ? (
+                      <span className="status-badge status-rejected">{s.active_reprimand_count}</span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td>{s.last_report_at ? `${formatMskDate(s.last_report_at)} МСК` : "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      <ActivityTrendPanel title="Активность по дням" fetchTrend={fetchTrend} />
+
+      {selectedDiscordId && (
+        <AdminMemberDetailModal discordId={selectedDiscordId} onClose={() => setSelectedDiscordId(null)} />
       )}
     </div>
   );

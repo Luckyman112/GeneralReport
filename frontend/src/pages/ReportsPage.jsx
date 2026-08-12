@@ -7,6 +7,7 @@ import { CategoryNav } from "../components/CategoryNav";
 import { DetentionReportForm } from "../components/DetentionReportForm";
 import { EmptyState } from "../components/EmptyState";
 import { HqLeadershipPanel } from "../components/HqLeadershipPanel";
+import { JediAttestationReportForm } from "../components/JediAttestationReportForm";
 import { JediTrialReportForm } from "../components/JediTrialReportForm";
 import { OverflowMenu } from "../components/OverflowMenu";
 import { PageLoading } from "../components/PageLoading";
@@ -59,6 +60,7 @@ export function ReportsPage() {
   const [showDetentionForm, setShowDetentionForm] = useState(false);
   const [showRecruitForm, setShowRecruitForm] = useState(false);
   const [showJediTrialForm, setShowJediTrialForm] = useState(false);
+  const [showJediAttestationForm, setShowJediAttestationForm] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [categoriesById, setCategoriesById] = useState({});
   const [error, setError] = useState(null);
@@ -295,6 +297,12 @@ export function ReportsPage() {
     await loadReports();
   }
 
+  async function handleCreateJediAttestation(payload) {
+    await api.createReport(token, { ...payload, submit: true });
+    setShowJediAttestationForm(false);
+    await loadReports();
+  }
+
   async function handleSubmitDraft(reportId) {
     try {
       await api.updateReportStatus(token, reportId, { status: "submitted" });
@@ -467,6 +475,10 @@ export function ReportsPage() {
                   label: "Наставничество",
                   onClick: () => setShowJediTrialForm(true),
                 },
+                !showJediAttestationForm && {
+                  label: "Аттестация",
+                  onClick: () => setShowJediAttestationForm(true),
+                },
                 manageableRegiments.length > 0 && {
                   label: "Категории и поля",
                   onClick: () => setShowCategoryManager(true),
@@ -503,6 +515,14 @@ export function ReportsPage() {
               categoriesById={categoriesById}
               onSubmit={handleCreateJediTrial}
               onCancel={() => setShowJediTrialForm(false)}
+            />
+          )}
+
+          {showJediAttestationForm && (
+            <JediAttestationReportForm
+              categoriesById={categoriesById}
+              onSubmit={handleCreateJediAttestation}
+              onCancel={() => setShowJediAttestationForm(false)}
             />
           )}
 
