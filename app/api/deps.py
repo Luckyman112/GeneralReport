@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core import discord_client
 from app.core.constants import PASSWORD_LOGIN_DISCORD_ID
 from app.core.security import decode_access_token
 from app.crud import app_settings as app_settings_crud
@@ -39,7 +40,35 @@ async def get_current_user(
         if issued_at is None or issued_at < app_config.sessions_revoked_at:
             raise UnauthorizedError("Сессия принудительно завершена — войдите заново")
 
+    await _refresh_roles_if_stale(db, user)
     return user
+
+
+async def _refresh_roles_if_stale(db: AsyncSession, user: User) -> None:
+    """user.roles раньше обновлялся только при логине через Discord — снятая/
+    выданная роль не отражалась в правах/бейджах/конфликте ролей, пока боец
+    не перезайдёт на сайт (баг-репорт: "не хочу каждому говорить перезайти").
+    Подтягиваем актуальные роли из уже закэшированного (см.
+    discord_client._MEMBERS_CACHE_TTL_SECONDS, 30с) списка участников — тот же
+    запрос, что и так дёргается почти на каждое действие с составом, поэтому
+    это не добавляет нагрузки на Discord API, а просто ограничивает
+    "протухание" ролей 30 секундами вместо "до следующего входа"."""
+    if user.discord_id == PASSWORD_LOGIN_DISCORD_ID:
+        return
+    try:
+        members = await discord_client.fetch_guild_members()
+    except Exception:
+        # Discord временно недоступен — не роняем запрос, просто работаем с
+        # тем, что уже есть в БД (тот же "было и раньше" уровень свежести)
+        return
+    member = next((m for m in members if m["discord_id"] == user.discord_id), None)
+    if member is None:
+        return
+    live_roles = member["roles"]
+    if set(live_roles) != set(user.roles):
+        user.roles = live_roles
+        await db.commit()
+        await db.refresh(user)
 
 
 @dataclass

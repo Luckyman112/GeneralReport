@@ -829,11 +829,41 @@ audit, not removed and not built out; if you land here needing to add a manual
 
 ### Discord integration (`app/core/discord_client.py`)
 REST API only via `httpx` — no `discord.py`, no gateway connection, no persistent bot
-process. Guild member/role lookups are live HTTP calls, not cached locally (see above).
-Almost everything here is read-only (GET); `add_member_role` (recruit pipeline, see
-above) is the one exception — a bot-token `PUT` that can 403 if the bot lacks
-`MANAGE_ROLES` or sits below the target role in the server's hierarchy, so callers must
-treat it as best-effort (log + continue), never as something that can fail the request.
+process. Fully **read-only** — no write/PUT calls anywhere (the one exception,
+`add_member_role` used to auto-grant the recruit regiment's role at registration, was
+removed — see "Registration no longer auto-grants..." below). `fetch_guild_members()`
+caches the whole-guild roster for `_MEMBERS_CACHE_TTL_SECONDS` (30s, module-level
+in-process cache) since it's hit on almost every roster-related action; `fetch_member_roles`
+(single member) is not cached — used only where the moment needs to be exact
+(currently unused after the registration auto-grant removal, kept for future use).
+
+### Live Discord role sync on every request (`get_current_user`/`_refresh_roles_if_stale`)
+`User.roles` used to be a snapshot written only at Discord OAuth login
+(`user_crud.upsert_user`) — if staff removed/added a Discord role for someone in
+Discord, that person's own permissions/badges/role-conflict detection
+(`AccessContext`, computed from `User.roles`) stayed stale until they manually logged
+out and back in (bug report: staff had to individually tell affected players to
+re-login). `get_current_user` (`app/api/deps.py`) now calls
+`_refresh_roles_if_stale` on every authenticated request, which re-derives the
+user's roles from the already-cached `discord_client.fetch_guild_members()` list
+(no extra Discord API load — same 30s-cached call already firing elsewhere) and
+persists them if changed. Bounds staleness to ≤30s instead of "until next login,"
+without hitting Discord per-request. Skipped for the password-login pseudo-user
+(no real Discord presence); fails open (keeps the DB-stored roles) if the Discord
+API call itself errors, so a transient Discord outage doesn't lock anyone out.
+
+### Registration no longer auto-grants the recruit regiment's Discord role
+`POST /me/registration` used to best-effort assign the 17th Recruit Regiment's
+Discord role via `discord_client.add_member_role` on every submission, regardless of
+whether the registrant already held another formation's role (see Recruit pipeline
+above — this was the ONE write call in `discord_client.py`). Removed (see решение
+пользователя): Discord roles are already synced from in-game state by a separate
+mechanism outside this app, and this auto-grant stacked the 17th's role on top of a
+real formation role, producing the two-formation-roles state `hasRoleConflict`
+(`App.jsx`) exists to catch (bug report: "у человека 2 роли формирования"). Formation
+membership — including the 17th's — is now entirely driven by whatever Discord role
+staff/the external sync assign, same as any other regiment; nothing in this app
+grants Discord roles anymore.
 
 ### Frontend conventions
 - Every async button/form handler must wrap its `api.*` call in try/catch and surface
