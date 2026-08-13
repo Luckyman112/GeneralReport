@@ -15,7 +15,7 @@ const ALL_REGIMENTS = "__all__";
 const TIER_LIMIT_FIELDS = [
   ["class_limit", "Общих классов"],
   ["gear_limit", "Общего снаряжения"],
-  ["specialization_limit", "Общих специализаций"],
+  ["specialization_limit", "Главных специализаций"],
   ["additional_specialization_limit", "Доп. специализаций"],
   ["elite_specialization_limit", "Элитных специализаций"],
   ["medic_limit", "Медицинских дисциплин"],
