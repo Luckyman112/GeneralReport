@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, UploadFile
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -343,12 +344,29 @@ async def list_categories(
     access: AccessContext = Depends(get_access_context),
 ) -> list[ReportCategoryRead]:
     """Категории рапортов формирования — доступно всем, у кого есть доступ к формированию,
-    а также инструктору (нужны категории обучения любого формирования)."""
-    if not access.can_grant_specializations:
+    а также инструктору (нужны категории обучения любого формирования). Отдельное
+    исключение — Штаб: командир/зам ЛЮБОГО формирования должен видеть его категории
+    (там могут быть open_to_regiment_leadership), даже не состоя в самом Штабе — та же
+    логика, что уже применяется при подаче рапорта (см. _check_category_filing_restrictions
+    в app/api/reports.py) и что фронт уже предполагает (AccessContext.is_regiment_leadership),
+    но раньше не была реализована именно здесь, так что список 403-ил ещё до того, как
+    дело доходило до проверки конкретной категории (баг-репорт)."""
+    regiment = await _get_regiment_or_404(db, regiment_id)
+    is_staff_leadership_view = access.is_regiment_leadership and regiment.name == regiment_crud.STAFF_REGIMENT_NAME
+    if not access.can_grant_specializations and not is_staff_leadership_view:
         _require_regiment_access(access, regiment_id)
-    await _get_regiment_or_404(db, regiment_id)
     categories = await report_category_crud.get_by_regiment(db, regiment_id)
-    return [ReportCategoryRead.model_validate(c) for c in categories]
+    result = []
+    for c in categories:
+        try:
+            result.append(ReportCategoryRead.model_validate(c))
+        except ValidationError:
+            # Одна кривая категория (например, старое поле рапорта без
+            # обязательного "name" в JSON) не должна ронять весь список 500-й —
+            # пропускаем именно её, остальные формирование по-прежнему видит
+            # (баг-репорт: "Новый рапорт" падал целиком из-за одной категории)
+            logger.exception("Категория %s (формирование %s) не прошла валидацию — пропущена", c.id, regiment_id)
+    return result
 
 
 async def _can_manage_discipline_category(
