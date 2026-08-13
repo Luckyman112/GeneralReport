@@ -104,8 +104,18 @@ export function ReportsPage() {
 
   const creatableRegiments = useMemo(() => {
     const base = access?.is_admin || access?.is_high_command ? regiments : regiments.filter((r) => accessibleRegimentIds.includes(r.id));
-    return regimentFilter ? base.filter((r) => r.id === Number(regimentFilter)) : base;
-  }, [regiments, access, accessibleRegimentIds, regimentFilter]);
+    // Штаб попадает в accessibleRegimentIds любому командиру/заму (см.
+    // AccessContext.is_regiment_leadership — нужно, чтобы видеть категории
+    // Штаба с open_to_regiment_leadership), даже если сам он в Штабе не
+    // служит — это раздувало список формирований в общей форме "Новый
+    // рапорт" (см. решение пользователя). Убираем Штаб отсюда для всех,
+    // кроме тех, кто реально в нём состоит, и админа/высшего командования.
+    const ownIds = new Set([...(access?.commander_regiment_ids || []), ...(access?.soldier_regiment_ids || [])]);
+    const visibleBase = base.filter(
+      (r) => r.id !== hqRegiment?.id || access?.is_admin || access?.is_high_command || ownIds.has(r.id)
+    );
+    return regimentFilter ? visibleBase.filter((r) => r.id === Number(regimentFilter)) : visibleBase;
+  }, [regiments, access, accessibleRegimentIds, regimentFilter, hqRegiment]);
 
   // Конструктор категорий теперь доступен только высшему командованию/админу — и
   // сразу для всех формирований, не привязан к конкретному
