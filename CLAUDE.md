@@ -18,6 +18,16 @@ production immediately, there is no staging environment. The container runs
 `alembic upgrade head` on every start, so schema migrations apply automatically on
 deploy; **data backfills for new features do not** (see below).
 
+`app/main.py` sets `Cache-Control: no-cache` on `index.html`/the SPA fallback and
+`public, max-age=31536000, immutable` on `/assets/*` (a small `@app.middleware("http")`
+right before the frontend `StaticFiles` mount). Vite fingerprints every build's JS/CSS
+filenames by content hash and the old files are gone after the next deploy — without
+this, a browser (or Cloudflare's edge) holding a cached `index.html` from before a
+deploy would keep referencing a now-deleted JS filename, producing a permanently blank
+page for that user until they hard-refresh (bug report: exactly this happened to a
+player mid-deploy). `/assets/*` is safe to cache forever since its filenames change on
+every build; `index.html` must always revalidate.
+
 ## Commands
 
 Backend (run from repo root):

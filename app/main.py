@@ -139,6 +139,24 @@ app.mount("/uploads", StaticFiles(directory=_uploads_dir), name="uploads")
 # перекрыть /api, /auth, /health, /uploads.
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if _frontend_dist.is_dir():
+    # index.html ссылается на файлы сборки по хэшированному имени
+    # (frontend/dist/assets/*-<hash>.js) — при каждом деплое имена меняются, а
+    # старые файлы удаляются. Если браузер/Cloudflare закэшировали index.html с
+    # ПРОШЛОГО деплоя, они пытаются скачать уже несуществующий JS — пустой экран
+    # у пользователя, у которого сайт был открыт/закэширован на момент деплоя
+    # (баг-репорт). Поэтому index.html/SPA-fallback — всегда no-cache
+    # (перепроверяется на каждый заход), а сами хэшированные файлы в /assets —
+    # наоборot, кэшируются надолго: их имя и так меняется на каждую сборку.
+    @app.middleware("http")
+    async def _frontend_cache_headers(request, call_next):
+        response = await call_next(request)
+        if request.method == "GET" and response.status_code == 200:
+            if request.url.path.startswith("/assets/"):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            elif not request.url.path.startswith(("/api/", "/auth/", "/health", "/uploads/")):
+                response.headers["Cache-Control"] = "no-cache"
+        return response
+
     app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
 else:
     logger.warning("frontend/dist не найден (%s) — фронт не раздаётся, только API", _frontend_dist)
