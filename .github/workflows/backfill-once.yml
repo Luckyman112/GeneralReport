@@ -11,6 +11,10 @@ jobs:
   backfill:
     runs-on: self-hosted
     steps:
+      - name: Backfill base report categories for existing regiments
+        run: |
+          set -e
+          docker exec -i collapsar-backend python -m scripts.backfill_base_categories
       - name: Insert "Курс молодого бойца" category for 17th Regiment
         run: |
           set -e
