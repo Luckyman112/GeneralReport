@@ -72,14 +72,13 @@ export function ReportsPage() {
 
   const accessibleRegimentIds = useMemo(() => {
     if (access?.is_admin || access?.is_high_command) return regiments.map((r) => r.id);
+    // Штаб раньше добавлялся сюда любому командиру/заму ЛЮБОГО формирования
+    // (is_regiment_leadership — чтобы видеть категории Штаба с
+    // open_to_regiment_leadership), даже не состоя в самом Штабе — по
+    // решению пользователя убрано: Штаб виден только тем, кто в нём реально
+    // состоит (или админу/высшему командованию выше), иначе путает "Нет
+    // доступа к этому формированию" в панели состава и категориях.
     const ids = new Set([...(access?.commander_regiment_ids || []), ...(access?.soldier_regiment_ids || [])]);
-    // командир/зам ЛЮБОГО формирования видит Штаб — там могут быть категории
-    // "открытые командирам всех формирований" (open_to_regiment_leadership),
-    // даже если сам он в Штабе не состоит
-    if (access?.is_regiment_leadership) {
-      const hq = regiments.find((r) => r.name === "Штаб");
-      if (hq) ids.add(hq.id);
-    }
     return [...ids];
   }, [access, regiments]);
 
@@ -104,18 +103,8 @@ export function ReportsPage() {
 
   const creatableRegiments = useMemo(() => {
     const base = access?.is_admin || access?.is_high_command ? regiments : regiments.filter((r) => accessibleRegimentIds.includes(r.id));
-    // Штаб попадает в accessibleRegimentIds любому командиру/заму (см.
-    // AccessContext.is_regiment_leadership — нужно, чтобы видеть категории
-    // Штаба с open_to_regiment_leadership), даже если сам он в Штабе не
-    // служит — это раздувало список формирований в общей форме "Новый
-    // рапорт" (см. решение пользователя). Убираем Штаб отсюда для всех,
-    // кроме тех, кто реально в нём состоит, и админа/высшего командования.
-    const ownIds = new Set([...(access?.commander_regiment_ids || []), ...(access?.soldier_regiment_ids || [])]);
-    const visibleBase = base.filter(
-      (r) => r.id !== hqRegiment?.id || access?.is_admin || access?.is_high_command || ownIds.has(r.id)
-    );
-    return regimentFilter ? visibleBase.filter((r) => r.id === Number(regimentFilter)) : visibleBase;
-  }, [regiments, access, accessibleRegimentIds, regimentFilter, hqRegiment]);
+    return regimentFilter ? base.filter((r) => r.id === Number(regimentFilter)) : base;
+  }, [regiments, access, accessibleRegimentIds, regimentFilter]);
 
   // Конструктор категорий теперь доступен только высшему командованию/админу — и
   // сразу для всех формирований, не привязан к конкретному
