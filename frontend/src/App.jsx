@@ -55,13 +55,29 @@ function Layout({ children }) {
   // пользователя — иначе в составе висел misleading бейдж "не зарегистрирован"
   // у людей с полным доступом) — освобождён только is_founder, чтобы не
   // заблокировать самого владельца сайта на пустой инсталляции без единого
-  // одобренного админа
+  // одобренного админа. Плюс is_real_admin — при "Просмотре от лица"
+  // is_admin/is_founder/is_high_command в access подменяются на права ТОГО,
+  // КОГО ПРОСМАТРИВАЮТ (см. app/api/deps.py::build_view_as_context/
+  // view-as-person), а user (registration_status и т.п.) остаётся реальным —
+  // без этой проверки админ, открывший "Просмотр от лица" рядового бойца,
+  // сам на секунду попадал под "не зарегистрирован"/конфликт ролей/техработы
+  // (баг-репорт: "просмотр от лица заставляет меня логиниться").
+  // is_real_admin специально не подменяется при view-as, всегда отражает
+  // РЕАЛЬНЫЙ аккаунт.
   const needsRegistration =
-    isAuthenticated && user?.registration_status !== "approved" && !access?.is_founder;
+    isAuthenticated && user?.registration_status !== "approved" && !access?.is_founder && !access?.is_real_admin;
   const isBlockedByMaintenance =
-    isAuthenticated && maintenanceStatus?.enabled && !access?.is_admin && !access?.is_high_command;
+    isAuthenticated &&
+    maintenanceStatus?.enabled &&
+    !access?.is_admin &&
+    !access?.is_high_command &&
+    !access?.is_real_admin;
   const hasRoleConflict =
-    isAuthenticated && (access?.soldier_regiment_ids || []).length > 1 && !access?.is_admin && !access?.is_high_command;
+    isAuthenticated &&
+    (access?.soldier_regiment_ids || []).length > 1 &&
+    !access?.is_admin &&
+    !access?.is_high_command &&
+    !access?.is_real_admin;
   const isFrozenForTransfer = isAuthenticated && access?.active_transfer?.status === "approved";
 
   // Закрываем мобильный сайдбар при переходе на другой роут и блокируем скролл
