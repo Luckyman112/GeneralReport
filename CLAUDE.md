@@ -914,15 +914,32 @@ Same session as the two fixes above, three related follow-up bug reports
   `regiment_ids` subset) at once — each regiment holds its own separate
   `ReportCategory` row with the same name (see `get_or_create_regiment_clone`
   elsewhere in this doc), so previously this meant opening
-  `CategoryManagerModal` once per regiment. UI: a new "Массовое изменение
-  расценок рапортов" card in `AdminPanelPage.jsx` (already an `is_admin`-only
-  page), with a `MultiSelectDropdown` over `regiments` for the optional
-  subset. **Deliberately never touches historical `Report`/`ReportParticipant`
-  rows** — those are snapshotted at approval time exactly like every other
-  snapshot pattern in this codebase (rank, tenure, etc.), confirmed as the
-  desired behavior by explicit user decision when this was built, so a
-  category's default points changing going forward never silently reprices
-  already-approved reports or retroactively triggers a promotion.
+  `CategoryManagerModal` once per regiment. **Deliberately never touches
+  historical `Report`/`ReportParticipant` rows** — those are snapshotted at
+  approval time exactly like every other snapshot pattern in this codebase
+  (rank, tenure, etc.), confirmed as the desired behavior by explicit user
+  decision when this was built, so a category's default points changing
+  going forward never silently reprices already-approved reports or
+  retroactively triggers a promotion.
+  UI lives in `PromotionsPage.jsx`'s existing `RequirementsTable` (moved
+  there from a first draft in `AdminPanelPage.jsx` by explicit user request —
+  "Баллы за рапорты по категориям" was already a read-only table on this
+  page, right below the same editor's existing "Все формирования" mode/
+  `ALL_REGIMENTS` sentinel + "Режим редактора" toggle used for admin-base
+  promotion points, so reusing that exact mode/permission pattern instead of
+  a standalone tool was the natural fit). The table's `points`/
+  `participant_points` cells become `<input>`s whenever
+  `canEditCategoryPoints` (`= isAllMode ? canEditDays : canEditPoints` — same
+  admin/high-command-only gate in all-formations mode as the rest of that
+  mode's fields, or the regular per-regiment category-manager gate
+  otherwise) — `categoryPointsDraft`/`categoryPointsBaseline` state populated
+  from the same `listCategories` call `selectableCategories` already used,
+  folded into the page's existing single `isDirty`/`SaveBar`/`handleReset`.
+  On save, per changed category: `isAllMode` calls the bulk-by-name endpoint
+  above (ignores the row's own id — it belongs to whichever regiment is the
+  "reference" for All-mode display, see `referenceRegimentId`), otherwise a
+  normal single-regiment `PATCH .../categories/{id}` like `CategoryManagerModal`
+  already does.
 
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full

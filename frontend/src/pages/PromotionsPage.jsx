@@ -40,6 +40,8 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   const [categories, setCategories] = useState({});
   const [categoryRequirements, setCategoryRequirements] = useState([]);
   const [baseline, setBaseline] = useState(null);
+  const [categoryPointsDraft, setCategoryPointsDraft] = useState({});
+  const [categoryPointsBaseline, setCategoryPointsBaseline] = useState({});
   const [adminDraft, setAdminDraft] = useState({});
   const [cmdDraft, setCmdDraft] = useState({});
   const [tierDraft, setTierDraft] = useState({});
@@ -131,6 +133,13 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
         .then((data) => {
           if (requestIdRef.current === requestId) {
             setCategories(Object.fromEntries(data.map((c) => [c.id, c])));
+            const points = Object.fromEntries(
+              data
+                .filter((c) => !c.is_detention)
+                .map((c) => [c.id, { points: c.points ?? "", participant_points: c.participant_points ?? "" }])
+            );
+            setCategoryPointsDraft(points);
+            setCategoryPointsBaseline(points);
           }
         })
         .catch((e) => {
@@ -152,13 +161,20 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, referenceRegimentId]);
 
+  // Расценка категорий доступна тому же, кто и остальное в соответствующем
+  // режиме: в "Все формирования" — только тому, кто может менять админскую
+  // базу баллов (canEditDays), для одного формирования — полноправному
+  // категорийному менеджеру (canEditPoints, как и «+ от командира» ниже)
+  const canEditCategoryPoints = isAllMode ? canEditDays : canEditPoints;
+
   const isDirty =
     baseline != null &&
     (JSON.stringify(adminDraft) !== JSON.stringify(baseline.admin) ||
       JSON.stringify(cmdDraft) !== JSON.stringify(baseline.cmd) ||
       JSON.stringify(tierDraft) !== JSON.stringify(baseline.tier) ||
       JSON.stringify(rankTenureDraft) !== JSON.stringify(baseline.rankTenure) ||
-      JSON.stringify(tierLimitsDraft) !== JSON.stringify(baseline.tierLimits));
+      JSON.stringify(tierLimitsDraft) !== JSON.stringify(baseline.tierLimits) ||
+      JSON.stringify(categoryPointsDraft) !== JSON.stringify(categoryPointsBaseline));
 
   function handleReset() {
     if (!baseline) return;
@@ -167,6 +183,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
     setTierDraft(baseline.tier);
     setRankTenureDraft(baseline.rankTenure);
     setTierLimitsDraft(baseline.tierLimits);
+    setCategoryPointsDraft(categoryPointsBaseline);
     setError(null);
   }
 
@@ -203,6 +220,31 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
             Object.entries(limits).map(([field, value]) => [field, value === "" ? null : Number(value)])
           );
           await api.updateTierSpecializationLimits(token, tierId, payload);
+        }
+      }
+      if (canEditCategoryPoints) {
+        for (const [categoryIdStr, draft] of Object.entries(categoryPointsDraft)) {
+          const base = categoryPointsBaseline[categoryIdStr] || {};
+          if (draft.points === base.points && draft.participant_points === base.participant_points) continue;
+          const pointsVal = draft.points === "" ? null : Number(draft.points);
+          const participantVal = draft.participant_points === "" ? null : Number(draft.participant_points);
+          if (isAllMode) {
+            // Каждое формирование хранит свою отдельную запись категории с тем же
+            // именем (см. get_or_create_regiment_clone) — правим все разом по
+            // имени, а не по этому одному id из формирования-ориентира
+            const category = categories[categoryIdStr];
+            if (!category) continue;
+            await api.bulkUpdateCategoryPoints(token, {
+              name: category.name,
+              points: pointsVal,
+              participantPoints: participantVal,
+            });
+          } else {
+            await api.updateCategory(token, regimentId, Number(categoryIdStr), {
+              points: pointsVal,
+              participant_points: participantVal,
+            });
+          }
         }
       }
       load();
@@ -465,7 +507,12 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
 
       {selectableCategories.length > 0 && (
         <div className="member-list-group category-points-summary">
-          <p className="member-list-group-title">Баллы за рапорты по категориям</p>
+          <p className="member-list-group-title">
+            Баллы за рапорты по категориям
+            {isAllMode && canEditCategoryPoints && (
+              <InfoHint text="Изменения здесь применятся сразу ко всем формированиям, где есть категория с таким же названием — каждое формирование хранит свою отдельную запись категории." />
+            )}
+          </p>
           <div className="table-scroll">
             <table className="category-points-table">
               <thead>
@@ -479,8 +526,43 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
                 {selectableCategories.map((c) => (
                   <tr key={c.id}>
                     <td>{c.name}</td>
-                    <td className="mono-num">{c.points ?? "—"}</td>
-                    <td className="mono-num">{c.participant_points ?? "—"}</td>
+                    {canEditCategoryPoints ? (
+                      <>
+                        <td>
+                          <input
+                            type="number"
+                            className="mono-num"
+                            value={categoryPointsDraft[c.id]?.points ?? ""}
+                            placeholder="—"
+                            onChange={(e) =>
+                              setCategoryPointsDraft((prev) => ({
+                                ...prev,
+                                [c.id]: { ...prev[c.id], points: e.target.value },
+                              }))
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            className="mono-num"
+                            value={categoryPointsDraft[c.id]?.participant_points ?? ""}
+                            placeholder="—"
+                            onChange={(e) =>
+                              setCategoryPointsDraft((prev) => ({
+                                ...prev,
+                                [c.id]: { ...prev[c.id], participant_points: e.target.value },
+                              }))
+                            }
+                          />
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="mono-num">{c.points ?? "—"}</td>
+                        <td className="mono-num">{c.participant_points ?? "—"}</td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>

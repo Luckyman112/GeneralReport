@@ -55,13 +55,6 @@ export function AdminPanelPage() {
   const [overrideRequirementId, setOverrideRequirementId] = useState("");
   const [overrideSatisfied, setOverrideSatisfied] = useState(true);
 
-  // Массовое изменение расценок категории с этим именем сразу во всех
-  // формированиях (или в выбранном подмножестве) — см. handleBulkCategoryPoints
-  const [bulkCategoryName, setBulkCategoryName] = useState("");
-  const [bulkCategoryPoints, setBulkCategoryPoints] = useState("");
-  const [bulkCategoryParticipantPoints, setBulkCategoryParticipantPoints] = useState("");
-  const [bulkCategoryRegimentIds, setBulkCategoryRegimentIds] = useState([]);
-
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
 
@@ -460,19 +453,6 @@ export function AdminPanelPage() {
     });
   });
 
-  const handleBulkCategoryPoints = report(async () => {
-    if (!bulkCategoryName.trim()) throw new Error("Укажите название категории");
-    if (bulkCategoryPoints === "" && bulkCategoryParticipantPoints === "") {
-      throw new Error("Укажите баллы автору и/или участникам");
-    }
-    await api.bulkUpdateCategoryPoints(token, {
-      name: bulkCategoryName.trim(),
-      points: bulkCategoryPoints === "" ? undefined : Number(bulkCategoryPoints),
-      participantPoints: bulkCategoryParticipantPoints === "" ? undefined : Number(bulkCategoryParticipantPoints),
-      regimentIds: bulkCategoryRegimentIds.length > 0 ? bulkCategoryRegimentIds.map(Number) : undefined,
-    });
-  });
-
   return (
     <div className="violations-page">
       <h2>Админ-панель</h2>
@@ -825,52 +805,6 @@ export function AdminPanelPage() {
           </div>
         </>
       )}
-
-      <div className="regiment-panel fade-in-up">
-        <h4>Массовое изменение расценок рапортов</h4>
-        <p className="hint-text">
-          Меняет баллы у категории с указанным названием сразу во всех формированиях (или в выбранных ниже), где
-          категория с таким именем есть — каждое формирование хранит свою отдельную запись категории, обычно это
-          пришлось бы менять по одной через настройки категорий формирования.
-        </p>
-        <label>
-          Название категории
-          <input
-            type="text"
-            placeholder="Например, Патруль"
-            value={bulkCategoryName}
-            onChange={(e) => setBulkCategoryName(e.target.value)}
-          />
-        </label>
-        <label>
-          Баллы автору (пусто — не менять)
-          <input
-            type="number"
-            value={bulkCategoryPoints}
-            onChange={(e) => setBulkCategoryPoints(e.target.value)}
-          />
-        </label>
-        <label>
-          Баллы участникам (пусто — не менять)
-          <input
-            type="number"
-            value={bulkCategoryParticipantPoints}
-            onChange={(e) => setBulkCategoryParticipantPoints(e.target.value)}
-          />
-        </label>
-        <label>
-          Формирования (пусто — все, где есть такая категория)
-          <MultiSelectDropdown
-            items={regiments.map((r) => ({ id: r.id, name: r.name }))}
-            selectedIds={bulkCategoryRegimentIds}
-            onChange={setBulkCategoryRegimentIds}
-            placeholder="— все формирования —"
-          />
-        </label>
-        <button className="primary" onClick={handleBulkCategoryPoints}>
-          Применить
-        </button>
-      </div>
 
       <div className="regiment-panel fade-in-up">
         <h4>Здоровье системы</h4>
