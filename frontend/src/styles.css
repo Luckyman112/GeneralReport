@@ -2965,6 +2965,21 @@ input[type="file"]::-webkit-file-upload-button:hover {
  * обрезалось до пары букв даже на десктопе (баг-репорт: "текст обрезан") —
  * особенно заметно стало, когда починили сам "Последний рапорт" для участников
  * ростер-полей и колонка чаще стала непустой. */
+/* width: 100% + table-layout: fixed means the table never grows past its
+ * container — this panel is often embedded in a narrow card, not full page
+ * width, so the fixed-width columns below still left too little for
+ * "Участник" and it got squeezed to a sliver anyway (второй баг-репорт с тем
+ * же скриншотом, после первого фикса ширины 4-й колонки: имена "слились",
+ * заголовки колонок наехали друг на друга). min-width forces the table to
+ * keep every column's intended width — 1.5rem(точка) + 6.5rem(дней) +
+ * 9rem(рапорт) + 11rem(кнопка повышения у командира) + ~12rem на "Участник" —
+ * and once it exceeds a narrow container, .roster-table-wrap's
+ * overflow-x: auto scrolls instead of squeezing; on a wide enough screen the
+ * table still just renders at its natural width: 100%. */
+.roster-table-regiment {
+  min-width: 40rem;
+}
+
 .roster-table-regiment th:nth-child(4),
 .roster-table-regiment td:nth-child(4) {
   width: 9rem;
