@@ -185,13 +185,18 @@ async def bulk_update_points(
         query = query.where(ReportCategory.regiment_id.in_(regiment_ids))
     result = await db.execute(query)
     categories = list(result.scalars().all())
+    category_ids = [category.id for category in categories]
     for category in categories:
         for key, value in changes.items():
             setattr(category, key, value)
     await db.commit()
-    for category in categories:
-        await db.refresh(category)
-    return categories
+    # db.refresh() only reloads columns, not relationships — ReportCategoryRead
+    # needs min_rank/required_specialization/required_squad eager-loaded, so
+    # re-fetch through get_by_id (populate_existing=True + _LOAD_OPTIONS) like
+    # every other category read in this module, not a plain refresh(); serializing
+    # an un-loaded relationship outside await raises MissingGreenlet (500) — see
+    # the SQLAlchemy async gotcha documented in CLAUDE.md.
+    return [await get_by_id(db, category_id) for category_id in category_ids]
 
 
 async def delete(db: AsyncSession, category: ReportCategory) -> None:
