@@ -2571,15 +2571,19 @@ label {
 }
 
 .checkbox-label input[type="checkbox"]:checked::after {
+  /* Раньше центровалась вручную (left: 3px; top: -1px) под конкретный box-sizing
+   * этого чекбокса — на деле съезжала и выглядела перекошенной (баг-репорт:
+   * "кривая галочка"). Центрирование через left/top: 50% + translate(-50%,-50%)
+   * не зависит от точных размеров рамки — сама галочка всегда по центру. */
   content: "";
   position: absolute;
-  left: 3px;
-  top: -1px;
-  width: 4px;
-  height: 8px;
+  left: 50%;
+  top: 50%;
+  width: 0.3rem;
+  height: 0.55rem;
   border: solid #fff;
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  transform: translate(-50%, -60%) rotate(45deg);
 }
 
 .checkbox-label input[type="checkbox"]:focus-visible {
@@ -2951,6 +2955,28 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .roster-table th:nth-child(3),
 .roster-table td:nth-child(3) {
   width: 6.5rem;
+  white-space: nowrap;
+}
+
+/* RegimentPanel.jsx only (нужен отдельный класс, а не голый .roster-table —
+ * иначе задело бы 4-ю колонку у .roster-table-wide таблиц на других страницах,
+ * где это не "Последний рапорт"): без явной ширины table-layout: fixed делил
+ * оставшееся место 50/50 между "Участник" и "Последний рапорт", из-за чего имя
+ * обрезалось до пары букв даже на десктопе (баг-репорт: "текст обрезан") —
+ * особенно заметно стало, когда починили сам "Последний рапорт" для участников
+ * ростер-полей и колонка чаще стала непустой. */
+.roster-table-regiment th:nth-child(4),
+.roster-table-regiment td:nth-child(4) {
+  width: 9rem;
+  white-space: nowrap;
+}
+
+/* 5-я колонка (кнопка "Доступно повышение") рендерится только у canEditHere и
+ * почти всегда пустая — тоже нужна явная ширина, иначе table-layout: fixed
+ * делит остаток опять 50/50 с "Участник" */
+.roster-table-regiment th:nth-child(5),
+.roster-table-regiment td:nth-child(5) {
+  width: 11rem;
   white-space: nowrap;
 }
 

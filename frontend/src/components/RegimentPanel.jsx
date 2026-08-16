@@ -221,7 +221,7 @@ export function RegimentPanel({ regiments, canManageMembers, initialRegimentId, 
             <div key={group.title} className="member-list-group fade-in-up">
               <p className="member-list-group-title">{group.title}</p>
               <div className="roster-table-wrap">
-                <table className="roster-table">
+                <table className="roster-table roster-table-regiment">
                   <thead>
                     <tr>
                       <th></th>
