@@ -1,5 +1,6 @@
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -11,6 +12,33 @@ from app.models.user import User
 async def delete_for_report(db: AsyncSession, *, report_id) -> None:
     # used when an approved report is appealed/rejected, avoids double-counted points
     await db.execute(sa_delete(ReportParticipant).where(ReportParticipant.report_id == report_id))
+    await db.commit()
+
+
+async def points_for_reports(db: AsyncSession, report_ids: list) -> dict:
+    """Баллы участников по рапорту (одно число на рапорт — award() всегда
+    начисляет всем участникам одного рапорта одинаковый
+    ReportCategory.participant_points, так что MAX здесь просто читает то
+    единственное значение, не усредняет разное). Для отображения текущего
+    значения в поповере "Баллы" (см. update_report_points/ReportPointsUpdate)."""
+    if not report_ids:
+        return {}
+    result = await db.execute(
+        select(ReportParticipant.report_id, func.max(ReportParticipant.points))
+        .where(ReportParticipant.report_id.in_(report_ids))
+        .group_by(ReportParticipant.report_id)
+    )
+    return dict(result.all())
+
+
+async def set_points_for_report(db: AsyncSession, *, report_id, points: int) -> None:
+    """Правит баллы ВСЕМ уже начисленным участникам этого рапорта разом — командир
+    меняет число один раз в поповере "Баллы", а не за каждого участника отдельно
+    (баг-репорт: кнопка смены баллов трогала только автора, участники оставались
+    с исходным ReportCategory.participant_points навсегда)."""
+    await db.execute(
+        sa_update(ReportParticipant).where(ReportParticipant.report_id == report_id).values(points=points)
+    )
     await db.commit()
 
 

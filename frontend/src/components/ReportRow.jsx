@@ -93,6 +93,8 @@ export function ReportRow({
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [pointsDraft, setPointsDraft] = useState(report.points ?? "");
+  const [participantPointsDraft, setParticipantPointsDraft] = useState(report.participant_points ?? "");
+  const hasParticipants = (report.participant_discord_ids || []).length > 0;
   const [showPointsPanel, setShowPointsPanel] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -126,7 +128,7 @@ export function ReportRow({
   const detentionTargetName = formatDetentionTarget(report);
   const punishmentLabel = formatPunishmentType(report);
   const canManageImages = canManage;
-  const showPointsGear = canSetPoints || report.points !== null;
+  const showPointsGear = canSetPoints || report.points !== null || report.participant_points !== null;
   const isLongContent = report.content.length > CONTENT_PREVIEW_LENGTH;
   const displayedContent =
     isLongContent && !expanded ? `${report.content.slice(0, CONTENT_PREVIEW_LENGTH)}…` : report.content;
@@ -157,7 +159,9 @@ export function ReportRow({
               onClick={() => setShowPointsPanel((v) => !v)}
             >
               <GearIcon />
-              {report.points !== null && <span className="points-gear-dot" />}
+              {(report.points !== null || report.participant_points !== null) && (
+                <span className="points-gear-dot" />
+              )}
             </button>
 
             {showPointsPanel && (
@@ -165,7 +169,7 @@ export function ReportRow({
                 {canSetPoints ? (
                   <>
                     <label className="points-inline">
-                      Баллы
+                      Баллы автору
                       <input
                         type="number"
                         placeholder="Баллы"
@@ -173,10 +177,24 @@ export function ReportRow({
                         onChange={(e) => setPointsDraft(e.target.value)}
                       />
                     </label>
+                    {hasParticipants && (
+                      <label className="points-inline">
+                        Баллы участникам
+                        <input
+                          type="number"
+                          placeholder="Баллы"
+                          value={participantPointsDraft}
+                          onChange={(e) => setParticipantPointsDraft(e.target.value)}
+                        />
+                      </label>
+                    )}
                     <button
-                      disabled={pointsDraft === ""}
+                      disabled={pointsDraft === "" && participantPointsDraft === ""}
                       onClick={() => {
-                        onSetPoints(pointsDraft === "" ? null : Number(pointsDraft));
+                        onSetPoints(
+                          pointsDraft === "" ? null : Number(pointsDraft),
+                          participantPointsDraft === "" ? null : Number(participantPointsDraft)
+                        );
                         setShowPointsPanel(false);
                       }}
                     >
@@ -184,7 +202,10 @@ export function ReportRow({
                     </button>
                   </>
                 ) : (
-                  <p className="hint-text">Баллы: {report.points}</p>
+                  <>
+                    <p className="hint-text">Баллы автору: {report.points}</p>
+                    {hasParticipants && <p className="hint-text">Баллы участникам: {report.participant_points}</p>}
+                  </>
                 )}
               </div>
             )}

@@ -365,9 +365,9 @@ export function ReportsPage() {
     }
   }
 
-  async function handleSetPoints(reportId, points) {
+  async function handleSetPoints(reportId, points, participantPoints) {
     try {
-      await api.setReportPoints(token, reportId, points);
+      await api.setReportPoints(token, reportId, points, participantPoints);
       await loadReports();
     } catch (e) {
       showToast(e.message, "error");
@@ -551,7 +551,7 @@ export function ReportsPage() {
                   }
                   onEditContent={(content) => handleEditContent(report.id, content)}
                   onDelete={() => handleDelete(report.id)}
-                  onSetPoints={(points) => handleSetPoints(report.id, points)}
+                  onSetPoints={(points, participantPoints) => handleSetPoints(report.id, points, participantPoints)}
                   onDeleteImage={(imageId) => handleDeleteImage(report.id, imageId)}
                 />
               ))}

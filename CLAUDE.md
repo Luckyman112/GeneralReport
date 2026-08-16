@@ -875,6 +875,55 @@ that line's own comment — `ReportParticipant.points` isn't returned by this
 endpoint) showed 0 for the same period. Fixed `groupPoints` to apply the same
 author-only filter as `totalPoints`, so the two figures stay consistent.
 
+### Roster "last report" and points-editing gaps around ReportParticipant
+Same session as the two fixes above, three related follow-up bug reports
+("не всех корректно показывает" on the roster's "Последний рапорт" column,
+"кнопка смены баллов за конкретный рапорт только кому-то одному хотя надо
+менять автору и участникам", "мульти изменение расценки рапортов... чтобы не
+каждому формированию делать по 1"):
+
+- `report_crud.last_report_at_by_user_ids` (roster "Последний рапорт" column)
+  only looked at `Report.user_id` (author), same gap as `GET /reports` above —
+  a member who's only ever a roster participant showed "—" forever despite
+  real activity. Fixed the same way: also queries `ReportParticipant` and takes
+  the max of both per user.
+- `PATCH /reports/{id}/points` (the "Баллы" gear icon on a report row) only
+  ever wrote `Report.points` (the author's points) — a report's participants
+  (roster field, `ReportParticipant.points`, awarded via
+  `ReportCategory.participant_points` at approval) had no way to be corrected
+  after the fact short of a DB edit. `ReportPointsUpdate` gained an optional
+  `participant_points` field (both fields now optional — `points`/
+  `participant_points: int | None = None` — either can be omitted to leave it
+  untouched, `exclude_unset`-free version since the frontend just omits the
+  key from the JSON body when not editing that field); when set, it bulk-
+  updates every `ReportParticipant` row for that report via the new
+  `report_participant_crud.set_points_for_report`, and re-runs
+  `promotion_crud.check_and_create_promotion_request` for each participant
+  (mirrors the existing author recheck). `ReportRead` gained
+  `participant_discord_ids` (already a real `Report` column, just not
+  exposed) and `participant_points` (one number per report — `award()` always
+  gives every participant of one report the same
+  `ReportCategory.participant_points`, so `report_participant_crud
+  .points_for_reports` just reads that single value via `MAX(...)
+  GROUP BY report_id`, not an average) so the frontend popover can show/edit
+  a second "Баллы участникам" field alongside the existing author one
+  (`ReportRow.jsx`) — hidden when the report has no roster participants.
+- New `PATCH /reports/categories/bulk-points` (admin/high-command only) lets
+  one action retarget `ReportCategory.points`/`participant_points` for every
+  category with a given `name` across every regiment (or an explicit
+  `regiment_ids` subset) at once — each regiment holds its own separate
+  `ReportCategory` row with the same name (see `get_or_create_regiment_clone`
+  elsewhere in this doc), so previously this meant opening
+  `CategoryManagerModal` once per regiment. UI: a new "Массовое изменение
+  расценок рапортов" card in `AdminPanelPage.jsx` (already an `is_admin`-only
+  page), with a `MultiSelectDropdown` over `regiments` for the optional
+  subset. **Deliberately never touches historical `Report`/`ReportParticipant`
+  rows** — those are snapshotted at approval time exactly like every other
+  snapshot pattern in this codebase (rank, tenure, etc.), confirmed as the
+  desired behavior by explicit user decision when this was built, so a
+  category's default points changing going forward never silently reprices
+  already-approved reports or retroactively triggers a promotion.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get

@@ -40,6 +40,7 @@ from app.schemas.report import (
     ReportRegimentDecisionRead,
     ReportStatusUpdate,
 )
+from app.schemas.report_category import ReportCategoryBulkPointsUpdate, ReportCategoryRead
 from app.schemas.report_image import ReportImageRead
 from app.schemas.user import UserBrief
 
@@ -183,6 +184,9 @@ async def _to_report_read(db: AsyncSession, report) -> ReportRead:
     decisions = await report_regiment_decision_crud.list_for_report(db, report.id)
     if decisions:
         await _attach_regiment_decisions(read, decisions)
+    if report.participant_discord_ids:
+        points_by_report = await report_participant_crud.points_for_reports(db, [report.id])
+        read.participant_points = points_by_report.get(report.id)
     return read
 
 
@@ -193,6 +197,8 @@ async def _to_report_reads(db: AsyncSession, reports: list) -> list[ReportRead]:
     decisions_by_report_id: dict = {}
     for d in await report_regiment_decision_crud.list_for_reports(db, [r.id for r in reports]):
         decisions_by_report_id.setdefault(d.report_id, []).append(d)
+    reports_with_participants = [r.id for r in reports if r.participant_discord_ids]
+    points_by_report = await report_participant_crud.points_for_reports(db, reports_with_participants)
     reads = []
     for report in reports:
         key = (report.user_id, report.regiment_id)
@@ -213,6 +219,7 @@ async def _to_report_reads(db: AsyncSession, reports: list) -> list[ReportRead]:
         _attach_training_specializations(read, report, specs_by_id)
         if report.id in decisions_by_report_id:
             await _attach_regiment_decisions(read, decisions_by_report_id[report.id])
+        read.participant_points = points_by_report.get(report.id)
         reads.append(read)
     return reads
 
@@ -345,6 +352,40 @@ async def list_recruit_training_reports(
         return []
     reports = await report_crud.list_for_category_public(db, category_id=category.id)
     return await _to_report_reads(db, reports)
+
+
+@router.patch("/categories/bulk-points", response_model=list[ReportCategoryRead])
+async def bulk_update_category_points(
+    payload: ReportCategoryBulkPointsUpdate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[ReportCategoryRead]:
+    """Изменить points/participant_points у категории с этим именем сразу во всех
+    формированиях (или в переданном подмножестве regiment_ids), где категория с
+    таким именем есть — раньше приходилось открывать CategoryManagerModal и менять
+    расценку в каждом формировании по одной (запрос пользователя: "мульти
+    изменение расценки рапортов... чтобы не каждому формированию делать по 1").
+    Только высшее командование/администратор — правка потенциально затрагивает
+    все формирования разом, а не одно, которым командует конкретный командир."""
+    if not (access.is_admin or access.is_high_command):
+        raise ForbiddenError("Массовое изменение расценок доступно только высшему командованию/администратору")
+    changes = payload.model_dump(exclude_unset=True, exclude={"name", "regiment_ids"})
+    if not changes:
+        raise AppError("Не указано, что менять — points и/или participant_points")
+    categories = await report_category_crud.bulk_update_points(
+        db, name=payload.name, changes=changes, regiment_ids=payload.regiment_ids
+    )
+    if not categories:
+        raise NotFoundError(f"Категория «{payload.name}» не найдена ни в одном формировании")
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="category_bulk_points_update",
+        details=f"Массово изменил расценки категории «{payload.name}» в {len(categories)} формированиях: {changes}",
+    )
+    event_bus.publish("reports")
+    return [ReportCategoryRead.model_validate(c) for c in categories]
 
 
 @router.post("", response_model=ReportRead, status_code=201)
@@ -1188,20 +1229,55 @@ async def update_report_points(
     elif not access.is_full_commander_of(report.regiment_id):
         raise ForbiddenError("Выставлять баллы может только командир формирования")
 
-    updated = await report_crud.set_points(db, report, points=payload.points)
-    logger.info("%s выставил %s баллов рапорту %s", access.user.username, payload.points, report_id)
-    await audit_log_crud.log(
-        db,
-        actor_user_id=access.user.id,
-        actor_is_admin=access.is_admin,
-        action="report_points_set",
-        details=f"Выставил {payload.points} баллов рапорту «{category.name if category else 'без категории'}»",
-        target_user_id=report.user_id,
-    )
+    updated = report
+    if payload.points is not None:
+        updated = await report_crud.set_points(db, report, points=payload.points)
+        logger.info("%s выставил %s баллов рапорту %s", access.user.username, payload.points, report_id)
+        await audit_log_crud.log(
+            db,
+            actor_user_id=access.user.id,
+            actor_is_admin=access.is_admin,
+            action="report_points_set",
+            details=f"Выставил {payload.points} баллов рапорту «{category.name if category else 'без категории'}»",
+            target_user_id=report.user_id,
+        )
+
+    if payload.participant_points is not None:
+        # Правит баллы всем уже начисленным участникам этого рапорта разом — раньше
+        # эта ручка трогала только report.points (автора), а участники (роcтер-поле
+        # категории) навсегда оставались с исходным ReportCategory.participant_points
+        # (баг-репорт: "кнопка смены баллов только кому-то одному, а надо автору и
+        # участникам").
+        await report_participant_crud.set_points_for_report(
+            db, report_id=updated.id, points=payload.participant_points
+        )
+        logger.info(
+            "%s выставил %s баллов участникам рапорта %s",
+            access.user.username,
+            payload.participant_points,
+            report_id,
+        )
+        await audit_log_crud.log(
+            db,
+            actor_user_id=access.user.id,
+            actor_is_admin=access.is_admin,
+            action="report_points_set",
+            details=(
+                f"Выставил {payload.participant_points} баллов участникам рапорта "
+                f"«{category.name if category else 'без категории'}»"
+            ),
+            target_user_id=report.user_id,
+        )
 
     # points may change after approval, recheck promotion eligibility
     if updated.status == ReportStatus.APPROVED:
         await promotion_crud.check_and_create_promotion_request(db, updated.author, regiment_id=updated.regiment_id)
+        if payload.participant_points is not None:
+            participants = await user_crud.get_by_discord_ids(db, updated.participant_discord_ids)
+            for participant in participants:
+                await promotion_crud.check_and_create_promotion_request(
+                    db, participant, regiment_id=updated.regiment_id
+                )
     event_bus.publish("promotions")
     event_bus.publish("reports")
     return await _to_report_read(db, updated)

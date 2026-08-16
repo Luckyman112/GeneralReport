@@ -89,3 +89,17 @@ class ReportCategoryUpdate(BaseModel):
     required_squad_id: int | None = None
     is_joint: bool | None = None
     max_per_day: int | None = None
+
+
+class ReportCategoryBulkPointsUpdate(BaseModel):
+    """Изменить points/participant_points у категории с этим именем сразу во ВСЕХ
+    формированиях (или в подмножестве regiment_ids), где такая категория есть —
+    чтобы не открывать CategoryManagerModal и не менять расценку в каждом
+    формировании по одному (запрос пользователя). points/participant_points,
+    отсутствующие в теле запроса, не трогаются — тот же exclude_unset, что и у
+    ReportCategoryUpdate, чтобы можно было менять только одно из двух полей."""
+
+    name: str
+    points: int | None = None
+    participant_points: int | None = None
+    regiment_ids: list[int] | None = None

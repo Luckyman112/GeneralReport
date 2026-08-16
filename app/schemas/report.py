@@ -53,9 +53,14 @@ class ReportContentUpdate(BaseModel):
 
 
 class ReportPointsUpdate(BaseModel):
-    """Балл за рапорт — выставляет только полноправный командир."""
+    """Балл за рапорт — выставляет только полноправный командир. points — балл
+    автору (Report.points, как раньше). participant_points — опционально: если
+    передан, тем же действием переставляет баллы ВСЕМ уже начисленным участникам
+    рапорта (ReportParticipant.points) на это же число — раньше кнопка "Баллы"
+    трогала только автора (баг-репорт)."""
 
-    points: int
+    points: int | None = None
+    participant_points: int | None = None
 
 
 class RegimentDecisionUpdate(BaseModel):
@@ -115,6 +120,15 @@ class ReportRead(BaseModel):
     punishment_amount: str | None = None
     violation_id: int | None = None
     training_specializations: list[SpecializationRead] = []
+    # Discord ID участников ростер-поля категории (кроме автора) — чтобы фронт знал,
+    # показывать ли отдельное поле "Баллы участникам" у кнопки "Баллы" (см.
+    # ReportPointsUpdate.participant_points)
+    participant_discord_ids: list[str] = []
+    # Текущие баллы участников (ReportParticipant.points) — одно число на рапорт,
+    # т.к. award() всегда начисляет всем участникам одного рапорта одинаковый
+    # ReportCategory.participant_points; None, если участников/баллов ещё нет
+    # (рапорт не одобрен или у категории нет participant_points)
+    participant_points: int | None = None
     # Заполнено только у read-only зеркальных копий (см.
     # ReportCategory.mirrors_to_category_id) — статус меняется не здесь, а у
     # исходного рапорта (mirror_of_report_id указывает на него)

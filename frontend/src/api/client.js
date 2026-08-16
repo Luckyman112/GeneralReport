@@ -155,8 +155,22 @@ export const api = {
   updateReportContent: (token, reportId, content) =>
     request(`/api/reports/${reportId}/content`, { method: "PATCH", token, body: { content } }),
   deleteReport: (token, reportId) => request(`/api/reports/${reportId}`, { method: "DELETE", token }),
-  setReportPoints: (token, reportId, points) =>
-    request(`/api/reports/${reportId}/points`, { method: "PATCH", token, body: { points } }),
+  // Массово меняет расценку категории с этим именем сразу во всех формированиях
+  // (или в переданном подмножестве regimentIds), где она есть — вместо правки
+  // каждого формирования по одному через CategoryManagerModal
+  bulkUpdateCategoryPoints: (token, { name, points, participantPoints, regimentIds }) => {
+    const body = { name };
+    if (points !== undefined) body.points = points;
+    if (participantPoints !== undefined) body.participant_points = participantPoints;
+    if (regimentIds !== undefined) body.regiment_ids = regimentIds;
+    return request(`/api/reports/categories/bulk-points`, { method: "PATCH", token, body });
+  },
+  setReportPoints: (token, reportId, points, participantPoints) =>
+    request(`/api/reports/${reportId}/points`, {
+      method: "PATCH",
+      token,
+      body: { points, participant_points: participantPoints ?? null },
+    }),
   uploadReportImage: (token, reportId, file) => {
     const formData = new FormData();
     formData.append("file", file);

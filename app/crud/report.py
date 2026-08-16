@@ -230,15 +230,31 @@ async def list_for_category_public(db: AsyncSession, *, category_id: int) -> lis
 async def last_report_at_by_user_ids(db: AsyncSession, user_ids: list[int]) -> dict[int, datetime]:
     """Дата последнего рапорта каждого бойца (любой статус кроме DELETED) —
     для колонки "Последний рапорт" в ростере (см. решение пользователя: удобно
-    видеть активность). Один GROUP BY запрос на весь список сразу, не N+1."""
+    видеть активность). Учитывает и рапорты, где боец автор, и те, где он лишь
+    указан участником ростер-поля (ReportParticipant) — иначе боец, которого
+    только вписывают в чужие Патруль/Тренировка, ни разу сам не подававший,
+    вечно показывал "—" несмотря на реальную активность (баг-репорт: в
+    составе "Последний рапорт" не считался у сержанта, участвовавшего в
+    одобренной тренировке). Два отдельных GROUP BY (не N+1 — по одному запросу
+    на весь список сразу), максимум между ними берётся в Python."""
     if not user_ids:
         return {}
-    result = await db.execute(
+    author_result = await db.execute(
         select(Report.user_id, func.max(Report.created_at))
         .where(Report.user_id.in_(user_ids), Report.status != ReportStatus.DELETED)
         .group_by(Report.user_id)
     )
-    return dict(result.all())
+    participant_result = await db.execute(
+        select(ReportParticipant.user_id, func.max(Report.created_at))
+        .join(Report, Report.id == ReportParticipant.report_id)
+        .where(ReportParticipant.user_id.in_(user_ids), Report.status != ReportStatus.DELETED)
+        .group_by(ReportParticipant.user_id)
+    )
+    merged: dict[int, datetime] = {}
+    for user_id, last_at in [*author_result.all(), *participant_result.all()]:
+        if user_id not in merged or last_at > merged[user_id]:
+            merged[user_id] = last_at
+    return merged
 
 
 async def count_reports(

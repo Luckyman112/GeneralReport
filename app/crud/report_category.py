@@ -171,6 +171,29 @@ async def update(db: AsyncSession, category: ReportCategory, **changes) -> Repor
     return await get_by_id(db, category.id)
 
 
+async def bulk_update_points(
+    db: AsyncSession, *, name: str, changes: dict, regiment_ids: list[int] | None = None
+) -> list[ReportCategory]:
+    """Массово меняет points/participant_points у всех категорий с этим именем
+    (по умолчанию во всех формированиях, где такая категория есть; regiment_ids —
+    сузить до конкретных). Каждое формирование хранит свою СВОЮ строку
+    ReportCategory с тем же именем (см. get_or_create_regiment_clone) — до этой
+    функции расценку приходилось менять по одной строке за раз через
+    CategoryManagerModal каждого формирования."""
+    query = select(ReportCategory).where(ReportCategory.name == name)
+    if regiment_ids is not None:
+        query = query.where(ReportCategory.regiment_id.in_(regiment_ids))
+    result = await db.execute(query)
+    categories = list(result.scalars().all())
+    for category in categories:
+        for key, value in changes.items():
+            setattr(category, key, value)
+    await db.commit()
+    for category in categories:
+        await db.refresh(category)
+    return categories
+
+
 async def delete(db: AsyncSession, category: ReportCategory) -> None:
     # снимок имени ДО commit — после rollback объект просрочен, и обращение к его
     # атрибутам в async-сессии само по себе упадёт (лениво подгружать в except
