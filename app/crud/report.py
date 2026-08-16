@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.report import Report, ReportStatus
 from app.models.report_category import ReportCategory
+from app.models.report_participant import ReportParticipant
 from app.models.report_regiment_decision import ReportRegimentDecision
 from app.models.user import User
 
@@ -118,6 +119,7 @@ async def list_reports(
     since: datetime | None = None,
     visible_target_regiment_ids: set[int] | None = None,
     joint_decision_regiment_ids: set[int] | None = None,
+    participant_user_id: int | None = None,
     limit: int | None = None,
     offset: int = 0,
     include_deleted: bool = False,
@@ -137,6 +139,15 @@ async def list_reports(
     рапорты (см. ReportCategory.is_joint), у которых есть решение одного из этих
     формирований — иначе командир формирования-участника, не состоящий в
     формировании-подателе (обычно Штаб), вообще не увидел бы рапорт.
+
+    participant_user_id — дополнительно (через OR, в пределах regiment_ids) показывает
+    рапорты, где пользователь указан участником ростер-поля (см. ReportParticipant),
+    но не является автором — иначе боец, которого только вписывают в чужие
+    Патруль/Тренировка/т.п., ни разу сам ничего не подавший, видел бы пустой список
+    "Рапортов" несмотря на реальное участие (баг-репорт: "боец не видит рапорта своего
+    формирования"; app/api/regiments.py::get_member_reports уже показывал такие рапорты
+    в личном деле через report_participant_crud.list_reports_since — здесь та же логика
+    для основного списка).
 
     include_deleted — показать и мягко удалённые (аннулированные) рапорты тоже
     (см. app/api/regiments.py::get_member_reports — в личном деле аннулирование
@@ -167,6 +178,13 @@ async def list_reports(
                 )
             )
         )
+    if participant_user_id is not None:
+        participant_condition = Report.id.in_(
+            select(ReportParticipant.report_id).where(ReportParticipant.user_id == participant_user_id)
+        )
+        if regiment_ids is not None:
+            participant_condition = and_(participant_condition, Report.regiment_id.in_(regiment_ids))
+        or_clauses.append(participant_condition)
     if or_clauses:
         query = query.where(or_clauses[0] if len(or_clauses) == 1 else or_(*or_clauses))
 
@@ -234,6 +252,7 @@ async def count_reports(
     since: datetime | None = None,
     visible_target_regiment_ids: set[int] | None = None,
     joint_decision_regiment_ids: set[int] | None = None,
+    participant_user_id: int | None = None,
 ) -> int:
     """Тот же набор фильтров, что и list_reports — для отображения "Показать ещё"
     на фронте (сколько всего рапортов помимо уже загруженных)."""
@@ -263,6 +282,13 @@ async def count_reports(
                 )
             )
         )
+    if participant_user_id is not None:
+        participant_condition = Report.id.in_(
+            select(ReportParticipant.report_id).where(ReportParticipant.user_id == participant_user_id)
+        )
+        if regiment_ids is not None:
+            participant_condition = and_(participant_condition, Report.regiment_id.in_(regiment_ids))
+        or_clauses.append(participant_condition)
     if or_clauses:
         query = query.where(or_clauses[0] if len(or_clauses) == 1 else or_(*or_clauses))
 

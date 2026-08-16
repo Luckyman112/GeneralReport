@@ -245,6 +245,7 @@ async def list_reports(
 
     visible_target_regiment_ids: set[int] | None = None
     joint_decision_regiment_ids: set[int] | None = None
+    participant_user_id: int | None = None
     if access.is_admin or access.is_high_command or (category_is_training and access.can_grant_specializations):
         # Администратору/высшему командованию доступны все формирования — фильтр не
         # ограничиваем, если явно не запрошено конкретное формирование; инструктор так же
@@ -283,6 +284,14 @@ async def list_reports(
             # Смешанный случай (командир одних, боец других формирований) —
             # для простоты и безопасности сужаем до собственных рапортов.
             user_id_filter = access.user.id
+        if user_id_filter is not None:
+            # Боец без командирских прав видит и рапорты, где он лишь указан
+            # участником ростер-поля (Патруль/Тренировка/т.п.), а не только те,
+            # что подал сам — иначе тот, кого только вписывают в чужие рапорты,
+            # ни разу сам ничего не подавший, видел бы пустой список несмотря на
+            # реальное участие (баг-репорт: "боец не видит рапорта своего
+            # формирования").
+            participant_user_id = user_id_filter
 
     since = stats_crud.period_cutoff(period) if period else None
     reports = await report_crud.list_reports(
@@ -295,6 +304,7 @@ async def list_reports(
         since=since,
         visible_target_regiment_ids=visible_target_regiment_ids,
         joint_decision_regiment_ids=joint_decision_regiment_ids,
+        participant_user_id=participant_user_id,
         limit=limit,
         offset=offset,
     )
@@ -309,6 +319,7 @@ async def list_reports(
             since=since,
             visible_target_regiment_ids=visible_target_regiment_ids,
             joint_decision_regiment_ids=joint_decision_regiment_ids,
+            participant_user_id=participant_user_id,
         )
         response.headers["X-Total-Count"] = str(total)
     return await _to_report_reads(db, reports)

@@ -1085,7 +1085,14 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
           <ul className="rank-accordion">
             {reportsByRank.map((group) => {
               const isOpen = expandedRankKey === group.key;
-              const groupPoints = group.reports.reduce((sum, r) => sum + (r.points ?? 0), 0);
+              // Как и totalPoints выше — считаем баллы только за рапорты, где боец
+              // сам автор; иначе баллы автора-Капитана по чужому рапорту, где боец
+              // лишь участник, ошибочно приписывались бойцу в заголовке группы (баг-
+              // репорт: "некорректно считаются баллы" — "Всего баллов: 0" вверху,
+              // но группа ниже показывала "1 · 5 баллов" за тот же рапорт).
+              const groupPoints = group.reports
+                .filter((r) => r.author?.discord_id === member.discord_id)
+                .reduce((sum, r) => sum + (r.points ?? 0), 0);
               return (
                 <li key={group.key} className="rank-accordion-group">
                   <button

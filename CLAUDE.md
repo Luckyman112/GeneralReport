@@ -830,6 +830,51 @@ config is changed outside the normal `update()` path (test scripts,
 one-off DB fixes) — either go through `update()` or reset
 `app_settings_crud._cached_row = None` afterward.
 
+### View As leaked simulated permissions onto the real admin's own gates
+`App.jsx`'s three page-blocking gates (`needsRegistration`/`isBlockedByMaintenance`/
+`hasRoleConflict`) checked only `access.is_admin`/`is_founder`/`is_high_command` for
+exemption — but during "Просмотр от лица" (both view-as-person and view-as-role,
+`app/api/deps.py::build_view_as_context`/the view-as-person branch) those three
+fields are intentionally overwritten to reflect the IMPERSONATED TARGET's own
+status, while `user` (`registration_status`, etc.) stays the real account's. An
+admin who is `is_admin` via Discord role (not `is_founder`) viewing-as a regular
+soldier therefore had `access.is_founder` become `false` mid-simulation and
+tripped `needsRegistration` on themselves (bug report: "просмотр от лица
+заставляет меня логиниться через Steam и Discord"). Fixed by also checking
+`access.is_real_admin` in all three gates — a field that already existed
+specifically for this (`_build_access_context`'s `is_real_admin` param, hardcoded
+`True` in both view-as branches, `is_admin` in the normal path) but wasn't wired
+into `App.jsx` yet.
+
+### `GET /reports` didn't show roster-participant reports, only self-authored ones
+A soldier who is only ever added as a participant via a category's roster field
+(e.g. someone else's "Тренировка"/"Патруль") and has never personally filed a
+report themselves saw a completely empty "Рапорты" page — even though
+`app/api/regiments.py::get_member_reports` (their own dossier, opened by a
+commander) correctly listed that same report via
+`report_participant_crud.list_reports_since` (bug report: "боец не видит рапорта
+своего формирования"). `report_crud.list_reports`/`count_reports` only ever
+filtered by `Report.user_id == user_id` (the author) — no participant lookup at
+all. Fixed by adding a `participant_user_id` param (mirrors the existing
+`joint_decision_regiment_ids` OR-clause pattern) that OR-adds
+`Report.id.in_(select(ReportParticipant.report_id).where(user_id=...))`, scoped
+to the same `regiment_ids` the rest of the query already allows; wired in
+`app/api/reports.py::list_reports` whenever the caller is restricted to their own
+reports (`user_id_filter` set — i.e. a non-commander, non-admin soldier).
+Commanders/admins already see every report in their visible regiments regardless,
+so this only changes anything for the plain-soldier branch.
+
+Same bug report also caught a display inconsistency in
+`MemberDetailModal.jsx`'s "Рапорты" accordion: the per-group point subtotal
+(`groupPoints`) summed `r.points` (the report's AUTHOR points) across every
+report in the group, including ones where the viewed member only "участвовал" —
+so a participant's group header showed e.g. "1 · 5 баллов" for a report that
+wasn't theirs, while the "Всего баллов" total at the top of the same modal (which
+already correctly filters to `r.author?.discord_id === member.discord_id`, see
+that line's own comment — `ReportParticipant.points` isn't returned by this
+endpoint) showed 0 for the same period. Fixed `groupPoints` to apply the same
+author-only filter as `totalPoints`, so the two figures stay consistent.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
