@@ -1061,6 +1061,47 @@ mostly-unseen beyond that note. Fine for a first version per решение
 пользователя; a real diff view would need the frontend to render two `DATA`
 snapshots side by side, not built here.
 
+**Grid coordinate system didn't support negative columns/rows** —
+`colLabel`/`gridRef` returned `—` and `drawGrid` silently skipped drawing
+labels for any column/row left of/above the origin (`c < 0` / `r < 0`),
+even though the grid lines themselves were drawn there fine — a system
+placed there had no assignable "квадрат" reference at all (баг-репорт:
+"слева сверху просто нет координат и невозможно им присвоить что-либо").
+Fixed by making both axes bidirectional: columns mirror the same
+base-26 letter encoding with a `-` prefix for the negative side
+(`-A, -B, ...`), rows just use the raw negative integer (`-1, -2, ...`)
+instead of the `+1`-shifted positive-side convention. `gridRef` now just
+calls `colLabel`/`rowLabel` instead of duplicating the encoding inline.
+
+**"Стратегические объекты" (per-planet facility catalog)** — a
+free-text-effect facility system (баг-репорт origin: user wanted planet
+capture to grant faction-wide buffs — extra damage, vehicle access,
+artillery permission, orbital scanning, etc. — themed as buildings, e.g.
+"Оружейный завод" instead of a bare "+damage" flag). `DATA.facilityTypes`
+is a small catalog (`{id, name, note}`, `note` is just descriptive text for
+the GM to interpret — deliberately **no numeric/automated effect** on top
+of `points`/`gar`/anything else, per решение пользователя: the tool
+tracks *what a faction currently controls*, not how that plays out
+mechanically). Each `System` gets a `facilities: string[]` of facility-type
+ids; `indexData()` sanitizes stale ids the same way lanes/blockades already
+prune dangling references. Whichever faction holds `system.own` is
+considered to "have" everything on that system's `facilities` list —
+there's no separate faction→facility link, so a system flipping ownership
+automatically carries its buildings to the new owner (matches how supply/
+`strat.sup` already work off live ownership, not a stored allocation).
+Catalog CRUD lives in the "Фракции и сектора" drawer's new third column
+(`.cols-3`, extended from the existing 2-column `.cols` used by
+mapdrawer — kept as a separate class so mapdrawer's own layout is
+untouched), same add/rename/delete pattern as factions/sectors, keyed by
+array index like `DATA.regions`/`DATA.routes` already are (not by id,
+since edits target "the Nth row" the same way those two do). Per-system
+toggle lives in the system panel (`facilityBlock()`) — checkboxes in edit
+mode, read-only `.facility-badge` chips (title = the effect text) in view
+mode. New left-rail "Стратегические объекты" card (`syncFacSummary()`)
+aggregates, per facility type, how many currently-owned systems each
+non-neutral faction holds — the per-faction/per-building total count the
+user asked for, computed live off `SYSTEMS`/`own`, not stored anywhere.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
