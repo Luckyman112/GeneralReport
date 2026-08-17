@@ -2587,6 +2587,12 @@ function resize() {
 }
 addEventListener('resize', resize);
 addEventListener('scroll', () => { cellRect = mapcell.getBoundingClientRect(); }, true);
+// window 'resize' only fires when the IFRAME's own viewport changes — when
+// embedded (see GalaxyMapPage.jsx), the outer element can end up a
+// different box size than the iframe's initial one without that event ever
+// firing (баг-репорт: карта рендерилась в дефолтную маленькую ширину).
+// ResizeObserver on #mapcell itself catches that regardless of cause.
+if (window.ResizeObserver) new ResizeObserver(resize).observe(mapcell);
 function reflow() { [0, 120, 260, 420, 520].forEach(t => setTimeout(resize, t)); }
 
 function frame(ts) {

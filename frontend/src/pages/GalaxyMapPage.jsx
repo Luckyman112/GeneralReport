@@ -9,17 +9,8 @@
  * страницу. */
 export function GalaxyMapPage() {
   return (
-    <iframe
-      src="/galaxy-map.html"
-      title="Галактика"
-      className="galaxy-map-frame"
-      style={{
-        display: "block",
-        width: "calc(100% + 2rem)",
-        height: "calc(100vh - 6.5rem)",
-        margin: "-1.5rem -1rem",
-        border: "none",
-      }}
-    />
+    <div className="galaxy-map-wrap">
+      <iframe src="/galaxy-map.html" title="Галактика" />
+    </div>
   );
 }
