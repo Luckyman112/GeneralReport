@@ -2392,6 +2392,10 @@ async function loadAccess() {
   canMoveCreate = ACCESS.canEdit;
   el('btn-mode').style.display = canEditAtAll ? '' : 'none';
   el('req-card').hidden = !ACCESS.canEdit;
+  // Фракции/сектора, подложка/маршруты, данные — Ассистенту+/Куратору
+  // (правят карту напрямую); "Вся карта" (просто вписывает вид) остаётся
+  // всем, как и раньше (запрос пользователя).
+  ['btn-fac', 'btn-map', 'btn-drawer'].forEach(id => { el(id).style.display = ACCESS.canEdit ? '' : 'none'; });
 }
 
 async function loadGalaxyMap() {
