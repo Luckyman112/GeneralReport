@@ -1257,6 +1257,42 @@ first of several planned improvement batches (запрос пользовате�
   `ACCESS.canEdit` (Assistant+/Curator only), so no separate permission
   check was needed to satisfy "настраиваемо Асик+".
 
+**Galaxy Map UX batch 4** (RP mechanics, no backend changes):
+- `DATA.convoys` — a new manual list (same shape/precedent as
+  `battles`/`blockades`: `{id, from, to, fac, etaDays, departed, status}`,
+  card "Конвои снабжения" in `rail-r` between Blockades and Log). Deliberately
+  **not** an automated supply simulation — `strat.sup` still computes supply
+  instantly off the graph exactly as before; a convoy is a separate, curator-
+  tracked "sense of a march" (запрос пользователя) with a manual `status`
+  (`enroute`/`arrived`/`lost`) the curator flips themselves, same as battle
+  status. `convoyProgress(c)` derives % from `daysSince(c.departed) /
+  c.etaDays`. `drawConvoys()` renders a moving marker along the straight
+  quadratic curve between `from`/`to` (same curve math as `drawLanes`, but
+  independent of whether an actual `LANES` entry exists between them — a
+  convoy route needn't be a defined hyperlane).
+- Blockade `expiresAt` (dd.mm, optional) + reused `note` as the "condition"
+  memo field (no separate column needed — `note` was already freeform text).
+  `isPastDeadline(dm)` is a distinct helper from `daysSince()` — the latter
+  assumes a *past* date and counts backward; a deadline is typically a
+  *future* date, so past/future comparison needed different logic, not
+  reuse. An expired blockade is **not** auto-removed (dims via `.done` +
+  shows "срок истёк" — curator lifts it manually), consistent with this
+  file's "advisory, not enforced" pattern (see facility notes, blockade
+  limit below).
+- `DATA.meta.blockade = {maxPerFaction, minGarToResist}` — both purely
+  advisory hints, never a hard block: creating a blockade past
+  `maxPerFaction` for that faction prompts a `confirm()` (proceeds if
+  accepted); a blockade whose either endpoint's garrison is
+  `>= minGarToResist` just shows a "может быть оспорена" hint. Configurable
+  by Assistant+/Curator in the same "Подложка и маршруты" → new "Блокады"
+  section as the batch-3 flash-duration setting.
+- Group sector blockade — `#blk-sector-pick`/`#blk-sector-go` (shown only in
+  edit mode, top of the Blockades card) blockades **every** `LANES` entry
+  whose both endpoints share the chosen `Sector` in one action (запрос
+  пользователя: "чтобы не каждому формированию делать по 1"), skipping
+  already-blocked lanes — deliberately requires *both* ends in the sector
+  (not just one) so it can't accidentally wall off a neighboring sector too.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get

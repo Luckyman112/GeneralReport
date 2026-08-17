@@ -383,6 +383,10 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
       <div class="body" id="blk-list"></div>
     </section>
     <section class="card">
+      <h2><span>Конвои снабжения</span><button class="add" id="cv-add" hidden>+ конвой</button></h2>
+      <div class="body" id="cv-list"></div>
+    </section>
+    <section class="card">
       <h2><span>Сводка сектора</span><button class="add" id="log-add" hidden>+ запись</button></h2>
       <div class="body">
         <div class="editgrid">
@@ -454,6 +458,7 @@ const DEFAULT_DATA = {
     main: 'rep',
     esc: { level: 1, max: 4, note: 'Позиционная фаза. Орбитальные бомбардировки запрещены.' },
     fx: { flashMs: 1600 },
+    blockade: { maxPerFaction: 3, minGarToResist: 6 },
     grid: { size: 120, ox: 0, oy: 0, show: true },
     supply: { base: 60, perLane: 40, major: 25, perRegiment: 100, fromSupply: .5 },
     center: { x: 300, y: 260 },
@@ -528,6 +533,7 @@ const DEFAULT_DATA = {
     { id: 'b1', sys: 'bestine', att: 'sep', def: 'rep', status: 'active', prog: 62, since: '12.08', when: '' },
     { id: 'b2', sys: 'duro', att: 'sep', def: 'rep', status: 'planned', prog: 50, since: '', when: '18:00 по МСК' }
   ],
+  convoys: [],
   blockades: [
     { id: 'bl1', a: 'duro', b: 'sullust', fac: 'sep', str: 2, note: 'Две ударные группы' }
   ],
@@ -550,6 +556,18 @@ function daysSince(dm) {
   let d = new Date(now.getFullYear(), +m[2] - 1, +m[1]);
   if (d > now) d = new Date(now.getFullYear() - 1, +m[2] - 1, +m[1]);
   return Math.max(0, Math.round((now - d) / 86400000));
+}
+/* Срок блокады (Blockade.expiresAt, dd.mm) — в отличие от daysSince (считает
+ * НАЗАД от прошедшей даты), тут дата предполагается в будущем/сегодня; если
+ * год уже прошёл, считаем как "в этом году" — упрощение, соответствующее
+ * остальной работе с датами в этом файле (короткая РП-кампания, не годовой
+ * учёт). */
+function isPastDeadline(dm) {
+  const m = /^(\d{1,2})[.\/](\d{1,2})$/.exec(String(dm || '').trim());
+  if (!m) return false;
+  const now = new Date();
+  const d = new Date(now.getFullYear(), +m[2] - 1, +m[1]);
+  return d < new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 function gridRef(s) {
   const g = DATA.meta.grid, size = g.size || 120;
@@ -637,6 +655,7 @@ function indexData() {
     LANES.some(([x, y]) => (x === b.a && y === b.b) || (x === b.b && y === b.a)));
   BLOCK = {};
   DATA.blockades.forEach(b => BLOCK[laneKey(b.a, b.b)] = b);
+  DATA.convoys = (DATA.convoys || []).filter(c => SYS[c.from] && SYS[c.to]);
   DATA.battles = DATA.battles.filter(b => SYS[b.sys]);
   BATTLE = {};
   DATA.battles.forEach(b => { if (!BATTLE[b.sys] || b.status === 'active') BATTLE[b.sys] = b; });
@@ -677,6 +696,14 @@ function loadData(raw) {
       // Асик+/Куратором в "Подложка и маршруты" (см. syncMapDrawer), запрос
       // пользователя: "время скок анимация будет пусть будет настраеваемо".
       fx: { flashMs: clamp(Number.isFinite(dm.fx && dm.fx.flashMs) ? dm.fx.flashMs : 1600, 200, 6000) },
+      // Настраиваемый лимит блокад на фракцию и порог гарнизона, при котором
+      // блокада может быть оспорена — оба чисто рекомендательные (только
+      // подсказки в списке блокад), не жёсткая проверка: куратор всегда
+      // может продавить блокаду ради сюжета, инструмент только предупреждает.
+      blockade: {
+        maxPerFaction: clamp(Number.isFinite(dm.blockade && dm.blockade.maxPerFaction) ? dm.blockade.maxPerFaction : 3, 1, 20),
+        minGarToResist: clamp(Number.isFinite(dm.blockade && dm.blockade.minGarToResist) ? dm.blockade.minGarToResist : 6, 0, 50)
+      },
       supply: Object.assign({}, SUPPLY_DEFAULT, dm.supply || {}),
       grid: {
         size: (dm.grid && dm.grid.size) || 120,
@@ -706,6 +733,7 @@ function loadData(raw) {
     regions: Array.isArray(d.regions) ? d.regions.map(r => ({ ...r })) : [],
     routes: Array.isArray(d.routes) ? d.routes.map(r => ({ ...r, path: (r.path || []).slice() })) : [],
     battles: Array.isArray(d.battles) ? d.battles.map(b => ({ prog: 50, since: '', ...b })) : [],
+    convoys: Array.isArray(d.convoys) ? d.convoys.map(c => ({ etaDays: 2, departed: '', status: 'enroute', ...c })) : [],
     blockades: Array.isArray(d.blockades) ? d.blockades.map(b => ({ ...b })) : [],
     log: Array.isArray(d.log) ? d.log.map(e => ({ ...e })) : []
   };
@@ -2351,7 +2379,13 @@ function syncMapDrawer() {
     '<div class="lab" style="margin-top:16px">Анимации</div>' +
     '<label>Длительность вспышки при смене владельца/бое, мс' +
       '<input type="number" id="fx-flash" value="' + m.fx.flashMs + '" step="100" min="200" max="6000"></label>' +
-    '<div class="hint">Кольцо-вспышка на планете при захвате/потере и при начале/завершении боя.</div>';
+    '<div class="hint">Кольцо-вспышка на планете при захвате/потере и при начале/завершении боя.</div>' +
+    '<div class="lab" style="margin-top:16px">Блокады</div>' +
+    '<div class="editgrid">' +
+      '<label>Лимит блокад на фракцию<input type="number" id="bl-max" value="' + m.blockade.maxPerFaction + '" min="1" max="20"></label>' +
+      '<label>Гарнизон для сопротивления<input type="number" id="bl-gar" value="' + m.blockade.minGarToResist + '" min="0" max="50"></label>' +
+    '</div>' +
+    '<div class="hint">Только подсказки в списке блокад — куратор всегда может поставить блокаду сверх лимита или на хорошо защищённую систему, если это оправдано сюжетом.</div>';
 
   el('reg-body').innerHTML = DATA.regions.map((r, i) =>
     '<div class="editrow"><input type="color" data-reg="' + i + '" data-k="color" value="' + esc(r.color) + '" aria-label="Цвет региона">' +
@@ -2455,6 +2489,8 @@ mapDrawer.addEventListener('input', e => {
   else if (t.id === 'g-cx') { m.center.x = num(); syncPanel(); touch(); }
   else if (t.id === 'g-cy') { m.center.y = num(); syncPanel(); touch(); }
   else if (t.id === 'fx-flash') { m.fx.flashMs = clamp(num() || 1600, 200, 6000); touch(); }
+  else if (t.id === 'bl-max') { m.blockade.maxPerFaction = clamp(Math.round(num()) || 3, 1, 20); syncBlocks(); touch(); }
+  else if (t.id === 'bl-gar') { m.blockade.minGarToResist = clamp(Math.round(num()) || 0, 0, 50); syncBlocks(); touch(); }
   else if (t.dataset.reg !== undefined) {
     const r = DATA.regions[+t.dataset.reg];
     if (!r) return;
@@ -2713,21 +2749,47 @@ function syncBattles() {
 function syncBlocks() {
   el('blk-add').hidden = !editing;
   const list = DATA.blockades;
-  if (!list.length) { el('blk-list').innerHTML = '<div style="color:var(--dim);font-size:12px">блокад нет</div>'; return; }
-  el('blk-list').innerHTML = list.map((b, i) => {
+  const cfg = DATA.meta.blockade || { maxPerFaction: 3, minGarToResist: 6 };
+  // Сводка "блокад на фракцию" — только в режиме правки, чисто ориентир для
+  // куратора (лимит рекомендательный, см. решение пользователя выше).
+  const counts = {};
+  list.forEach(b => { counts[b.fac] = (counts[b.fac] || 0) + 1; });
+  const summary = editing
+    ? '<div class="kv" style="flex-wrap:wrap;gap:6px 10px;margin-bottom:2px">' +
+        DATA.factions.filter(f => !f.neutral).map(f =>
+          '<span style="font-family:var(--mono);font-size:11px;color:' + ((counts[f.id] || 0) >= cfg.maxPerFaction ? HOT : 'var(--dim)') + '">' +
+          esc(f.name) + ': ' + (counts[f.id] || 0) + '/' + cfg.maxPerFaction + '</span>').join('') +
+      '</div>' +
+      (DATA.sectors.length
+        ? '<div class="editrow" style="margin-bottom:8px;gap:6px">' +
+            '<select id="blk-sector-pick" aria-label="Сектор для групповой блокады">' +
+              DATA.sectors.map(sec => '<option value="' + esc(sec.id) + '">' + esc(sec.name) + '</option>').join('') +
+            '</select>' +
+            '<button class="mini" id="blk-sector-go" style="border:1px solid var(--line);padding:4px 8px;white-space:nowrap">Блокировать сектор</button>' +
+          '</div>'
+        : '')
+    : '';
+  if (!list.length) { el('blk-list').innerHTML = summary + '<div style="color:var(--dim);font-size:12px">блокад нет</div>'; return; }
+  el('blk-list').innerHTML = summary + list.map((b, i) => {
     const A = SYS[b.a], B = SYS[b.b];
     if (!A || !B) return '';
+    const resist = Math.max(A.gar, B.gar) >= cfg.minGarToResist;
+    const expired = isPastDeadline(b.expiresAt);
+    const resistHint = resist ? '<div class="hint" style="margin-top:4px;color:' + HOT + '">гарнизон высок — блокада может быть оспорена</div>' : '';
     if (editing) return '<div class="battle planned">' +
       '<div class="editrow"><div class="n" style="flex:1">' + esc(A.name) + ' — ' + esc(B.name) + '</div>' +
       '<button class="mini" data-blkdel="' + i + '" aria-label="Снять блокаду">×</button></div>' +
       '<div class="editgrid" style="margin-top:5px"><select data-blk="' + i + '" data-k="fac">' + facOptions(b.fac) + '</select>' +
       '<input type="number" data-blk="' + i + '" data-k="str" value="' + (b.str || 1) + '" min="1" aria-label="Сила"></div>' +
-      '<input value="' + esc(b.note || '') + '" data-blk="' + i + '" data-k="note" placeholder="примечание" style="margin-top:5px"></div>';
-    return '<div class="battle planned" data-goto="' + esc(b.a) + '" role="button" tabindex="0">' +
+      '<input value="' + esc(b.note || '') + '" data-blk="' + i + '" data-k="note" placeholder="условие снятия / примечание" style="margin-top:5px">' +
+      '<input value="' + esc(b.expiresAt || '') + '" data-blk="' + i + '" data-k="expiresAt" placeholder="срок дд.мм (необязательно)" style="margin-top:5px">' +
+      resistHint + '</div>';
+    return '<div class="battle planned' + (expired ? ' done' : '') + '" data-goto="' + esc(b.a) + '" role="button" tabindex="0">' +
       '<div class="n">' + esc(A.name) + ' — ' + esc(B.name) + '</div><div class="m">' +
       '<span style="color:' + esc(facOf(b.fac).color) + '">' + esc(facOf(b.fac).name) + '</span><span>·</span>' +
       '<span>слой ' + (b.str || 1) + '</span>' + (b.note ? '<span>·</span><span>' + esc(b.note) + '</span>' : '') +
-      '</div></div>';
+      (b.expiresAt ? '<span>·</span><span>' + (expired ? 'срок истёк ' : 'до ') + esc(b.expiresAt) + '</span>' : '') +
+      '</div>' + resistHint + '</div>';
   }).join('');
 }
 /* Фильтр журнала — по типу записи и по планете (см. logAdd's sys-параметр).
@@ -2790,11 +2852,94 @@ function syncFacSummary() {
   el('facsum-list').innerHTML = rows.join('') ||
     '<div style="color:var(--dim);font-size:12px">пока никто не контролирует объекты</div>';
 }
-function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncFacSummary(); syncBattles(); syncBlocks(); syncLog(); syncRequests(); }
+/* ---------- конвои снабжения (запрос пользователя: "ощущение марша", не
+ * мгновенный расчёт снабжения) — отдельный от него, ручной список маршрутов
+ * с прогрессом по дням, как у боёв/блокад: куратор сам двигает статус, тут
+ * нет автоматики поверх strat.sup. */
+const CONVOY_STATUS = { enroute: 'в пути', arrived: 'прибыл', lost: 'потерян' };
+function convoyProgress(c) {
+  const elapsed = daysSince(c.departed);
+  const eta = Math.max(1, c.etaDays || 1);
+  const p = clamp((elapsed === null ? 0 : elapsed) / eta, 0, 1);
+  return '<div class="prog"><i style="width:' + Math.round(p * 100) + '%;background:' + esc(facOf(c.fac).color) + '"></i></div>' +
+    '<div class="m" style="margin-top:5px"><span>' + esc(CONVOY_STATUS[c.status] || c.status) + '</span><span>·</span>' +
+    '<span>' + Math.round(p * 100) + '% пути</span>' +
+    (elapsed !== null ? '<span>·</span><span>' + elapsed + ' из ' + eta + ' ' + plural(eta, 'сутки', 'суток', 'суток') + '</span>' : '') +
+    '</div>';
+}
+function syncConvoys() {
+  const addBtn = el('cv-add');
+  if (addBtn) addBtn.hidden = !editing;
+  const list = DATA.convoys || [];
+  if (!list.length) { el('cv-list').innerHTML = '<div style="color:var(--dim);font-size:12px">конвоев нет</div>'; return; }
+  el('cv-list').innerHTML = list.map((c, i) => {
+    const done = c.status !== 'enroute';
+    if (editing) return '<div class="battle' + (done ? ' done' : '') + '">' +
+      '<div class="editrow"><select data-cv="' + i + '" data-k="from">' + sysOptions(c.from) + '</select>' +
+      '<button class="mini" data-cvdel="' + i + '" aria-label="Убрать конвой">×</button></div>' +
+      '<div class="editgrid" style="margin-top:5px"><select data-cv="' + i + '" data-k="to">' + sysOptions(c.to) + '</select>' +
+      '<select data-cv="' + i + '" data-k="fac">' + facOptions(c.fac) + '</select></div>' +
+      '<div class="editgrid" style="margin-top:5px"><input type="number" min="1" data-cv="' + i + '" data-k="etaDays" value="' + (c.etaDays || 1) + '" aria-label="Дней в пути">' +
+      '<input value="' + esc(c.departed || '') + '" data-cv="' + i + '" data-k="departed" placeholder="выход дд.мм"></div>' +
+      '<select data-cv="' + i + '" data-k="status" style="margin-top:5px">' + Object.keys(CONVOY_STATUS).map(k =>
+        '<option value="' + k + '"' + (k === c.status ? ' selected' : '') + '>' + CONVOY_STATUS[k] + '</option>').join('') + '</select>' +
+      convoyProgress(c) + '</div>';
+    const A = SYS[c.from], B = SYS[c.to];
+    return '<div class="battle' + (done ? ' done' : '') + '"' + (A ? ' data-goto="' + esc(A.id) + '" role="button" tabindex="0"' : '') + '>' +
+      '<div class="n">' + esc(A ? A.name : '?') + ' → ' + esc(B ? B.name : '?') + '</div>' +
+      '<div class="m"><span style="color:' + esc(facOf(c.fac).color) + '">' + esc(facOf(c.fac).name) + '</span></div>' +
+      convoyProgress(c) + '</div>';
+  }).join('');
+}
+/* Маркер конвоя на карте — движется по той же квадратичной кривой, что и
+ * сама трасса (см. drawLanes), по доле elapsed/etaDays; рисуется отдельным
+ * проходом поверх трасс/планет, а не встроен в drawLanes, поскольку конвой
+ * не обязан идти по существующей trasса — просто прямая между двумя
+ * системами (куратор сам решает маршрут в голове/в RP). */
+function drawConvoys(alpha) {
+  const list = DATA.convoys;
+  if (!list || !list.length) return;
+  ctx.save();
+  for (const conv of list) {
+    if (conv.status !== 'enroute') continue;
+    const A = SYS[conv.from], B = SYS[conv.to];
+    if (!A || !B) continue;
+    const p = proj(A.x, A.y, PLANE_H), q = proj(B.x, B.y, PLANE_H);
+    const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2 - Math.hypot(q.x - p.x, q.y - p.y) * .07;
+    const elapsed = daysSince(conv.departed);
+    const t = clamp((elapsed === null ? 0 : elapsed) / Math.max(1, conv.etaDays || 1), 0, 1);
+    const it = 1 - t;
+    const x = it * it * p.x + 2 * it * t * mx + t * t * q.x;
+    const y = it * it * p.y + 2 * it * t * my + t * t * q.y;
+    const col = facOf(conv.fac).col;
+    ctx.globalAlpha = alpha * .5;
+    ctx.strokeStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x, y, 6.5, 0, 6.2832); ctx.stroke();
+    ctx.globalAlpha = alpha * .95;
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
+  }
+  ctx.restore();
+}
+function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncFacSummary(); syncBattles(); syncConvoys(); syncBlocks(); syncLog(); syncRequests(); }
 
 el('rail-r').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (b) {
+    if (b.id === 'cv-add') {
+      const from = selected || (SYSTEMS[0] && SYSTEMS[0].id);
+      if (!from) return;
+      const to = (ADJ[from] && ADJ[from][0]) || (SYSTEMS.find(s => s.id !== from) || {}).id;
+      if (!to) return;
+      DATA.convoys = DATA.convoys || [];
+      DATA.convoys.unshift({
+        id: 'cv' + Date.now(), from, to, fac: DATA.meta.main || (DATA.factions.find(f => !f.neutral) || {}).id,
+        etaDays: 2, departed: today(), status: 'enroute'
+      });
+      syncConvoys(); touch();
+      return;
+    }
+    if (b.dataset.cvdel !== undefined) { DATA.convoys.splice(+b.dataset.cvdel, 1); syncConvoys(); touch(); return; }
     if (b.id === 'bat-add') {
       const sysId = selected || (SYSTEMS[0] && SYSTEMS[0].id);
       if (!sysId) return;
@@ -2813,9 +2958,37 @@ el('rail-r').addEventListener('click', e => {
       if (!selected || !ADJ[selected].length) { return; }
       const n = ADJ[selected].find(x => !isBlocked(selected, x));
       if (!n) return;
-      DATA.blockades.push({ id: 'bl' + Date.now(), a: selected, b: n, fac: DATA.factions.find(f => !f.neutral).id, str: 1, note: '' });
+      const fac = DATA.factions.find(f => !f.neutral).id;
+      const cfg = DATA.meta.blockade || { maxPerFaction: 3 };
+      const held = DATA.blockades.filter(bl => bl.fac === fac).length;
+      if (held >= cfg.maxPerFaction &&
+        !confirm('У ' + facOf(fac).name + ' уже ' + held + ' блокад(ы) — лимит ' + cfg.maxPerFaction + '. Поставить ещё одну?')) return;
+      DATA.blockades.push({ id: 'bl' + Date.now(), a: selected, b: n, fac, str: 1, note: '', expiresAt: '' });
       logAdd('battle', 'Блокада', SYS[selected].name + ' — ' + SYS[n].name + ': трасса перекрыта.', selected);
       rebuild(); syncStats();
+      return;
+    }
+    if (b.id === 'blk-sector-go') {
+      // Групповая блокада — перекрывает разом все трассы ЦЕЛИКОМ внутри
+      // выбранного сектора (оба конца трассы в нём), а не только одну
+      // (запрос пользователя: "чтобы не каждому формированию делать по 1").
+      const sel = el('blk-sector-pick');
+      const secId = sel && sel.value;
+      if (!secId) return;
+      const fac = DATA.factions.find(f => !f.neutral).id;
+      let added = 0;
+      LANES.forEach(([a, b2]) => {
+        const A = SYS[a], B = SYS[b2];
+        if (A && B && A.sector === secId && B.sector === secId && !isBlocked(a, b2)) {
+          DATA.blockades.push({ id: 'bl' + Date.now() + '-' + (added++), a, b: b2, fac, str: 1, note: 'Блокада сектора', expiresAt: '' });
+        }
+      });
+      if (added) {
+        logAdd('battle', 'Блокада сектора', (SECTOR[secId] ? SECTOR[secId].name : secId) + ': перекрыто трасс — ' + added + '.');
+        rebuild(); syncStats();
+      } else {
+        alert('В этом секторе нет свободных трасс для блокады (либо уже все перекрыты).');
+      }
       return;
     }
     if (b.dataset.blkdel !== undefined) {
@@ -2855,6 +3028,9 @@ el('rail-r').addEventListener('change', e => {
   } else if (t.dataset.blk !== undefined) {
     const bl = DATA.blockades[+t.dataset.blk];
     if (bl) { bl[t.dataset.k] = t.dataset.k === 'str' ? Math.max(1, parseInt(t.value, 10) || 1) : t.value; rebuild(); syncStats(); }
+  } else if (t.dataset.cv !== undefined) {
+    const c = DATA.convoys[+t.dataset.cv];
+    if (c) { c[t.dataset.k] = t.value; syncConvoys(); touch(); }
   } else if (t.dataset.log !== undefined) {
     const l = DATA.log[+t.dataset.log];
     if (l) { l[t.dataset.k] = t.value; syncLog(); touch(); }
@@ -2872,6 +3048,9 @@ el('rail-r').addEventListener('input', e => {
   } else if (t.dataset.blk !== undefined) {
     const bl = DATA.blockades[+t.dataset.blk];
     if (bl) { bl[t.dataset.k] = t.value; touch(); }
+  } else if (t.dataset.cv !== undefined) {
+    const c = DATA.convoys[+t.dataset.cv];
+    if (c) { c[t.dataset.k] = t.dataset.k === 'etaDays' ? Math.max(1, parseInt(t.value, 10) || 1) : t.value; syncConvoys(); touch(); }
   }
   else if (t.dataset.log !== undefined) { const l = DATA.log[+t.dataset.log]; if (l) { l[t.dataset.k] = t.value; touch(); } }
 });
@@ -3265,6 +3444,7 @@ function frame(ts) {
     drawGrid(mapAlpha);
     drawLanes(mapAlpha);
     drawRouteLabels(mapAlpha);
+    drawConvoys(mapAlpha);
     drawNodes(mapAlpha);
   }
   if (mode === 'map') drawMinimap(); else el('minimap').classList.remove('show');
