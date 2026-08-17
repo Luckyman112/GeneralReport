@@ -43,6 +43,7 @@ const DisciplineRosterPage = lazy(() =>
   import("./pages/DisciplineRosterPage").then((m) => ({ default: m.DisciplineRosterPage }))
 );
 const EventRoomPage = lazy(() => import("./pages/EventRoomPage").then((m) => ({ default: m.EventRoomPage })));
+const GalaxyMapPage = lazy(() => import("./pages/GalaxyMapPage").then((m) => ({ default: m.GalaxyMapPage })));
 const RecruitsPage = lazy(() => import("./pages/RecruitsPage").then((m) => ({ default: m.RecruitsPage })));
 const AdminStaffPage = lazy(() => import("./pages/AdminStaffPage").then((m) => ({ default: m.AdminStaffPage })));
 
@@ -267,6 +268,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <RecruitsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/galaxy"
+          element={
+            <ProtectedRoute>
+              <GalaxyMapPage />
             </ProtectedRoute>
           }
         />

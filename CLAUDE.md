@@ -978,20 +978,26 @@ matter how much width you hand it, check whether the CELL CONTENT ITSELF has
 an unbreakable flex/inline-flex row forcing a large minimum width, before
 reaching for more `width`/`min-width` on the table or its container.
 
-### "Галактика" campaign map — standalone static page, not a React route
+### "Галактика" campaign map — static page embedded via iframe in a real route
 `frontend/public/galaxy-map.html` is a large (~2600 lines) self-contained
 canvas/vanilla-JS single-page app (galactic strategy map for RP campaigns:
 systems, factions, supply lines, battles, blockades, log) that arrived as a
 finished third-party artifact, not something built incrementally in this
 repo — see решение пользователя. It's placed in `frontend/public/` so Vite
 copies it byte-for-byte into `frontend/dist/galaxy-map.html`, served by the
-existing backend `StaticFiles` mount at `/galaxy-map.html` — deliberately
-**not** a React Router route: it has its own full-page canvas UI, own theme,
-own state machine, totally unrelated to the SPA shell, so wrapping it in a
-React component would add nothing but risk. Linked from `Sidebar.jsx`'s
-"Служба" group as a plain `<a href="/galaxy-map.html" target="_blank">`, not
-`<Link>` — it needs a real page navigation (own `<script>`, own DOM), not a
-route inside `HashRouter`.
+existing backend `StaticFiles` mount at `/galaxy-map.html`. The HTML/JS file
+itself is **not** rewritten as React — own full-page canvas UI, own theme,
+own state machine, wrapping it in components would add nothing but risk —
+but it IS reached through the normal SPA: `GalaxyMapPage.jsx` (route
+`/galaxy`, linked from `Sidebar.jsx`'s "Служба" group as an ordinary
+`<Link>`) renders nothing but a full-height `<iframe src="/galaxy-map.html">`
+(`.galaxy-map-frame` in `styles.css`, negative-margins out of
+`.page-container`'s padding for more height, still capped at the same
+1400px). First version opened the file as a bare `<a target="_blank">`
+instead — changed to this iframe route by explicit user request ("хочу
+чтобы всё на сайте было", i.e. stay inside the site, no separate tab).
+Same-origin iframe means `localStorage` (holding the JWT) is naturally
+shared with the parent page — no token has to be passed in explicitly.
 
 **Auth**: reads `localStorage.getItem('collapsar_token')` directly (same
 key `AuthContext.jsx` uses, same origin) and sends it as `Authorization:

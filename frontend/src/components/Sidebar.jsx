@@ -55,13 +55,7 @@ export function Sidebar({ open, onClose }) {
               </button>
               <Link to="/promotions" onClick={onClose}>Повышения</Link>
               <Link to="/recruits" onClick={onClose}>Рекрутская</Link>
-              {/* Отдельная статическая страница (frontend/public/galaxy-map.html), не
-                  часть SPA-роутинга — читает JWT из того же localStorage напрямую и
-                  ходит в /api/galaxy-map сама, поэтому открывается обычной ссылкой,
-                  а не через <Link>/HashRouter */}
-              <a href="/galaxy-map.html" target="_blank" rel="noreferrer" onClick={onClose}>
-                Галактика
-              </a>
+              <Link to="/galaxy" onClick={onClose}>Галактика</Link>
             </div>
 
             {(hasCommandAccess || isHqMember || isDisciplineDeputy) && (

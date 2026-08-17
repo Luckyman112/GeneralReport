@@ -711,6 +711,19 @@ label {
   padding: 1.5rem 1rem;
 }
 
+/* "Галактика" (GalaxyMapPage.jsx) — своя canvas-страница внутри iframe того
+ * же происхождения (см. CLAUDE.md), нужно как можно больше высоты вместо
+ * обычного .page-container padding; отрицательные отступы гасят его,
+ * ширина остаётся в пределах 1400px .page-container, как у всех остальных
+ * страниц — не full-bleed на весь экран, но без лишнего скролла снаружи. */
+.galaxy-map-frame {
+  display: block;
+  width: calc(100% + 2rem);
+  height: calc(100vh - 6.5rem);
+  margin: -1.5rem -1rem;
+  border: none;
+}
+
 .reports-page-layout {
   display: grid;
   /* 560px было тесновато для таблицы состава (4 колонки: Участник/Дней в
