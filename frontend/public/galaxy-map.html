@@ -31,12 +31,21 @@ body.editing #top .hint{display:none}
 body.editing #top .edithint{display:block}
 #clock{font-family:var(--mono);font-size:11.5px;color:var(--dim);text-align:right;white-space:nowrap;line-height:1.8}
 #clock b{color:var(--ice);font-weight:400}
-#authgate{position:fixed;inset:0;background:var(--void);display:flex;align-items:center;justify-content:center;
+/* :not([hidden]) — иначе это правило само перебивает нативный display:none
+ * атрибута hidden (ID-селектор побеждает UA-стиль [hidden]{display:none}),
+ * и оверлей "Нужен вход" висел поверх карты ВСЕГДА, даже когда токен был
+ * валиден и карта под ним успешно грузилась (баг-репорт). */
+#authgate:not([hidden]){position:fixed;inset:0;background:var(--void);display:flex;align-items:center;justify-content:center;
   z-index:50;flex-direction:column;gap:12px;text-align:center;font-family:var(--mono);color:var(--ice)}
 #authgate a{color:var(--hot)}
 
 aside.rail{display:flex;flex-direction:column;gap:14px;overflow-y:auto;min-height:0;transition:opacity .3s;scrollbar-width:thin}
 .card{background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column}
+/* #req-card toggles [hidden] from JS (loadAccess) — .card's own display:flex
+ * above would otherwise override the native [hidden]{display:none} the same
+ * way #authgate's did (see that comment), higher-specificity compound
+ * selector wins over the plain class either way. */
+.card[hidden]{display:none}
 .card > h2{margin:0;font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ice);
   padding:11px 14px;border-bottom:1px solid var(--line);background:rgba(143,184,216,.05);
   display:flex;justify-content:space-between;align-items:center;gap:8px}
