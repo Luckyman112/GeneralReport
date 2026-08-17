@@ -67,6 +67,7 @@ aside.rail{display:flex;flex-direction:column;gap:14px;overflow-y:auto;min-heigh
 .battle{border:1px solid var(--line);border-left:2px solid var(--hot);padding:9px 11px;display:flex;flex-direction:column;gap:4px}
 .battle .n{font-size:14px;font-weight:500}
 .battle .m{font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.result{font-size:11px;color:var(--hot);margin-top:4px}
 .battle.done{border-left-color:var(--dim);opacity:.65}
 .battle.planned{border-left-style:dashed}
 .prog{display:flex;height:4px;margin-top:7px;background:rgba(143,184,216,.12)}
@@ -174,6 +175,12 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
 #detail dl{margin:5px 0 0;display:grid;grid-template-columns:auto 1fr;gap:7px 15px;font-family:var(--mono);font-size:12px}
 #detail dt{color:var(--dim);letter-spacing:.12em;text-transform:uppercase;font-size:10.5px;align-self:center}
 #detail dd{margin:0;color:var(--ink)}
+#d-battles{margin-top:14px;display:flex;flex-direction:column;gap:8px;max-height:min(38vh,300px);overflow-y:auto}
+#d-battles .lab{margin:0 0 2px}
+#d-battles .dbattle{border-left:2px solid var(--hot);background:rgba(6,10,18,.4);padding:7px 10px}
+#d-battles .dbattle.done{border-left-color:var(--dim);opacity:.75}
+#d-battles .dbattle .n{font-family:var(--mono);font-size:11.5px;color:var(--ice)}
+#d-battles .dbattle .n b{font-weight:500}
 
 @media (max-width:1180px){
   :root{--side:246px;--side2:262px}
@@ -272,6 +279,7 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
         <dt>Трассы</dt><dd id="d-lanes">—</dd>
         <dt>Снабжение</dt><dd id="d-sup">—</dd>
       </dl>
+      <div id="d-battles"></div>
     </div>
 
     <section class="drawer" id="facdrawer" aria-label="Фракции, сектора и объекты планет">
@@ -1162,28 +1170,58 @@ function laneStyle(a, b) {
   return { col: 'rgba(163,196,224,.62)', w: 1.3, hot: false };
 }
 
-/* Силуэт корабля на блокированной трассе (вместо крестика) — клин линкора,
- * нос смотрит вдоль трассы, цвет = фракция, что держит блокаду. Позиция —
+/* Силуэты кораблей — для блокад на трассах и патрульных корветов на орбите
+ * планеты (см. drawPlanetScene). Рисуются в локальных координатах: нос
+ * смотрит вдоль +x, центр в (0,0) — вызывающий код сам переносит/вращает/
+ * масштабирует через ctx.translate/rotate/scale перед вызовом. 'rep' —
+ * силуэт а-ля Venator (вытянутый клин с раздвоенным носом), 'sep' — а-ля
+ * корабль КНС (ромбовидный корпус с двумя ангарными спонсонами), остальные
+ * фракции — нейтральный клин линкора (запрос пользователя: "модели
+ * Венатора, манифеста КНС и т.д." — для произвольных фракций, которых
+ * заранее не знаем, конкретной модели взять неоткуда, поэтому дефолт). */
+function shipSilhouette(factionId, col) {
+  ctx.fillStyle = col;
+  if (factionId === 'rep') {
+    ctx.beginPath();
+    ctx.moveTo(13, 0);
+    ctx.lineTo(5, -2.6); ctx.lineTo(5, -1.1); ctx.lineTo(-9, -4.2);
+    ctx.lineTo(-12, -2.4); ctx.lineTo(-12, 2.4); ctx.lineTo(-9, 4.2);
+    ctx.lineTo(5, 1.1); ctx.lineTo(5, 2.6);
+    ctx.closePath();
+    ctx.fill();
+  } else if (factionId === 'sep') {
+    ctx.beginPath();
+    ctx.moveTo(12, 0); ctx.lineTo(2, -6); ctx.lineTo(-9, -3);
+    ctx.lineTo(-9, 3); ctx.lineTo(2, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(1, -4.6, 2.4, 1.3, 0, 0, 6.2832);
+    ctx.ellipse(1, 4.6, 2.4, 1.3, 0, 0, 6.2832);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(11, 0); ctx.lineTo(-2, -6); ctx.lineTo(-7, -3);
+    ctx.lineTo(-7, 3); ctx.lineTo(-2, 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+/* Силуэт корабля на блокированной трассе (вместо крестика) — нос смотрит
+ * вдоль трассы, цвет/модель = фракция, что держит блокаду. Позиция —
  * середина той же квадратичной кривой, что рисует саму трассу (25/50/25 —
  * формула средней точки квадратичного Безье при t=.5). */
-function drawBlockadeShip(p, q, mx, my, col, alpha) {
+function drawBlockadeShip(p, q, mx, my, factionId, col, alpha) {
   const x = .25 * p.x + .5 * mx + .25 * q.x, y = .25 * p.y + .5 * my + .25 * q.y;
   const ang = Math.atan2(q.y - p.y, q.x - p.x);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(ang);
   ctx.globalAlpha = alpha * .95;
-  ctx.fillStyle = col;
-  ctx.beginPath();
-  ctx.moveTo(11, 0);
-  ctx.lineTo(-2, -6);
-  ctx.lineTo(-7, -3);
-  ctx.lineTo(-7, 3);
-  ctx.lineTo(-2, 6);
-  ctx.closePath();
-  ctx.fill();
+  shipSilhouette(factionId, col);
   ctx.globalAlpha = alpha * .55;
-  ctx.beginPath(); ctx.arc(-8, 0, 2.6, 0, 6.2832); ctx.fill();
+  ctx.beginPath(); ctx.arc(-9, 0, 2.4, 0, 6.2832); ctx.fill();
   ctx.restore();
 }
 
@@ -1211,7 +1249,8 @@ function drawLanes(alpha) {
       // произвольные (настраиваются в "Фракции и сектора"), поэтому вместо
       // одного конкретного канонического класса рисуем нейтральный
       // "клин линкора", цвет — фракция, что держит блокаду.
-      drawBlockadeShip(p, q, mx, my, facOf(BLOCK[laneKey(ia, ib)].fac).col, alpha);
+      const blFac = BLOCK[laneKey(ia, ib)].fac;
+      drawBlockadeShip(p, q, mx, my, blFac, facOf(blFac).col, alpha);
       continue;
     }
     if (!RM) {
@@ -1543,18 +1582,32 @@ function drawPlanetScene(sys, alpha, t) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, cxp - R, cyp - R, R * 2, R * 2);
 
-  // one marker riding the near side of the inner ring
-  const mark = RM ? 1.2 : spin * .8;
-  if (Math.sin(mark) > 0) {
-    const rr = R * 1.3, tl = -.42;
-    const ex = Math.cos(mark) * rr, ey = Math.sin(mark) * rr * .2;
-    ctx.globalAlpha = alpha * .95 * t;
-    ctx.fillStyle = fac.col;
-    ctx.beginPath();
-    ctx.arc(cxp + ex * Math.cos(tl) - ey * Math.sin(tl), cyp + ex * Math.sin(tl) + ey * Math.cos(tl), 2.8, 0, 6.2832);
-    ctx.fill();
+  // Патрульный корабль на ближней стороне кольца — модель/цвет владельца;
+  // если на планете идёт бой, вместо одного патрульного показываем корабли
+  // ОБЕИХ сторон на двух разных кольцах (запрос пользователя: "модели
+  // Венатора/КНС... визуально у планеты").
+  const bt = BATTLE[sys.id];
+  if (bt && LIVE_STAGES[bt.status]) {
+    orbitShip(cxp, cyp, R, 0, spin * .8, -.42, bt.att);
+    orbitShip(cxp, cyp, R, 1, spin * .8 + Math.PI, -.42 + .3, bt.def);
+  } else {
+    orbitShip(cxp, cyp, R, 0, RM ? 1.2 : spin * .8, -.42, sys.own);
   }
   ctx.restore();
+
+  function orbitShip(cx, cy, radius, ringIdx, mark, tl, factionId) {
+    if (Math.sin(mark) <= 0) return;
+    const rr = radius * (1.3 + ringIdx * .26), sq = .2 + ringIdx * .07;
+    const ex = Math.cos(mark) * rr, ey = Math.sin(mark) * rr * sq;
+    const sx = cx + ex * Math.cos(tl) - ey * Math.sin(tl), sy = cy + ex * Math.sin(tl) + ey * Math.cos(tl);
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(mark + Math.PI / 2);
+    ctx.scale(.5, .5);
+    ctx.globalAlpha = alpha * .95 * t;
+    shipSilhouette(factionId, facOf(factionId).col);
+    ctx.restore();
+  }
 }
 
 /* ---------- UI ---------- */
@@ -2252,6 +2305,21 @@ function syncDetail() {
   el('d-gar').textContent = s.gar + ' полк.';
   el('d-lanes').textContent = ADJ[s.id].map(n => SYS[n].name).join(', ') || '—';
   el('d-sup').textContent = supplyText(s.id);
+  // Сводка боёв на планете (запрос пользователя) — все бои этой системы,
+  // не только текущий "активный" (BATTLE[id] хранит только один, для
+  // пульсирующего кольца на карте) — реально их может быть несколько
+  // одновременно/по очереди, тот же battleProgress(), что и в "Активных боях".
+  const bts = DATA.battles.filter(b => b.sys === s.id);
+  el('d-battles').innerHTML = bts.length
+    ? '<div class="lab">Бои на планете</div>' + bts.map(b => {
+        const live = LIVE_STAGES[b.status] ? '' : ' done';
+        return '<div class="dbattle' + live + '">' +
+          '<div class="n"><b style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</b> против ' +
+          '<b style="color:' + esc(facOf(b.def).color) + '">' + esc(facOf(b.def).name) + '</b></div>' +
+          battleProgress(b) +
+        '</div>';
+      }).join('')
+    : '';
 }
 el('back').addEventListener('click', surface);
 
@@ -2330,7 +2398,12 @@ function battleProgress(b) {
       '<span>перевес: ' + esc(lead) + '</span>' +
       (days !== null ? '<span>·</span><span>идёт ' + days + ' ' + plural(days, 'сутки', 'суток', 'суток') + '</span>' : '') +
       (b.when ? '<span>·</span><span>' + esc(b.when) + '</span>' : '') +
-    '</div>';
+    '</div>' +
+    // Итог боя — свободный текст, куратор вписывает вручную при завершении
+    // (запрос пользователя: "видно что за бой привёл к победе") — привязан к
+    // конкретному бою, не к системе, поэтому виден и в списке "Активные
+    // бои", и в досье планеты (см. syncDetail).
+    (b.result ? '<div class="result">Итог: ' + esc(b.result) + '</div>' : '');
 }
 function syncBattles() {
   el('bat-add').hidden = !editing;
@@ -2351,7 +2424,8 @@ function syncBattles() {
       '<label style="margin-top:6px">Перевес атакующего<input type="range" data-bat="' + i + '" data-k="prog" min="0" max="100" step="2" value="' +
         (Number.isFinite(b.prog) ? b.prog : 50) + '"></label>' +
       battleProgress(b) +
-      '<input value="' + esc(b.when || '') + '" data-bat="' + i + '" data-k="when" placeholder="примечание" style="margin-top:6px"></div>';
+      '<input value="' + esc(b.when || '') + '" data-bat="' + i + '" data-k="when" placeholder="примечание" style="margin-top:6px">' +
+      '<input value="' + esc(b.result || '') + '" data-bat="' + i + '" data-k="result" placeholder="итог (например: планета захвачена)" style="margin-top:6px"></div>';
     return '<div class="battle' + live + '" data-goto="' + esc(b.sys) + '" role="button" tabindex="0">' +
       '<div class="n">' + esc(s.name) + '</div><div class="m">' +
       '<span style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</span> против ' +
