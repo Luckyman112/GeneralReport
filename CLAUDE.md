@@ -1172,6 +1172,43 @@ Faction" badges for every faction currently holding at least one zone
 `zones === 0`. Planet dossier (`#d-zones`, next to `#d-own` in the `<dl>`)
 shows the same per-faction breakdown, or "не поделена".
 
+**Galaxy Map UX batch 1** (keyboard/search/filters/undo, no backend changes) —
+first of several planned improvement batches (запрос пользователя: большой
+брейншторм идей, реализуются по частям с пушем после каждой):
+- Keyboard: arrows now page through **hyperlane-adjacent** systems (via
+  `ADJ`) instead of the whole map sorted by x, falling back to the old
+  whole-map order when the selected system has no lanes or nothing is
+  selected; `Ctrl+Z` triggers `undo()`; `Escape` with nothing else to close
+  now also closes any open drawer (`closeDrawers()`).
+- `#sys-search` (datalist-backed, native autocomplete) — jumps the camera to
+  a system by name, surfacing out of planet view first if needed.
+- Display filters (`viewFilter.kind`: all/disputed/battles,
+  `viewFilter.faction`) **dim non-matching lanes/nodes instead of hiding
+  them** (`laneMatchesFilter`/`sysMatchesFilter`, ~0.12-0.16 alpha), so
+  spatial context never disappears. Implementation note for future editors:
+  `drawLanes`/`drawNodes` take a single `alpha` transition parameter shared
+  across their whole per-item loop — dimming must use a **new local const per
+  iteration** (`a1`/`nodeA`) and never reassign the loop's own `alpha`/prior
+  local, since that would compound across every subsequent item in the same
+  frame (caught in review before shipping).
+- Log filter (`logFilter.kind`/`.sys`) — `Battle`/ownership log entries now
+  carry an optional `sys` field (`logAdd(kind, tag, text, sys)`); manual
+  entries via "+ запись" have none and just don't match a specific-planet
+  filter (still show under "Все планеты"). Filtering maps
+  `DATA.log.map((e,i)=>[e,i]).filter(...)` to keep original indices intact
+  for the existing `data-log`/`data-logdel` edit bindings — a plain
+  `.filter()` would have desynced those from `DATA.log`.
+- **1-step undo** — deliberately NOT instrumented at each of the file's many
+  mutation call sites (too many, too easy to miss one). Instead a 1s
+  `setInterval` diffs `JSON.stringify(DATA)` against the last sample; the
+  prior sample becomes the one-shot undo target (`undoPrev`/`undoBaseline`,
+  `undo()` in tools bar + `Ctrl+Z`). Trade-off: up to ~1s of very rapid
+  changes coalesce into one undo step (acceptable/arguably desirable), and
+  there's no redo/deeper history by design.
+- `beforeunload` now warns when leaving the tab while
+  `body.classList.contains('proposing')` (Ивентолог's local-only draft that
+  hasn't gone through `submitProposal()` yet).
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get

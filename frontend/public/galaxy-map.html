@@ -260,6 +260,17 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
       <button id="btn-map" aria-expanded="false">Подложка и маршруты</button>
       <button id="btn-drawer" aria-expanded="false">Данные</button>
       <button id="btn-fit">Вся карта</button>
+      <button id="btn-undo" disabled title="Отменить последнее действие (Ctrl+Z)">↶ Отменить</button>
+      <input id="sys-search" list="sys-search-list" placeholder="Поиск планеты…" style="width:150px;flex:0 0 auto" aria-label="Поиск планеты">
+      <datalist id="sys-search-list"></datalist>
+      <select id="flt-kind" aria-label="Фильтр отображения" style="width:168px;flex:0 0 auto">
+        <option value="all">Показать всё</option>
+        <option value="disputed">Только спорное</option>
+        <option value="battles">Только с боями</option>
+      </select>
+      <select id="flt-fac" aria-label="Фильтр по фракции" style="width:150px;flex:0 0 auto">
+        <option value="">Все фракции</option>
+      </select>
       <span id="save-status"></span>
     </div>
     <div id="railtoggle">
@@ -351,7 +362,13 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
     </section>
     <section class="card">
       <h2><span>Сводка сектора</span><button class="add" id="log-add" hidden>+ запись</button></h2>
-      <div class="body"><div class="log" id="log-list"></div></div>
+      <div class="body">
+        <div class="editgrid">
+          <select id="log-flt-kind" aria-label="Фильтр журнала по типу"></select>
+          <select id="log-flt-sys" aria-label="Фильтр журнала по планете"></select>
+        </div>
+        <div class="log" id="log-list"></div>
+      </div>
     </section>
   </aside>
 </div>
@@ -609,8 +626,11 @@ function today() {
   const d = new Date();
   return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
 }
-function logAdd(kind, tag, text) {
-  DATA.log.unshift({ d: today(), kind, tag, text });
+function logAdd(kind, tag, text, sys) {
+  // sys — id системы, к которой относится запись (если применимо), нужен
+  // только для фильтра "по планете" в syncLog(); записи без привязки (ручные
+  // через "+ запись") просто не попадают под этот фильтр.
+  DATA.log.unshift({ d: today(), kind, tag, text, sys: sys || '' });
   if (DATA.log.length > 200) DATA.log.length = 200;
 }
 function neutralId() {
@@ -1173,6 +1193,34 @@ function rowLabel(r) {
   return String(r >= 0 ? r + 1 : r);
 }
 
+/* ---------- фильтры отображения (не скрывают, а притушивают несовпавшее —
+ * так карта не "прыгает" геометрией и сохраняется пространственный
+ * контекст) ---------- */
+let viewFilter = { kind: 'all', faction: '' };
+function filterActive() { return viewFilter.kind !== 'all' || !!viewFilter.faction; }
+function sysMatchesFilter(s) {
+  if (viewFilter.faction && s.own !== viewFilter.faction) return false;
+  if (viewFilter.kind === 'battles') return !!BATTLE[s.id];
+  if (viewFilter.kind === 'disputed') return strat.cut.has(s.id) || ADJ[s.id].some(n => laneStyle(s.id, n).hot);
+  return true;
+}
+function laneMatchesFilter(a, b, st) {
+  if (viewFilter.faction) {
+    const oa = SYS[a].own, ob = SYS[b].own;
+    if (oa !== viewFilter.faction && ob !== viewFilter.faction) return false;
+  }
+  if (viewFilter.kind === 'battles') return !!(BATTLE[a] || BATTLE[b]);
+  if (viewFilter.kind === 'disputed') return st.hot || st.blocked;
+  return true;
+}
+function syncFilterFacOptions() {
+  const sel = el('flt-fac');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Все фракции</option>' + DATA.factions.map(f =>
+    '<option value="' + esc(f.id) + '"' + (f.id === cur ? ' selected' : '') + '>' + esc(f.name) + '</option>').join('');
+}
+
 function laneStyle(a, b) {
   if (isBlocked(a, b)) return { col: '#b0453c', w: 2, hot: false, blocked: true };
   const rt = ROUTE[laneKey(a, b)];
@@ -1242,13 +1290,20 @@ function drawBlockadeShip(p, q, mx, my, factionId, col, alpha) {
 function drawLanes(alpha) {
   ctx.save();
   ctx.lineCap = 'round';
+  const flt = filterActive();
   for (const [ia, ib] of LANES) {
     const A = SYS[ia], B = SYS[ib];
     const p = proj(A.x, A.y, PLANE_H), q = proj(B.x, B.y, PLANE_H);
     const st = laneStyle(ia, ib);
     const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2 - Math.hypot(q.x - p.x, q.y - p.y) * .07;
     const near = selected && (selected === ia || selected === ib);
-    ctx.globalAlpha = alpha * (near ? .95 : st.hot ? .8 : .55);
+    // dimmed — притушиваем несовпавшее под активный фильтр, но НЕ трогаем
+    // саму переменную alpha параметра (она общая на весь цикл!) — локальный
+    // a1 только для этой итерации, иначе притухание одной трассы бы
+    // накопительно проседало на все следующие.
+    const dimmed = flt && !laneMatchesFilter(ia, ib, st);
+    const a1 = dimmed ? alpha * .12 : alpha;
+    ctx.globalAlpha = a1 * (near ? .95 : st.hot ? .8 : .55);
     ctx.strokeStyle = st.col;
     ctx.lineWidth = st.w * (near ? 1.7 : 1);
     if (st.hot && !RM) ctx.setLineDash([9, 7]), ctx.lineDashOffset = -(now * .04) % 16;
@@ -1264,7 +1319,7 @@ function drawLanes(alpha) {
       // одного конкретного канонического класса рисуем нейтральный
       // "клин линкора", цвет — фракция, что держит блокаду.
       const blFac = BLOCK[laneKey(ia, ib)].fac;
-      drawBlockadeShip(p, q, mx, my, blFac, facOf(blFac).col, alpha);
+      drawBlockadeShip(p, q, mx, my, blFac, facOf(blFac).col, a1);
       continue;
     }
     if (!RM) {
@@ -1274,7 +1329,7 @@ function drawLanes(alpha) {
       const t = dir, it = 1 - t;
       const px = it * it * p.x + 2 * it * t * mx + t * t * q.x;
       const py = it * it * p.y + 2 * it * t * my + t * t * q.y;
-      ctx.globalAlpha = alpha * (st.hot ? .95 : .5) * Math.sin(phase * Math.PI);
+      ctx.globalAlpha = a1 * (st.hot ? .95 : .5) * Math.sin(phase * Math.PI);
       ctx.fillStyle = st.hot ? HOT : st.col;
       ctx.beginPath(); ctx.arc(px, py, st.hot ? 2.6 : 1.9, 0, 6.2832); ctx.fill();
     }
@@ -1315,20 +1370,26 @@ function drawRouteLabels(alpha) {
 function drawNodes(alpha) {
   labelJobs = [];
   const order = [...SYSTEMS].sort((a, b) => a.y - b.y);
+  const flt = filterActive();
   ctx.save();
   for (const s of order) {
     const own = s.own, fac = facOf(own);
     const base = proj(s.x, s.y, 0), top = proj(s.x, s.y, PLANE_H);
     const rad = s.r * cam.z;
     const isSel = selected === s.id, isHov = hovered === s.id;
+    // nodeA — локальная (не мутирует общий alpha параметр, см. тот же приём в
+    // drawLanes) притушенная альфа для планет, не подходящих под активный
+    // фильтр отображения. Не назвал её a0, чтобы не путать с переменной угла
+    // a0, которая уже используется ниже в цикле рисования кольца выбора.
+    const nodeA = (flt && !sysMatchesFilter(s)) ? alpha * .16 : alpha;
 
-    ctx.globalAlpha = alpha * .5;
+    ctx.globalAlpha = nodeA * .5;
     ctx.fillStyle = 'rgba(0,0,0,.55)';
     ctx.beginPath();
     ctx.ellipse(base.x, base.y, rad * 1.15, rad * .42, 0, 0, 6.2832);
     ctx.fill();
 
-    ctx.globalAlpha = alpha * .45;
+    ctx.globalAlpha = nodeA * .45;
     ctx.strokeStyle = fac.col; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(base.x, base.y); ctx.lineTo(top.x, top.y); ctx.stroke();
 
@@ -1337,16 +1398,16 @@ function drawNodes(alpha) {
     const g = ctx.createRadialGradient(top.x, top.y, rad * .7, top.x, top.y, glowR);
     g.addColorStop(0, 'rgba(' + fac.rgb.join(',') + ',' + (.30 + (isSel ? .22 : 0)) + ')');
     g.addColorStop(1, 'rgba(' + fac.rgb.join(',') + ',0)');
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = nodeA;
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(top.x, top.y, glowR, 0, 6.2832); ctx.fill();
 
     const px = clamp(Math.round(rad * 1.6), 12, 96);
     const sp = sprite(s, px);
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = nodeA;
     ctx.drawImage(sp, top.x - rad, top.y - rad, rad * 2, rad * 2);
 
-    ctx.globalAlpha = alpha * (isSel ? .95 : isHov ? .7 : .4);
+    ctx.globalAlpha = nodeA * (isSel ? .95 : isHov ? .7 : .4);
     ctx.strokeStyle = fac.col; ctx.lineWidth = isSel ? 1.8 : 1;
     ctx.beginPath(); ctx.arc(top.x, top.y, rad + 4, 0, 6.2832); ctx.stroke();
 
@@ -1354,19 +1415,19 @@ function drawNodes(alpha) {
     if (bt) {
       const col = LIVE_STAGES[bt.status] ? HOT : bt.status === 'planned' ? '#8fb8d8' : '#5d7288';
       const beat = RM ? .6 : .45 + .55 * (0.5 + 0.5 * Math.sin(now * .004));
-      ctx.globalAlpha = alpha * (bt.status === 'done' ? .4 : beat);
+      ctx.globalAlpha = nodeA * (bt.status === 'done' ? .4 : beat);
       ctx.strokeStyle = col;
       ctx.lineWidth = LIVE_STAGES[bt.status] ? 2 : 1.2;
       if (bt.status === 'planned') ctx.setLineDash([4, 5]);
       ctx.beginPath(); ctx.arc(top.x, top.y, rad + 8, 0, 6.2832); ctx.stroke();
       if (LIVE_STAGES[bt.status]) {
-        ctx.globalAlpha = alpha * (1 - beat) * .9;
+        ctx.globalAlpha = nodeA * (1 - beat) * .9;
         ctx.beginPath(); ctx.arc(top.x, top.y, rad + 16, 0, 6.2832); ctx.stroke();
       }
       ctx.setLineDash([]);
     }
     if (strat.cut.has(s.id)) {
-      ctx.globalAlpha = alpha * .9;
+      ctx.globalAlpha = nodeA * .9;
       ctx.strokeStyle = HOT; ctx.lineWidth = 1.4;
       ctx.setLineDash([3, 5]);
       ctx.lineDashOffset = RM ? 0 : (now * .02) % 8;
@@ -1375,14 +1436,14 @@ function drawNodes(alpha) {
     }
 
     if (editing && linkFrom === s.id) {
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = nodeA;
       ctx.strokeStyle = HOT; ctx.lineWidth = 1.6;
       ctx.setLineDash([2, 4]);
       ctx.beginPath(); ctx.arc(top.x, top.y, rad + 7, 0, 6.2832); ctx.stroke();
       ctx.setLineDash([]);
     }
     if (isSel) {
-      ctx.globalAlpha = alpha * .8;
+      ctx.globalAlpha = nodeA * .8;
       ctx.strokeStyle = HOT; ctx.lineWidth = 1;
       const rr = rad + 18;
       ctx.beginPath();
@@ -1763,7 +1824,7 @@ panel.addEventListener('click', e => {
       const main = DATA.meta.main;
       const kind = to === main ? 'gain' : from === main ? 'loss' : 'info';
       logAdd(kind, to === main ? 'Планета взята' : from === main ? 'Планета потеряна' : 'Смена контроля',
-        s.name + ': ' + facOf(from).name + ' → ' + facOf(to).name + '.');
+        s.name + ': ' + facOf(from).name + ' → ' + facOf(to).name + '.', s.id);
       changed();
     }
   }
@@ -1829,7 +1890,7 @@ function recomputeOwnerFromZones(s) {
     const main = DATA.meta.main;
     const kind = best === main ? 'gain' : from === main ? 'loss' : 'info';
     logAdd(kind, best === main ? 'Планета взята' : from === main ? 'Планета потеряна' : 'Смена контроля',
-      s.name + ' (зоны, ' + bestCount + ' из ' + s.zones + '): ' + facOf(from).name + ' → ' + facOf(best).name + '.');
+      s.name + ' (зоны, ' + bestCount + ' из ' + s.zones + '): ' + facOf(from).name + ' → ' + facOf(best).name + '.', s.id);
   }
 }
 function shiftZone(s, fromFac, toFac) {
@@ -2341,9 +2402,30 @@ function openDrawer(which) {
     if (which === 'map') syncMapDrawer();
   }
 }
+function closeDrawers() {
+  let any = false;
+  Object.keys(DRAWERS).forEach(k => {
+    if (el(DRAWERS[k][0]).classList.contains('open')) any = true;
+    el(DRAWERS[k][0]).classList.remove('open');
+    el(DRAWERS[k][1]).setAttribute('aria-expanded', 'false');
+  });
+  return any;
+}
 el('btn-drawer').addEventListener('click', () => openDrawer('data'));
 el('btn-fac').addEventListener('click', () => openDrawer('fac'));
 el('btn-fit').addEventListener('click', fitView);
+el('sys-search').addEventListener('change', e => {
+  const q = e.target.value.trim().toLowerCase();
+  e.target.value = '';
+  if (!q) return;
+  const found = SYSTEMS.find(s => s.name.toLowerCase() === q) || SYSTEMS.find(s => s.name.toLowerCase().includes(q));
+  if (!found) return;
+  if (mode !== 'map') surface();
+  selected = found.id; focusOn(found.id); syncPanel();
+});
+el('flt-kind').addEventListener('change', e => { viewFilter.kind = e.target.value; });
+el('flt-fac').addEventListener('change', e => { viewFilter.faction = e.target.value; });
+el('btn-undo').addEventListener('click', undo);
 el('btn-add').addEventListener('click', () => {
   const c = unproj(W / 2, H / 2);
   addSystem(c.x, c.y - PLANE_H);
@@ -2446,6 +2528,12 @@ function syncCtrl() {
   el('c-date').textContent = today();
   el('camp-name').textContent = DATA.meta.name;
   el('camp-eyebrow').textContent = DATA.meta.eyebrow;
+  syncSearchList();
+  syncFilterFacOptions();
+}
+function syncSearchList() {
+  const dl = el('sys-search-list');
+  if (dl) dl.innerHTML = SYSTEMS.map(s => '<option value="' + esc(s.name) + '">').join('');
 }
 function syncRes() {
   const f = facOf(DATA.meta.main);
@@ -2554,10 +2642,35 @@ function syncBlocks() {
       '</div></div>';
   }).join('');
 }
+/* Фильтр журнала — по типу записи и по планете (см. logAdd's sys-параметр).
+ * Записи без sys (ручные "+ запись") просто не подпадают под фильтр по
+ * конкретной планете, но остаются видны в "Все планеты". Индексы data-log/
+ * data-logdel всегда берём из ИСХОДНОГО DATA.log (не из отфильтрованного
+ * списка), иначе правка/удаление попадёт не в ту запись. */
+let logFilter = { kind: 'all', sys: '' };
+function syncLogFilterOptions() {
+  const selK = el('log-flt-kind'), selS = el('log-flt-sys');
+  if (!selK || !selS) return;
+  if (!selK.options.length) {
+    selK.innerHTML = '<option value="all">Все типы</option>' + Object.keys(LOG_KINDS).map(k =>
+      '<option value="' + k + '">' + LOG_KINDS[k].label + '</option>').join('');
+  }
+  const cur = selS.value;
+  selS.innerHTML = '<option value="">Все планеты</option>' + SYSTEMS.slice().sort((a, b) => a.name.localeCompare(b.name)).map(s =>
+    '<option value="' + esc(s.id) + '"' + (s.id === cur ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
+}
 function syncLog() {
   el('log-add').hidden = !editing;
-  if (!DATA.log.length) { el('log-list').innerHTML = '<div style="color:var(--dim);font-size:12px">записей нет</div>'; return; }
-  el('log-list').innerHTML = DATA.log.map((e0, i) => {
+  syncLogFilterOptions();
+  const filtered = DATA.log
+    .map((e0, i) => [e0, i])
+    .filter(([e0]) => (logFilter.kind === 'all' || e0.kind === logFilter.kind) && (!logFilter.sys || e0.sys === logFilter.sys));
+  if (!filtered.length) {
+    el('log-list').innerHTML = '<div style="color:var(--dim);font-size:12px">' +
+      (DATA.log.length ? 'по фильтру ничего нет' : 'записей нет') + '</div>';
+    return;
+  }
+  el('log-list').innerHTML = filtered.map(([e0, i]) => {
     const col = (LOG_KINDS[e0.kind] || LOG_KINDS.info).color;
     if (editing) return '<div class="e" style="grid-template-columns:1fr">' +
       '<div class="editrow"><input value="' + esc(e0.d) + '" data-log="' + i + '" data-k="d" style="flex:0 0 56px" aria-label="Дата">' +
@@ -2612,13 +2725,13 @@ el('rail-r').addEventListener('click', e => {
       const n = ADJ[selected].find(x => !isBlocked(selected, x));
       if (!n) return;
       DATA.blockades.push({ id: 'bl' + Date.now(), a: selected, b: n, fac: DATA.factions.find(f => !f.neutral).id, str: 1, note: '' });
-      logAdd('battle', 'Блокада', SYS[selected].name + ' — ' + SYS[n].name + ': трасса перекрыта.');
+      logAdd('battle', 'Блокада', SYS[selected].name + ' — ' + SYS[n].name + ': трасса перекрыта.', selected);
       rebuild(); syncStats();
       return;
     }
     if (b.dataset.blkdel !== undefined) {
       const bl = DATA.blockades[+b.dataset.blkdel];
-      logAdd('gain', 'Блокада снята', SYS[bl.a].name + ' — ' + SYS[bl.b].name + '.');
+      logAdd('gain', 'Блокада снята', SYS[bl.a].name + ' — ' + SYS[bl.b].name + '.', bl.a);
       DATA.blockades.splice(+b.dataset.blkdel, 1);
       rebuild(); syncStats();
       return;
@@ -2629,6 +2742,8 @@ el('rail-r').addEventListener('click', e => {
   const card = e.target.closest('[data-goto]');
   if (card && SYS[card.dataset.goto]) { selected = card.dataset.goto; focusOn(selected); syncPanel(); }
 });
+el('log-flt-kind').addEventListener('change', e => { logFilter.kind = e.target.value; syncLog(); });
+el('log-flt-sys').addEventListener('change', e => { logFilter.sys = e.target.value; syncLog(); });
 el('rail-r').addEventListener('keydown', e => {
   const card = e.target.closest('[data-goto]');
   if (card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); card.click(); }
@@ -2719,12 +2834,55 @@ async function loadAccess() {
   // (правят карту напрямую); "Вся карта" (просто вписывает вид) остаётся
   // всем, как и раньше (запрос пользователя).
   ['btn-fac', 'btn-map', 'btn-drawer'].forEach(id => { el(id).style.display = ACCESS.canEdit ? '' : 'none'; });
+  el('btn-undo').style.display = canEditAtAll ? '' : 'none';
 }
 
 async function loadGalaxyMap() {
   const res = await api('/galaxy-map');
   return res.data && Object.keys(res.data).length ? res.data : cloneDefault();
 }
+
+/* ---------- лёгкий undo (1 шаг) ---------- */
+/* Точек мутации DATA в файле десятки (клики, инпуты, драг) — вместо того
+ * чтобы инструментировать каждую (риск пропустить и получить "битый" undo),
+ * раз в секунду сравниваем сериализованный DATA с прошлым снимком: если
+ * отличается, прошлый снимок становится целью для кнопки "Отменить" —
+ * простой, но надёжный вариант "однослотового" undo без стека и redo. */
+let undoPrev = null, undoBaseline = null;
+function undoSample() {
+  if (!DATA) return;
+  const now = JSON.stringify(DATA);
+  if (now !== undoBaseline) {
+    undoPrev = undoBaseline;
+    undoBaseline = now;
+    const b = el('btn-undo');
+    if (b) b.disabled = !undoPrev;
+  }
+}
+setInterval(undoSample, 1000);
+function undo() {
+  if (!undoPrev) return;
+  const snap = undoPrev;
+  undoPrev = null;
+  loadData(JSON.parse(snap));
+  undoBaseline = JSON.stringify(DATA);
+  Object.keys(texCache).forEach(k => delete texCache[k]);
+  Object.keys(spriteCache).forEach(k => delete spriteCache[k]);
+  selected = null; linkFrom = null;
+  changed(); syncFactions(); syncPanel(); syncStats();
+  setSaveStatus('отменено (1 шаг)');
+  touch();
+  el('btn-undo').disabled = true;
+}
+addEventListener('beforeunload', e => {
+  // Черновик "предложения правки" (Ивентолог без прямой правки) живёт только
+  // в локальном DATA до explicit submitProposal() — предупреждаем перед
+  // закрытием вкладки, чтобы он не терялся молча.
+  if (document.body.classList.contains('proposing')) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 function touch() {
   persist();
@@ -2879,19 +3037,39 @@ addEventListener('keydown', e => {
     if (e.key === 'Escape') e.target.blur();
     return;
   }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && canEditAtAll) {
+    e.preventDefault();
+    undo();
+    return;
+  }
   if (e.key === 'Escape') {
     if (mode === 'planet') surface();
     else if (linkFrom) { linkFrom = null; syncPanel(); }
-    else { selected = null; syncPanel(); }
+    else if (selected) { selected = null; syncPanel(); }
+    else closeDrawers();
     return;
   }
   if (mode !== 'map' || !SYSTEMS.length) return;
   const ordered = [...SYSTEMS].sort((a, b) => a.x - b.x);
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Tab') {
     e.preventDefault();
-    const i = ordered.findIndex(s => s.id === selected);
     const step = (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) ? -1 : 1;
-    const next = ordered[(i + step + ordered.length) % ordered.length];
+    const cur = selected && SYS[selected];
+    // Стрелки листают СОСЕДНИЕ по гиперпутям системы (через ADJ), а не любые
+    // ближайшие по карте — так навигация идёт вдоль реальных трасс. Если у
+    // выбранной системы нет трасс (или ничего не выбрано) — просто идём по
+    // всем системам слева направо, как раньше.
+    const neighbors = cur ? (ADJ[cur.id] || []).map(id => SYS[id]).filter(Boolean) : [];
+    let next;
+    if (cur && neighbors.length) {
+      const sorted = neighbors.slice().sort((a, b) => a.x - b.x);
+      next = step === 1
+        ? (sorted.find(s => s.x > cur.x) || sorted[0])
+        : ([...sorted].reverse().find(s => s.x < cur.x) || sorted[sorted.length - 1]);
+    } else {
+      const i = ordered.findIndex(s => s.id === selected);
+      next = ordered[(i + step + ordered.length) % ordered.length];
+    }
     selected = next.id; focusOn(next.id); syncPanel();
   } else if (e.key === 'Enter' && selected) dive(selected);
   else if (e.key === '+' || e.key === '=') cam.tz = clamp(cam.tz * 1.14, .28, 2.6);
@@ -2974,6 +3152,7 @@ resize();
     await loadAccess();
     const initial = await loadGalaxyMap();
     loadData(initial);
+    undoBaseline = JSON.stringify(DATA);
   } catch (e) {
     document.getElementById('authgate').hidden = false;
     document.getElementById('authgate').querySelector('div').textContent = 'Не удалось загрузить карту: ' + e.message;
