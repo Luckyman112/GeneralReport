@@ -478,12 +478,9 @@ function daysSince(dm) {
 }
 function gridRef(s) {
   const g = DATA.meta.grid, size = g.size || 120;
-  let col = Math.floor((s.x - g.ox) / size);
-  let row = Math.floor((s.y - g.oy) / size);
-  let letters = '', n = col;
-  if (n < 0) return '—';
-  do { letters = String.fromCharCode(65 + (n % 26)) + letters; n = Math.floor(n / 26) - 1; } while (n >= 0);
-  return letters + '-' + (row + 1);
+  const col = Math.floor((s.x - g.ox) / size);
+  const row = Math.floor((s.y - g.oy) / size);
+  return colLabel(col) + '-' + rowLabel(row);
 }
 function regionOf(s) {
   const c = DATA.meta.center;
@@ -1085,23 +1082,30 @@ function drawGrid(alpha) {
     ctx.font = '400 10.5px "IBM Plex Mono", monospace';
     ctx.textAlign = 'center';
     for (let c = c0; c <= c1; c++) {
-      if (c < 0) continue;
       const x = g.ox + (c + .5) * step;
       ctx.fillText(colLabel(c), proj(x, 0, 0).x, 14);
     }
     ctx.textAlign = 'left';
     for (let r = r0; r <= r1; r++) {
-      if (r < 0) continue;
       const y = g.oy + (r + .5) * step;
-      ctx.fillText(String(r + 1), 6, proj(0, y, 0).y + 4);
+      ctx.fillText(rowLabel(r), 6, proj(0, y, 0).y + 4);
     }
   }
   ctx.restore();
 }
+/* Двунаправленная разметка: вправо/вниз от начала координат — обычные A,B,C.../1,2,3...
+ * (как раньше), влево/вверх — зеркально с минусом (-A,-B... / -1,-2...), а не
+ * "—" (баг-репорт: "слева сверху просто нет координат и невозможно им
+ * присвоить что-либо" — colLabel/gridRef раньше не поддерживали
+ * отрицательные индексы вовсе, drawGrid молча пропускал подписи там же). */
 function colLabel(c) {
-  let s = '', n = c;
+  const neg = c < 0;
+  let s = '', n = neg ? -c - 1 : c;
   do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
-  return s;
+  return neg ? '-' + s : s;
+}
+function rowLabel(r) {
+  return String(r >= 0 ? r + 1 : r);
 }
 
 function laneStyle(a, b) {
