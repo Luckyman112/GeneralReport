@@ -275,6 +275,7 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
       <p class="blurb" id="d-blurb"></p>
       <dl>
         <dt>Контроль</dt><dd id="d-own">—</dd>
+        <dt>Зоны</dt><dd id="d-zones">—</dd>
         <dt>Гарнизон</dt><dd id="d-gar">—</dd>
         <dt>Трассы</dt><dd id="d-lanes">—</dd>
         <dt>Снабжение</dt><dd id="d-sup">—</dd>
@@ -562,6 +563,15 @@ function indexData() {
     // Объекты планеты (Оружейный завод и т.д. — см. DATA.facilityTypes) —
     // чистим ссылки на удалённые типы, тот же паттерн, что и у lanes/blockades.
     s.facilities = Array.isArray(s.facilities) ? s.facilities.filter(id => FACTYPE[id]) : [];
+    // Зоны контроля (частичный захват планеты, см. zonesBlock/resolveBattleZones) —
+    // zones=0 значит планета не поделена, владение общее (как раньше). При
+    // zones>0 чистим ссылки на удалённые фракции и, если ни одна зона ещё не
+    // распределена (новая настройка), по умолчанию отдаём все зоны текущему
+    // владельцу — иначе "3 зоны, 0 распределено" выглядело бы как ничья.
+    s.zones = clamp(parseInt(s.zones, 10) || 0, 0, 30);
+    s.zoneHolders = (s.zoneHolders && typeof s.zoneHolders === 'object') ? s.zoneHolders : {};
+    Object.keys(s.zoneHolders).forEach(fid => { if (!FACTION[fid]) delete s.zoneHolders[fid]; else s.zoneHolders[fid] = clamp(parseInt(s.zoneHolders[fid], 10) || 0, 0, s.zones); });
+    if (s.zones > 0 && zoneHeld(s) === 0) s.zoneHolders[s.own] = s.zones;
     SYS[s.id] = s;
   });
   LANES = DATA.lanes.filter(([a, b]) => SYS[a] && SYS[b] && a !== b);
@@ -640,7 +650,11 @@ function loadData(raw) {
     factions: Array.isArray(d.factions) && d.factions.length ? d.factions : DEFAULT_DATA.factions.map(f => ({ ...f })),
     sectors: Array.isArray(d.sectors) ? d.sectors : [],
     facilityTypes: Array.isArray(d.facilityTypes) ? d.facilityTypes.map(f => ({ ...f })) : DEFAULT_DATA.facilityTypes.map(f => ({ ...f })),
-    systems: Array.isArray(d.systems) ? d.systems.map(s => ({ ...s, facilities: Array.isArray(s.facilities) ? s.facilities.slice() : [] })) : [],
+    systems: Array.isArray(d.systems) ? d.systems.map(s => ({
+      ...s,
+      facilities: Array.isArray(s.facilities) ? s.facilities.slice() : [],
+      zoneHolders: (s.zoneHolders && typeof s.zoneHolders === 'object') ? { ...s.zoneHolders } : {}
+    })) : [],
     lanes: Array.isArray(d.lanes) ? d.lanes.map(l => [l[0], l[1]]) : [],
     regions: Array.isArray(d.regions) ? d.regions.map(r => ({ ...r })) : [],
     routes: Array.isArray(d.routes) ? d.routes.map(r => ({ ...r, path: (r.path || []).slice() })) : [],
@@ -1690,6 +1704,7 @@ function syncPanel() {
       '<div class="val mono">' + s.gar + '</div>' +
       '<button data-act="gar" data-d="1" aria-label="Добавить полк">+</button></div></div>' +
     '<div class="field"><div class="lab">Объекты на планете</div>' + facilityBlock(s) + '</div>' +
+    '<div class="field"><div class="lab">Зоны контроля</div>' + zonesBlock(s) + '</div>' +
     (editing ? '<div class="field"><div class="lab">Внешний вид</div>' + palBlock(s) + '</div>' : '') +
     (editing ? '<div class="field"><div class="lab">Описание</div><textarea id="f-note" rows="3" aria-label="Описание системы">' + esc(s.note || '') + '</textarea></div>' : '') +
     supBlock +
@@ -1716,6 +1731,18 @@ function syncPanel() {
       else if (i >= 0) s.facilities.splice(i, 1);
       touch();
     }));
+    if (el('f-zones')) el('f-zones').addEventListener('input', e => {
+      s.zones = clamp(parseInt(e.target.value, 10) || 0, 0, 30);
+      if (s.zones > 0 && zoneHeld(s) === 0) s.zoneHolders[s.own] = s.zones;
+      syncPanel(); touch();
+    });
+    panel.querySelectorAll('[data-zonehold]').forEach(inp => inp.addEventListener('input', e => {
+      const fid = e.target.dataset.zonehold;
+      s.zoneHolders = s.zoneHolders || {};
+      s.zoneHolders[fid] = clamp(parseInt(e.target.value, 10) || 0, 0, s.zones);
+      recomputeOwnerFromZones(s);
+      syncPanel(); touch();
+    }));
   }
 }
 
@@ -1728,6 +1755,11 @@ panel.addEventListener('click', e => {
     const from = s.own, to = b.dataset.id;
     if (from !== to) {
       s.own = to;
+      // Ручная смена владельца кнопкой — это перекрытие итога зон целиком
+      // (не частичный захват), поэтому отдаём новому владельцу все зоны
+      // сразу, иначе счётчик "X из N" продолжал бы показывать старую
+      // фракцию как державшую зоны, хотя владелец уже сменился.
+      if (s.zones > 0) s.zoneHolders = { [to]: s.zones };
       const main = DATA.meta.main;
       const kind = to === main ? 'gain' : from === main ? 'loss' : 'info';
       logAdd(kind, to === main ? 'Планета взята' : from === main ? 'Планета потеряна' : 'Смена контроля',
@@ -1770,6 +1802,71 @@ function facilityBlock(s) {
   const list = (s.facilities || []).map(id => FACTYPE[id]).filter(Boolean);
   if (!list.length) return '<div class="hint" style="margin:0">нет объектов</div>';
   return list.map(f => '<span class="facility-badge" title="' + esc(f.note || '') + '">' + esc(f.name) + '</span>').join('');
+}
+
+/* ---------- зоны контроля (частичный захват планеты) ---------- */
+/* zones=0 — планета не поделена, владение общее, как и раньше (см. s.own).
+ * zones>0 — планета разбита на столько зон, и zoneHolders хранит, сколько
+ * зон держит каждая фракция; текущий "владелец" системы (s.own) — просто
+ * фракция с наибольшим числом зон (recomputeOwnerFromZones), обновляется
+ * автоматически при сдвиге. Число зон — гибкое, своё для каждой планеты
+ * (решение пользователя), а не фиксированное на весь сектор. */
+function zoneHeld(s) {
+  const zh = s.zoneHolders || {};
+  return Object.keys(zh).reduce((sum, k) => sum + (zh[k] || 0), 0);
+}
+function recomputeOwnerFromZones(s) {
+  if (!s.zones) return;
+  const zh = s.zoneHolders || {};
+  let best = s.own, bestCount = zh[s.own] || 0;
+  Object.keys(zh).forEach(fid => {
+    if (!FACTION[fid]) return;
+    if ((zh[fid] || 0) > bestCount) { bestCount = zh[fid]; best = fid; }
+  });
+  if (best !== s.own && bestCount > 0) {
+    const from = s.own;
+    s.own = best;
+    const main = DATA.meta.main;
+    const kind = best === main ? 'gain' : from === main ? 'loss' : 'info';
+    logAdd(kind, best === main ? 'Планета взята' : from === main ? 'Планета потеряна' : 'Смена контроля',
+      s.name + ' (зоны, ' + bestCount + ' из ' + s.zones + '): ' + facOf(from).name + ' → ' + facOf(best).name + '.');
+  }
+}
+function shiftZone(s, fromFac, toFac) {
+  if (!s.zones || fromFac === toFac) return;
+  s.zoneHolders = s.zoneHolders || {};
+  const have = s.zoneHolders[fromFac] || 0;
+  if (have <= 0) return;
+  s.zoneHolders[fromFac] = have - 1;
+  s.zoneHolders[toFac] = (s.zoneHolders[toFac] || 0) + 1;
+  recomputeOwnerFromZones(s);
+}
+/* Автосдвиг одной зоны при завершении боя, по итоговому перевесу (b.prog —
+ * тот же порог 56/44, что и в battleProgress) — запрос пользователя:
+ * распределение зон меняется от исхода боя, не требует ручной правки. */
+function resolveBattleZones(b) {
+  const s = SYS[b.sys];
+  if (!s || !s.zones) return;
+  const p = clamp(Number.isFinite(b.prog) ? b.prog : 50, 0, 100);
+  if (p > 56) shiftZone(s, b.def, b.att);
+  else if (p < 44) shiftZone(s, b.att, b.def);
+}
+function zoneBreakdown(s) {
+  const zh = s.zoneHolders || {};
+  return DATA.factions.filter(f => (zh[f.id] || 0) > 0).map(f =>
+    '<span class="v" style="color:' + esc(f.color) + '">' + (zh[f.id] || 0) + ' из ' + s.zones + ' · ' + esc(f.name) + '</span>'
+  ).join('');
+}
+function zonesBlock(s) {
+  if (editing) {
+    return '<label>Число зон<input type="number" id="f-zones" min="0" max="30" value="' + (s.zones || 0) + '"></label>' +
+      (s.zones ? '<div class="grid2" style="margin-top:6px">' + DATA.factions.filter(f => !f.neutral).map(f =>
+        '<label>' + esc(f.name) + '<input type="number" min="0" max="' + s.zones + '" data-zonehold="' + esc(f.id) + '" value="' +
+          ((s.zoneHolders || {})[f.id] || 0) + '"></label>'
+      ).join('') + '</div>' : '');
+  }
+  if (!s.zones) return '<div class="hint" style="margin:0">планета не поделена на зоны — контроль общий</div>';
+  return '<div class="kv" style="flex-wrap:wrap;gap:8px 12px">' + zoneBreakdown(s) + '</div>';
 }
 
 /* ---------- palette from a reference image ---------- */
@@ -2302,6 +2399,10 @@ function syncDetail() {
   el('d-blurb').textContent = s.note || '';
   el('d-own').textContent = facOf(s.own).name;
   el('d-own').style.color = facOf(s.own).color;
+  el('d-zones').innerHTML = s.zones
+    ? DATA.factions.filter(f => (s.zoneHolders || {})[f.id]).map(f =>
+        '<span style="color:' + esc(f.color) + '">' + s.zoneHolders[f.id] + '/' + s.zones + '</span>').join(' · ') || '—'
+    : 'не поделена';
   el('d-gar').textContent = s.gar + ' полк.';
   el('d-lanes').textContent = ADJ[s.id].map(n => SYS[n].name).join(', ') || '—';
   el('d-sup').textContent = supplyText(s.id);
@@ -2536,7 +2637,14 @@ el('rail-r').addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.bat !== undefined) {
     const b = DATA.battles[+t.dataset.bat];
-    if (b) { b[t.dataset.k] = t.value; indexData(); syncBattles(); syncPanel(); touch(); }
+    if (b) {
+      b[t.dataset.k] = t.value;
+      // Автосдвиг зоны при завершении боя — по текущему перевесу (prog),
+      // см. resolveBattleZones (запрос пользователя: распределение зон
+      // может меняться автоматически от исхода боя).
+      if (t.dataset.k === 'status' && t.value === 'done') resolveBattleZones(b);
+      indexData(); syncBattles(); syncPanel(); touch();
+    }
   } else if (t.dataset.blk !== undefined) {
     const bl = DATA.blockades[+t.dataset.blk];
     if (bl) { bl[t.dataset.k] = t.dataset.k === 'str' ? Math.max(1, parseInt(t.value, 10) || 1) : t.value; rebuild(); syncStats(); }

@@ -1102,6 +1102,76 @@ aggregates, per facility type, how many currently-owned systems each
 non-neutral faction holds — the per-faction/per-building total count the
 user asked for, computed live off `SYSTEMS`/`own`, not stored anywhere.
 
+**Faction-themed blockade/patrol ship silhouettes replaced the plain "×"
+marker** — баг-репорт-style aesthetic complaint ("некрасивый крестик, хочу
+что-то лорное звёздновойное"). `shipSilhouette(factionId, col)` draws a
+Venator-style hull for `'rep'`, a CIS-diamond-plus-hangar-pods hull for
+`'sep'`, and a generic wedge for any other faction, centered at the origin
+with the nose along `+x` — used both by `drawBlockadeShip()` (lane
+blockades) and by the per-planet orbital view (`drawPlanetScene()`'s
+`orbitShip()` helper), so the same faction art shows up in both places
+rather than two separate marker styles. `orbitShip()` renders two ships
+(attacker/defender rings) when `BATTLE[sys.id]` is live, one patrol ship
+otherwise.
+
+**Nebula background redesigned** — the original was a rigid 2-arm mirrored
+spiral that read as a "shuriken" (баг-репорт), not a nebula. `paintNebula()`
+now picks `4-6` independently-randomized arms (own `startAng`/`sweep`/`dir`
+per arm, jittered blob angles) painted once to an offscreen canvas, same as
+before.
+
+**Battle history/result on the planet dossier** — `Battle` gained a free-text
+`result` field (curator fills it in manually on completion, e.g. "планета
+захвачена") rendered by `battleProgress()` (shared by both the left-rail
+"Активные бои" list and the planet dossier) as a `.result` line under the
+progress bar. `syncDetail()`'s `#d-battles` now lists **every** `Battle` row
+for that system (`DATA.battles.filter(b => b.sys === s.id)`), not just the
+one live entry `BATTLE[sys.id]` tracks for the pulsing map ring — a planet
+can have several battles recorded (sequential or simultaneous), and the
+dossier shows the full history, not just whichever one is currently
+"active".
+
+**Zone-based partial planet control** — `System.zones` (int, per-planet,
+`0` = not partitioned, planet stays a single simple owner exactly as before)
++ `System.zoneHolders` (`{factionId: count}`) let a planet be split into a
+flexible, per-planet number of zones instead of one binary owner (баг/
+feature request: "хочу частично контролировать планету", with a reference
+screenshot showing a "2 из 3 секторов" tooltip). `indexData()` sanitizes
+`zones` (clamped 0-30) and prunes `zoneHolders` entries for deleted
+factions; if `zones > 0` and no zone has been distributed yet (fresh
+setting), all zones default to the current `s.own` so "3 zones, 0
+assigned" never renders as a false tie. `recomputeOwnerFromZones(s)` derives
+`s.own` as whichever faction holds the most zones (ties keep the current
+owner) and logs an ownership-change entry exactly like the manual owner
+button does. `shiftZone(s, from, to)` moves one zone between two factions
+(no-op if `from` holds zero). Manually clicking an owner button
+(`panel.addEventListener('click', ...)`, `act === 'own'`) still works as a
+full override — when `s.zones > 0` it now also resets `zoneHolders` to
+`{ [newOwner]: zones }`, since a manual owner change is a full override, not
+a partial one, and leaving stale per-faction counts around would make the
+"X из N" breakdown contradict the owner shown right next to it.
+
+Auto-resolution ties into the existing battle-completion flow rather than
+being a separate action (решение пользователя: "может меняться автоматически
+от исхода боя, поле prog") — `resolveBattleZones(b)`, called from the
+`rail-r` battle-status `<select>`'s change handler exactly when a battle's
+status is switched to `'done'`, reuses the same 56/44 pereves thresholds
+`battleProgress()` already uses for the attacker/defender lead label: `prog
+> 56` shifts one zone from defender to attacker, `prog < 44` shifts one from
+attacker to defender, the 44-56 band is a draw (no shift). One battle moves
+at most one zone — "несколько боёв частично контролируют планету" means the
+zone total only fully flips after enough battles resolve in the same
+direction, not a single battle handing over the whole planet.
+
+UI: `zonesBlock(s)` (system side panel, new "Зоны контроля" field between
+"Объекты на планете" and the appearance editor) — edit mode shows a "Число
+зон" number input plus, once `zones > 0`, one number input per non-neutral
+faction (`data-zonehold`) for its held-zone count; view mode shows "N из M ·
+Faction" badges for every faction currently holding at least one zone
+(`zoneBreakdown(s)`), or a hint that the planet isn't partitioned when
+`zones === 0`. Planet dossier (`#d-zones`, next to `#d-own` in the `<dl>`)
+shows the same per-faction breakdown, or "не поделена".
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
