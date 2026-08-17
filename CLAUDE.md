@@ -941,6 +941,43 @@ Same session as the two fixes above, three related follow-up bug reports
   normal single-regiment `PATCH .../categories/{id}` like `CategoryManagerModal`
   already does.
 
+### RegimentPanel.jsx roster table — truncated names, three failed attempts before the real fix
+`RegimentPanel.jsx`'s compact roster table (`.roster-table-regiment`, in the
+`<aside className="reports-sidebar">` on `ReportsPage.jsx`) kept truncating
+member names to a couple characters, reported three times against three
+different attempted fixes before the actual root cause was found — worth
+reading in full before touching this table again:
+1. `table-layout: fixed` with no explicit width on the "Последний рапорт"
+   column split remaining space 50/50 with "Участник" — fixed by giving
+   columns 4/5 explicit `width` (`nth-child` rules).
+2. That still squeezed "Участник" in a narrow embedded card (this table isn't
+   full-page-width, see `.reports-page-layout`'s grid) — tried `min-width` on
+   the table, which does nothing under `table-layout: fixed` (it strictly
+   obeys the specified `width`, never grows past it) — switched to
+   `table-layout: auto` instead, which sizes columns from real content and
+   lets the table overflow its container when content demands it (with
+   `.roster-table-wrap`'s pre-existing `overflow-x: auto` catching the
+   overflow as a scrollbar).
+3. Still scrolling, so widened `.reports-page-layout`'s third grid track from
+   `minmax(420px, 560px)` to `minmax(420px, 680px)` — verified deployed via
+   the GitHub Actions API (`gh` isn't installed on this box; used
+   `curl https://api.github.com/repos/<owner>/<repo>/actions/runs` instead) to
+   rule out a stale-cache/failed-deploy red herring — still scrolled.
+4. **Actual root cause**: `.roster-member-cell` (avatar + name + role badge +
+   "не зарегистрирован" badge) is an `inline-flex` with no `flex-wrap` —
+   every badge was forced onto one unbreakable line, so a row with a long
+   callsign plus two badges genuinely needed 350-450px on its own, an amount
+   no reasonable column-width or sidebar-width tweak was ever going to
+   satisfy. `table-layout: auto` was correctly reporting that real demand —
+   steps 1-3 were all fighting a symptom. Fix: `flex-wrap: wrap` on
+   `.roster-member-cell` — badges now flow onto a second line inside the
+   cell, so the column's real minimum width is just its single widest child
+   (usually the name), not the sum of everything on the row.
+The lesson for next time: when a text/name column won't stop truncating no
+matter how much width you hand it, check whether the CELL CONTENT ITSELF has
+an unbreakable flex/inline-flex row forcing a large minimum width, before
+reaching for more `width`/`min-width` on the table or its container.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
