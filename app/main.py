@@ -21,6 +21,7 @@ from app.api.event_activity_reports import router as event_activity_reports_rout
 from app.api.event_bookings import router as event_bookings_router
 from app.api.event_room import router as event_room_router
 from app.api.events import router as events_router
+from app.api.galaxy_map import router as galaxy_map_router
 from app.api.health import router as health_router
 from app.api.leave_requests import router as leave_requests_router
 from app.api.maintenance import router as maintenance_router
@@ -110,6 +111,7 @@ app.include_router(event_room_router, prefix="/api")
 app.include_router(event_activity_reports_router, prefix="/api")
 app.include_router(event_bookings_router, prefix="/api")
 app.include_router(admin_reports_router, prefix="/api")
+app.include_router(galaxy_map_router, prefix="/api")
 
 
 @app.get("/health", tags=["health"])

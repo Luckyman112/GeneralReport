@@ -1,0 +1,2653 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Оперативная карта — конструктор кампании</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#05070c; --shell:#080c15; --card:#0b1220; --ink:#e8e2d2; --ice:#8fb8d8; --dim:#5d7288; --hot:#f0a431;
+  --line:rgba(143,184,216,.18); --line2:rgba(143,184,216,.4); --danger:#e2564b;
+  --sans:'Chakra Petch',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --side:288px; --side2:312px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--void);color:var(--ink);font-family:var(--sans);overflow:hidden}
+
+#shell{position:fixed;inset:0;display:grid;grid-template-columns:var(--side) 1fr var(--side2);
+  grid-template-rows:auto 1fr;gap:14px;padding:16px 18px 18px;transition:grid-template-columns .4s cubic-bezier(.22,.9,.24,1)}
+body.in-planet #shell{grid-template-columns:0 1fr 0;gap:0}
+body.in-planet aside.rail{opacity:0;pointer-events:none}
+
+#top{grid-column:1/-1;display:flex;justify-content:space-between;align-items:flex-end;gap:20px;padding:2px 2px 0}
+#top .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.32em;color:var(--dim);text-transform:uppercase}
+#top h1{margin:5px 0 0;font-size:23px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+#top .hint{margin:6px 0 0;font-size:12px;color:var(--ice);opacity:.75;line-height:1.5;max-width:52ch}
+#top .edithint{display:none;margin-top:6px;font-size:12px;color:var(--hot);line-height:1.5;max-width:56ch}
+body.editing #top .hint{display:none}
+body.editing #top .edithint{display:block}
+#clock{font-family:var(--mono);font-size:11.5px;color:var(--dim);text-align:right;white-space:nowrap;line-height:1.8}
+#clock b{color:var(--ice);font-weight:400}
+#authgate{position:fixed;inset:0;background:var(--void);display:flex;align-items:center;justify-content:center;
+  z-index:50;flex-direction:column;gap:12px;text-align:center;font-family:var(--mono);color:var(--ice)}
+#authgate a{color:var(--hot)}
+
+aside.rail{display:flex;flex-direction:column;gap:14px;overflow-y:auto;min-height:0;transition:opacity .3s;scrollbar-width:thin}
+.card{background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column}
+.card > h2{margin:0;font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ice);
+  padding:11px 14px;border-bottom:1px solid var(--line);background:rgba(143,184,216,.05);
+  display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card .body{padding:13px 14px;display:flex;flex-direction:column;gap:11px}
+
+.fac-row{display:flex;flex-direction:column;gap:6px}
+.fac-row .t{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12.5px;line-height:1.35}
+.fac-row .t b{font-family:var(--mono);font-weight:500;font-size:14px}
+.fac-row .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:7px;flex:0 0 7px}
+.bar{height:2px;background:rgba(143,184,216,.13)}
+.bar i{display:block;height:100%}
+
+.kv{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px}
+.kv .v{font-family:var(--mono);font-size:15px}
+.esc-scale{display:flex;gap:4px}
+.esc-scale span{flex:1;height:4px;background:rgba(143,184,216,.14)}
+.esc-note{font-size:12px;color:var(--ice);opacity:.8;line-height:1.5}
+
+.battle{border:1px solid var(--line);border-left:2px solid var(--hot);padding:9px 11px;display:flex;flex-direction:column;gap:4px}
+.battle .n{font-size:14px;font-weight:500}
+.battle .m{font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.battle.done{border-left-color:var(--dim);opacity:.65}
+.battle.planned{border-left-style:dashed}
+.prog{display:flex;height:4px;margin-top:7px;background:rgba(143,184,216,.12)}
+.prog i,.prog u{display:block;height:100%}
+#panel .prog{margin-top:2px}
+#panel .m{font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;gap:6px;flex-wrap:wrap}
+
+.log{display:flex;flex-direction:column;gap:10px;max-height:340px;overflow-y:auto}
+.log .e{display:grid;grid-template-columns:38px 1fr;gap:9px;font-size:12px;line-height:1.5}
+.log .d{font-family:var(--mono);font-size:11px;color:var(--dim);padding-top:2px}
+.log .tag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;padding:1px 5px;border:1px solid currentColor;
+  display:inline-block;margin-right:6px;white-space:nowrap}
+.log .txt{color:var(--ice)}
+
+#mapcell{position:relative;min-width:0;min-height:0;border:1px solid var(--line);background:#04060b;overflow:hidden}
+canvas{display:block;position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#legend{position:absolute;top:10px;left:12px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 24px);z-index:3}
+#legend span{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  background:rgba(6,10,18,.82);border:1px solid var(--line);padding:3px 7px;display:flex;align-items:center;gap:6px}
+#legend i{width:7px;height:7px;border-radius:50%;display:inline-block}
+#tools{position:absolute;bottom:12px;left:12px;display:flex;gap:7px;flex-wrap:wrap;max-width:calc(100% - 360px);z-index:3}
+#btn-add{display:none}
+body.editing #btn-add{display:block}
+body.editing #btn-mode{color:var(--hot);border-color:rgba(240,164,49,.45)}
+body.proposing #btn-mode{color:var(--hot);border-color:rgba(240,164,49,.45)}
+body.in-planet #tools,body.in-planet #legend{opacity:0;pointer-events:none;transition:opacity .3s}
+#railtoggle{display:none}
+#railtoggle button{background:rgba(6,10,18,.92)}
+#save-status{font-family:var(--mono);font-size:10.5px;color:var(--dim);align-self:center}
+
+button{font-family:var(--sans);font-size:12.5px;letter-spacing:.04em;color:var(--ink);background:rgba(11,18,32,.82);
+  border:1px solid var(--line);border-radius:2px;padding:6px 11px;cursor:pointer;transition:border-color .15s,background .15s}
+button:hover{border-color:var(--line2);background:rgba(18,28,46,.9)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--hot);outline-offset:1px}
+button.mini{padding:1px 6px;font-size:12px;color:var(--dim);background:none}
+button.mini:hover{color:var(--danger);border-color:var(--danger)}
+button.add{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;padding:2px 8px;color:var(--ice)}
+button.wide{width:100%;padding:10px;letter-spacing:.05em}
+button.danger{color:var(--danger);border-color:rgba(226,86,75,.4)}
+input,select,textarea{font-family:var(--sans);font-size:12.5px;color:var(--ink);background:rgba(0,0,0,.4);
+  border:1px solid var(--line);border-radius:2px;padding:6px 8px;width:100%}
+input[type=color]{padding:2px;width:32px;height:28px;flex:0 0 32px;cursor:pointer}
+input[type=checkbox]{width:auto}
+input[type=number]{width:64px}
+input[type=range]{padding:0;height:20px;accent-color:var(--hot);background:none;border:0}
+input[type=file]{font-size:11px;padding:5px 6px;color:var(--dim)}
+#panel .editgrid label{font-size:9.5px;letter-spacing:.1em}
+textarea{font-family:var(--mono);font-size:12px;resize:vertical}
+label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+  color:var(--dim);text-transform:uppercase}
+.mono{font-family:var(--mono)}
+.editrow{display:flex;gap:6px;align-items:center}
+.editrow input:not([type=color]):not([type=number]){flex:1 1 auto;min-width:0}
+.editgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+
+#panel{position:absolute;top:0;right:0;width:340px;max-width:100%;height:100%;background:#070b13;
+  border-left:1px solid var(--line);padding:22px 20px;display:flex;flex-direction:column;gap:15px;z-index:4;
+  transform:translateX(101%);transition:transform .4s cubic-bezier(.22,.9,.24,1);overflow-y:auto}
+#panel.open{transform:none}
+#panel .kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;color:var(--dim);text-transform:uppercase}
+#panel h2{margin:4px 0 0;font-size:26px;font-weight:600;line-height:1.1}
+#panel input.big{margin-top:6px;font-size:19px;font-weight:600;padding:6px 8px}
+#panel .sub{font-size:12.5px;color:var(--ice);opacity:.85;line-height:1.55;margin-top:6px}
+#panel .grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
+.field{border-top:1px solid var(--line);padding-top:12px}
+.field .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+.owners{display:flex;gap:5px;flex-wrap:wrap}
+.owners button{flex:1 1 44%;padding:7px 4px;font-size:11.5px}
+.garrison{display:flex;align-items:center;gap:10px}
+.garrison .val{font-size:22px;min-width:42px;font-family:var(--mono)}
+.garrison button{width:32px;padding:5px 0;font-size:15px;line-height:1}
+.lanes{display:flex;flex-direction:column;gap:6px;font-family:var(--mono);font-size:11.5px}
+.lanes > div{display:flex;justify-content:space-between;gap:8px;align-items:center;color:var(--ice)}
+.field .wide{margin-top:11px}
+.warn{border:1px solid rgba(240,164,49,.4);background:rgba(240,164,49,.07);color:var(--hot);
+  font-size:11.5px;line-height:1.5;padding:9px 11px}
+#panel .spacer{flex:1;min-height:8px}
+
+.drawer{position:absolute;left:50%;bottom:0;transform:translate(-50%,101%);width:min(620px,calc(100% - 24px));
+  background:#060a12;border:1px solid var(--line);border-bottom:0;padding:16px 18px;z-index:5;
+  transition:transform .35s cubic-bezier(.22,.9,.24,1);max-height:88%;overflow-y:auto}
+.drawer.open{transform:translate(-50%,0)}
+.drawer .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+.tabs{display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap}
+.tabs button{font-size:11.5px;padding:5px 9px}
+.tabs button[aria-pressed=true]{color:var(--hot);border-color:rgba(240,164,49,.45)}
+#state{height:150px}
+.bar-row{display:flex;gap:7px;margin-top:9px;align-items:center;flex-wrap:wrap}
+#err,#fac-msg{font-size:11.5px;color:var(--hot);min-height:15px;flex:1}
+.hint{font-size:11.5px;color:var(--dim);line-height:1.55;margin-top:9px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+
+#back{position:absolute;top:12px;left:12px;z-index:4;opacity:0;transform:translateY(-6px);
+  transition:opacity .3s,transform .3s;pointer-events:none}
+#back.show{opacity:1;transform:none;pointer-events:auto}
+#detail{position:absolute;top:0;right:0;width:min(400px,46%);height:100%;padding:24px 28px;z-index:3;
+  display:flex;flex-direction:column;justify-content:center;gap:13px;opacity:0;transition:opacity .4s;pointer-events:none}
+#detail.show{opacity:1}
+#detail .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.28em;color:var(--hot);text-transform:uppercase}
+#detail h2{margin:0;font-size:clamp(32px,4vw,50px);font-weight:600;line-height:1}
+#detail .blurb{font-size:13.5px;line-height:1.65;color:var(--ice);opacity:.9;max-width:34ch}
+#detail dl{margin:5px 0 0;display:grid;grid-template-columns:auto 1fr;gap:7px 15px;font-family:var(--mono);font-size:12px}
+#detail dt{color:var(--dim);letter-spacing:.12em;text-transform:uppercase;font-size:10.5px;align-self:center}
+#detail dd{margin:0;color:var(--ink)}
+
+@media (max-width:1180px){
+  :root{--side:246px;--side2:262px}
+  #top h1{font-size:19px}
+  #top .hint,#top .edithint{display:none}
+}
+@media (max-width:900px){
+  #shell{grid-template-columns:1fr;grid-template-rows:auto 1fr;padding:12px}
+  aside.rail{position:absolute;top:74px;bottom:12px;width:min(320px,calc(100% - 24px));z-index:6;
+    background:var(--shell);border:1px solid var(--line);padding:12px;transform:translateX(-110%);transition:transform .35s}
+  #rail-l{left:12px}
+  #rail-r{right:12px;transform:translateX(110%)}
+  body.rail-l #rail-l,body.rail-r #rail-r{transform:none}
+  #railtoggle{display:flex;gap:6px;position:absolute;top:12px;right:12px;z-index:7}
+  #clock{display:none}
+  #panel{width:100%}
+  #detail{width:100%;height:auto;bottom:0;top:auto;justify-content:flex-end;padding:18px}
+  #detail h2{font-size:30px}
+  #legend{max-width:calc(100% - 120px)}
+  #tools{max-width:calc(100% - 24px)}
+}
+@media (prefers-reduced-motion:reduce){
+  #shell,#panel,.drawer,#back,#detail,aside.rail{transition:none}
+}
+</style>
+</head>
+<body>
+<div id="authgate" hidden>
+  <div>Нужен вход в COLLAPSAR, чтобы открыть карту.</div>
+  <a href="/">На главную</a>
+</div>
+<div id="shell">
+  <header id="top">
+    <div>
+      <div class="eyebrow" id="camp-eyebrow">Оперативная сводка</div>
+      <h1 id="camp-name">Карта кампании</h1>
+      <p class="hint">Тяните полотно, приближайте колёсиком. Нажмите планету — откроется орбитальная проекция с досье и гарнизоном.</p>
+      <p class="edithint">Двойной клик по пустому месту — новая система. Перетаскивание — перенос. Shift и клик по двум системам — трасса между ними.</p>
+    </div>
+    <div id="clock">
+      <div>Систем на карте <b id="c-sys">0</b> · трасс <b id="c-lane">0</b></div>
+      <div>Сводка от <b id="c-date">—</b></div>
+    </div>
+  </header>
+
+  <aside class="rail" id="rail-l">
+    <section class="card">
+      <h2>Контроль</h2>
+      <div class="body" id="ctrl-list"></div>
+    </section>
+    <section class="card">
+      <h2><span id="res-title">Ресурсы</span><button class="add" id="res-add" hidden>+ строка</button></h2>
+      <div class="body" id="res-list"></div>
+    </section>
+    <section class="card">
+      <h2>Эскалация</h2>
+      <div class="body" id="esc-body"></div>
+    </section>
+    <section class="card" id="req-card" hidden>
+      <h2><span>Заявки на правку</span></h2>
+      <div class="body" id="req-list"></div>
+    </section>
+  </aside>
+
+  <div id="mapcell">
+    <canvas id="c" aria-label="Карта галактики. Системы выбираются кликом, переключение — стрелками."></canvas>
+    <div id="legend"></div>
+    <button id="back">← К карте галактики</button>
+    <div id="tools">
+      <button id="btn-mode" aria-pressed="false">Режим: обзор</button>
+      <button id="btn-add">Добавить систему</button>
+      <button id="btn-fac" aria-expanded="false">Фракции и сектора</button>
+      <button id="btn-map" aria-expanded="false">Подложка и маршруты</button>
+      <button id="btn-drawer" aria-expanded="false">Данные</button>
+      <button id="btn-fit">Вся карта</button>
+      <span id="save-status"></span>
+    </div>
+    <div id="railtoggle">
+      <button data-rail="l">Контроль</button>
+      <button data-rail="r">Сводка</button>
+    </div>
+
+    <aside id="panel" aria-live="polite"></aside>
+
+    <div id="detail">
+      <div class="kicker" id="d-kicker">Планета</div>
+      <h2 id="d-name">—</h2>
+      <p class="blurb" id="d-blurb"></p>
+      <dl>
+        <dt>Контроль</dt><dd id="d-own">—</dd>
+        <dt>Гарнизон</dt><dd id="d-gar">—</dd>
+        <dt>Трассы</dt><dd id="d-lanes">—</dd>
+        <dt>Снабжение</dt><dd id="d-sup">—</dd>
+      </dl>
+    </div>
+
+    <section class="drawer" id="facdrawer" aria-label="Фракции и сектора">
+      <div class="cols">
+        <div>
+          <div class="lab">Фракции</div>
+          <div id="fac-list"></div>
+          <button id="fac-add">Добавить фракцию</button>
+        </div>
+        <div>
+          <div class="lab">Сектора</div>
+          <div id="sec-list"></div>
+          <button id="sec-add">Добавить сектор</button>
+        </div>
+      </div>
+      <div class="bar-row"><div id="fac-msg"></div></div>
+      <div class="hint">Нейтральная фракция особая: её системы не образуют фронт и не разрывают спорные трассы. Такой может быть только одна.</div>
+    </section>
+
+    <section class="drawer" id="mapdrawer" aria-label="Подложка, сетка, регионы и маршруты">
+      <div class="cols">
+        <div>
+          <div class="lab">Подложка</div>
+          <div id="bg-body"></div>
+          <div class="lab" style="margin-top:16px">Сетка и центр</div>
+          <div id="grid-body"></div>
+        </div>
+        <div>
+          <div class="lab">Регионы-кольца</div>
+          <div id="reg-body"></div>
+          <div class="lab" style="margin-top:16px">Магистрали</div>
+          <div id="route-body"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="drawer" id="drawer" aria-label="Данные карты">
+      <div class="tabs">
+        <button data-tab="json" aria-pressed="true">JSON — вся кампания</button>
+        <button data-tab="csv" aria-pressed="false">CSV — системы</button>
+        <button data-tab="lanes" aria-pressed="false">CSV — трассы</button>
+      </div>
+      <textarea id="state" spellcheck="false" aria-label="Данные карты"></textarea>
+      <div class="bar-row">
+        <button id="btn-apply">Применить</button>
+        <button id="btn-copy">Скопировать</button>
+        <button id="btn-example">Загрузить пример</button>
+        <button id="btn-blank">Пустая карта</button>
+        <div id="err" role="status"></div>
+      </div>
+      <div class="hint">CSV систем: обязательны колонки name, x, y. Остальные — id, kind, sector, own, gar, note — по желанию. Бои, журнал, ресурсы и эскалация лежат в JSON.</div>
+    </section>
+  </div>
+
+  <aside class="rail" id="rail-r">
+    <section class="card">
+      <h2><span>Активные бои</span><button class="add" id="bat-add" hidden>+ бой</button></h2>
+      <div class="body" id="bat-list"></div>
+    </section>
+    <section class="card">
+      <h2><span>Блокады трасс</span><button class="add" id="blk-add" hidden>+ блокада</button></h2>
+      <div class="body" id="blk-list"></div>
+    </section>
+    <section class="card">
+      <h2><span>Сводка сектора</span><button class="add" id="log-add" hidden>+ запись</button></h2>
+      <div class="body"><div class="log" id="log-list"></div></div>
+    </section>
+  </aside>
+</div>
+<script>
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- backend access: same-origin, JWT already in localStorage from the SPA ---------- */
+const API_TOKEN = localStorage.getItem('collapsar_token');
+if (!API_TOKEN) {
+  document.getElementById('authgate').hidden = false;
+  document.getElementById('shell').style.display = 'none';
+  throw new Error('no token');
+}
+async function api(path, opts) {
+  opts = opts || {};
+  const headers = Object.assign({ 'Content-Type': 'application/json', Authorization: 'Bearer ' + API_TOKEN }, opts.headers || {});
+  const res = await fetch('/api' + path, Object.assign({}, opts, { headers }));
+  if (!res.ok) {
+    let detail = null;
+    try { detail = (await res.json()).detail; } catch (e) {}
+    throw new Error(detail || ('Ошибка запроса (' + res.status + ')'));
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+const HOT = '#f0a431';
+
+const KIND = {
+  urban:    { sea: [22, 38, 56],   land: [74, 82, 96],   high: [176, 178, 182], cloud: .32, atmo: [130, 170, 220], atmoAmt: .62, water: 1, cloudCol: [232, 238, 246], emit: 'city', emitCol: [212, 152, 68],  emitAmt: 1,   sea_lvl: .44, label: 'Индустриальный' },
+  terran:   { sea: [16, 52, 84],   land: [74, 118, 66],  high: [150, 142, 108], cloud: .5,  atmo: [120, 175, 235], atmoAmt: .62, water: 1, cloudCol: [236, 242, 248], emit: 'city', emitCol: [220, 170, 96],  emitAmt: .2,  sea_lvl: .5,  label: 'Землеподобная' },
+  ocean:    { sea: [12, 62, 96],   land: [46, 108, 106], high: [180, 196, 190], cloud: .56, atmo: [110, 185, 240], atmoAmt: .62, water: 1, cloudCol: [238, 244, 250], emit: 'city', emitCol: [220, 180, 110], emitAmt: .12, sea_lvl: .68, label: 'Океанический мир' },
+  desert:   { sea: [122, 88, 52],  land: [186, 140, 82], high: [222, 196, 150], cloud: .16, atmo: [220, 170, 110], atmoAmt: .5,  water: 0, cloudCol: [226, 206, 178], emit: 'city', emitCol: [226, 176, 104], emitAmt: .1,  sea_lvl: .3,  label: 'Пустынный мир' },
+  volcanic: { sea: [34, 24, 22],   land: [48, 36, 33],   high: [104, 72, 58],   cloud: .26, atmo: [214, 104, 58],  atmoAmt: .34, water: 0, cloudCol: [104, 94, 92],   emit: 'lava', emitCol: [244, 96, 28],   emitAmt: 1,   sea_lvl: .42, label: 'Вулканический мир' },
+  ice:      { sea: [96, 132, 160], land: [206, 226, 238],high: [244, 250, 252], cloud: .4,  atmo: [170, 210, 240], atmoAmt: .58, water: .5, cloudCol: [240, 246, 250], emit: 'city', emitCol: [200, 220, 240], emitAmt: .08, sea_lvl: .34, label: 'Ледяной мир' }
+};
+
+const KIND_ORDER = ['terran', 'urban', 'ocean', 'desert', 'volcanic', 'ice'];
+
+/* ---------- data model: everything below is content, not code ---------- */
+const BATTLE_STATUS = {
+  planned: 'назначен', deploy: 'развёртывание', active: 'затяжной бой',
+  skirmish: 'стычки', retreat: 'отступление', done: 'завершён'
+};
+const LIVE_STAGES = { deploy: 1, active: 1, skirmish: 1, retreat: 1 };
+/* supply is derived from the graph, these are the only tunable numbers */
+const SUPPLY_DEFAULT = { base: 60, perLane: 40, major: 25, perRegiment: 100, fromSupply: .5 };
+const LOG_KINDS = {
+  battle: { label: 'бой', color: '#f0a431' },
+  loss:   { label: 'потеря', color: '#e2564b' },
+  gain:   { label: 'успех', color: '#4fa3e3' },
+  build:  { label: 'строительство', color: '#8fb8d8' },
+  info:   { label: 'сводка', color: '#5d7288' }
+};
+
+const DEFAULT_DATA = {
+  meta: {
+    name: 'Кампания в секторе',
+    eyebrow: 'Оперативная сводка',
+    main: 'rep',
+    esc: { level: 1, max: 4, note: 'Позиционная фаза. Орбитальные бомбардировки запрещены.' },
+    grid: { size: 120, ox: 0, oy: 0, show: true },
+    supply: { base: 60, perLane: 40, major: 25, perRegiment: 100, fromSupply: .5 },
+    center: { x: 300, y: 260 },
+    bg: { src: '', x: -200, y: -120, w: 1600, op: .5, on: false }
+  },
+  regions: [
+    { id: 'core', name: 'Ядро', r: 220, color: '#d8c48a' },
+    { id: 'inner', name: 'Внутреннее кольцо', r: 400, color: '#c98f6a' },
+    { id: 'mid', name: 'Среднее кольцо', r: 600, color: '#6f9ec4' },
+    { id: 'outer', name: 'Внешнее кольцо', r: 900, color: '#4d6a8c' }
+  ],
+  routes: [
+    { id: 'r1', name: 'Корелианский путь', color: '#f0d08a', path: ['coruscant', 'corulag', 'duro', 'eriadu', 'mustafar'] },
+    { id: 'r2', name: 'Гидианская трасса', color: '#e0a0c8', path: ['coruscant', 'alderaan', 'rendili', 'corellia', 'kamino'] }
+  ],
+  factions: [
+    { id: 'rep', name: 'Республика', color: '#4fa3e3', res: [
+      { k: 'Материалы', v: '3 362' }, { k: 'Боеприпасы', v: '6 229' }, { k: 'Личный состав', v: '1 148' }
+    ] },
+    { id: 'sep', name: 'Сепаратисты', color: '#e2564b', res: [
+      { k: 'Материалы', v: '4 010' }, { k: 'Дроиды', v: '9 400' }
+    ] },
+    { id: 'neu', name: 'Нейтральная', color: '#7c8794', neutral: true, res: [] }
+  ],
+  sectors: [
+    { id: 'core', name: 'Ядро' },
+    { id: 'mid', name: 'Средние миры' },
+    { id: 'outer', name: 'Внешнее кольцо' }
+  ],
+  systems: [
+    { id: 'anaxes', name: 'Anaxes', x: 100, y: 330, r: 15, kind: 'ocean', sector: 'core', own: 'rep', gar: 8, note: 'Крепость-мир. Оборонный узел на входе в ядро.' },
+    { id: 'fondor', name: 'Fondor', x: 150, y: 470, r: 14, kind: 'urban', sector: 'core', own: 'rep', gar: 6, note: 'Орбитальные доки. Ремонт флота без отхода в тыл.' },
+    { id: 'abregado', name: 'Abregado-rae', x: 270, y: 410, r: 12, kind: 'terran', sector: 'core', own: 'rep', gar: 3, note: 'Перевалочный порт. Держится на торговле, не на гарнизоне.' },
+    { id: 'coruscant', name: 'Coruscant', x: 300, y: 260, r: 19, kind: 'urban', sector: 'core', own: 'rep', gar: 12, note: 'Столица. Потеря разрывает снабжение всего сектора.' },
+    { id: 'alderaan', name: 'Alderaan', x: 410, y: 150, r: 15, kind: 'terran', sector: 'core', own: 'rep', gar: 6, note: 'Демилитаризованный мир. Гарнизон условный.' },
+    { id: 'kuat', name: 'Kuat', x: 480, y: 70, r: 16, kind: 'urban', sector: 'core', own: 'rep', gar: 9, note: 'Верфи. Здесь строятся корпуса, здесь же их и теряют.' },
+    { id: 'rendili', name: 'Rendili', x: 450, y: 240, r: 14, kind: 'urban', sector: 'core', own: 'rep', gar: 5, note: 'Второй по величине судостроительный узел.' },
+    { id: 'corulag', name: 'Corulag', x: 410, y: 350, r: 13, kind: 'terran', sector: 'mid', own: 'rep', gar: 4, note: 'Академия и логистический хаб на четыре трассы.' },
+    { id: 'corellia', name: 'Corellia', x: 575, y: 195, r: 17, kind: 'terran', sector: 'mid', own: 'neu', gar: 5, note: 'Нейтралитет держит фронт разомкнутым. Пока держит.' },
+    { id: 'duro', name: 'Duro', x: 590, y: 320, r: 14, kind: 'urban', sector: 'mid', own: 'neu', gar: 2, note: 'Выжженная промзона. Четыре трассы, почти нет обороны.' },
+    { id: 'sullust', name: 'Sullust', x: 615, y: 440, r: 15, kind: 'volcanic', sector: 'mid', own: 'sep', gar: 7, note: 'Подземные заводы. Бомбардировка с орбиты почти бесполезна.' },
+    { id: 'bestine', name: 'Bestine', x: 490, y: 505, r: 12, kind: 'desert', sector: 'mid', own: 'rep', gar: 4, note: 'Тыловой склад, отрезанный от ядра при потере Corulag.' },
+    { id: 'eriadu', name: 'Eriadu', x: 740, y: 315, r: 16, kind: 'urban', sector: 'outer', own: 'sep', gar: 8, note: 'Штаб противника в секторе. Сходятся четыре трассы.' },
+    { id: 'geonosis', name: 'Geonosis', x: 820, y: 165, r: 15, kind: 'desert', sector: 'outer', own: 'sep', gar: 10, note: 'Дроидные заводы. Пополнение идёт быстрее, чем его выбивать.' },
+    { id: 'kamino', name: 'Kamino', x: 770, y: 60, r: 14, kind: 'ocean', sector: 'outer', own: 'sep', gar: 6, note: 'Клонические верфи. Стратегическая цель первого порядка.' },
+    { id: 'mustafar', name: 'Mustafar', x: 890, y: 420, r: 13, kind: 'volcanic', sector: 'outer', own: 'sep', gar: 3, note: 'Тупиковая система. Удобное место, чтобы кого-нибудь потерять.' }
+  ],
+  lanes: [
+    ['anaxes', 'fondor'], ['anaxes', 'coruscant'], ['fondor', 'abregado'], ['abregado', 'coruscant'],
+    ['abregado', 'corulag'], ['coruscant', 'alderaan'], ['coruscant', 'corulag'], ['alderaan', 'kuat'],
+    ['alderaan', 'rendili'], ['kuat', 'rendili'], ['rendili', 'corellia'], ['corulag', 'duro'],
+    ['corellia', 'duro'], ['corellia', 'kamino'], ['duro', 'sullust'], ['sullust', 'bestine'],
+    ['sullust', 'eriadu'], ['duro', 'eriadu'], ['eriadu', 'geonosis'], ['geonosis', 'kamino'],
+    ['eriadu', 'mustafar'], ['geonosis', 'mustafar']
+  ],
+  battles: [
+    { id: 'b1', sys: 'bestine', att: 'sep', def: 'rep', status: 'active', prog: 62, since: '12.08', when: '' },
+    { id: 'b2', sys: 'duro', att: 'sep', def: 'rep', status: 'planned', prog: 50, since: '', when: '18:00 по МСК' }
+  ],
+  blockades: [
+    { id: 'bl1', a: 'duro', b: 'sullust', fac: 'sep', str: 2, note: 'Две ударные группы' }
+  ],
+  log: [
+    { d: '13.08', kind: 'battle', tag: 'Бой начался', text: 'Bestine — высадка на южном полушарии.' },
+    { d: '13.08', kind: 'build', tag: 'Верфь введена в строй', text: 'Kuat — плюс один стапель.' },
+    { d: '12.08', kind: 'loss', tag: 'Планета потеряна', text: 'Sullust отошёл к сепаратистам.' },
+    { d: '12.08', kind: 'info', tag: 'Конвой прошёл', text: 'Coruscant — Corulag, потерь нет.' }
+  ]
+};
+
+let DATA = null;
+let FACTION = {}, SECTOR = {}, SYSTEMS = [], LANES = [], SYS = {}, ADJ = {}, BATTLE = {}, ROUTE = {}, BLOCK = {};
+const laneKey = (a, b) => a < b ? a + '|' + b : b + '|' + a;
+const isBlocked = (a, b) => !!BLOCK[laneKey(a, b)];
+function daysSince(dm) {
+  const m = /^(\d{1,2})[.\/](\d{1,2})$/.exec(String(dm || '').trim());
+  if (!m) return null;
+  const now = new Date();
+  let d = new Date(now.getFullYear(), +m[2] - 1, +m[1]);
+  if (d > now) d = new Date(now.getFullYear() - 1, +m[2] - 1, +m[1]);
+  return Math.max(0, Math.round((now - d) / 86400000));
+}
+function gridRef(s) {
+  const g = DATA.meta.grid, size = g.size || 120;
+  let col = Math.floor((s.x - g.ox) / size);
+  let row = Math.floor((s.y - g.oy) / size);
+  let letters = '', n = col;
+  if (n < 0) return '—';
+  do { letters = String.fromCharCode(65 + (n % 26)) + letters; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return letters + '-' + (row + 1);
+}
+function regionOf(s) {
+  const c = DATA.meta.center;
+  const d = Math.hypot(s.x - c.x, s.y - c.y);
+  for (const r of DATA.regions) if (d <= r.r) return r;
+  return null;
+}
+
+function hexRgb(hex) {
+  const h = String(hex || '').replace('#', '');
+  const v = h.length === 3 ? h.split('').map(c => c + c).join('') : h.padEnd(6, '0');
+  return [parseInt(v.slice(0, 2), 16) || 0, parseInt(v.slice(2, 4), 16) || 0, parseInt(v.slice(4, 6), 16) || 0];
+}
+function facOf(id) {
+  return FACTION[id] || FACTION.__unknown;
+}
+function isNeu(id) {
+  return !!facOf(id).neutral;
+}
+function slug(name, taken) {
+  const map = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
+  let base = String(name || '').toLowerCase().split('').map(c => map[c] !== undefined ? map[c] : c)
+    .join('').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item';
+  let id = base, n = 2;
+  while (taken(id)) id = base + '-' + n++;
+  return id;
+}
+
+function indexData() {
+  FACTION = { __unknown: { id: '__unknown', name: 'Без фракции', color: '#7c8794', col: '#7c8794', rgb: [124, 135, 148], neutral: true, res: [] } };
+  DATA.factions.forEach(f => {
+    if (!Array.isArray(f.res)) f.res = [];
+    FACTION[f.id] = { id: f.id, name: f.name, color: f.color, col: f.color, rgb: hexRgb(f.color), neutral: !!f.neutral, res: f.res, raw: f };
+  });
+  SECTOR = {};
+  DATA.sectors.forEach(s => SECTOR[s.id] = s);
+  SYSTEMS = DATA.systems;
+  SYS = {};
+  SYSTEMS.forEach(s => {
+    s.r = s.r || 14;
+    s.gar = Number.isFinite(s.gar) ? s.gar : 0;
+    if (!FACTION[s.own]) s.own = neutralId();
+    SYS[s.id] = s;
+  });
+  LANES = DATA.lanes.filter(([a, b]) => SYS[a] && SYS[b] && a !== b);
+  DATA.lanes = LANES;
+  ADJ = {};
+  SYSTEMS.forEach(s => ADJ[s.id] = []);
+  LANES.forEach(([a, b]) => { ADJ[a].push(b); ADJ[b].push(a); });
+  DATA.regions.sort((a, b) => a.r - b.r);
+  ROUTE = {};
+  DATA.routes.forEach(rt => {
+    rt.path = (rt.path || []).filter(id => SYS[id]);
+    for (let i = 0; i < rt.path.length - 1; i++) {
+      const a = rt.path[i], b = rt.path[i + 1];
+      if (a === b) continue;
+      if (!LANES.some(([x, y]) => (x === a && y === b) || (x === b && y === a))) {
+        LANES.push([a, b]);
+        ADJ[a].push(b); ADJ[b].push(a);
+      }
+      ROUTE[laneKey(a, b)] = rt;
+    }
+  });
+  DATA.blockades = DATA.blockades.filter(b => SYS[b.a] && SYS[b.b] &&
+    LANES.some(([x, y]) => (x === b.a && y === b.b) || (x === b.b && y === b.a)));
+  BLOCK = {};
+  DATA.blockades.forEach(b => BLOCK[laneKey(b.a, b.b)] = b);
+  DATA.battles = DATA.battles.filter(b => SYS[b.sys]);
+  BATTLE = {};
+  DATA.battles.forEach(b => { if (!BATTLE[b.sys] || b.status === 'active') BATTLE[b.sys] = b; });
+  if (!FACTION[DATA.meta.main] || facOf(DATA.meta.main).neutral) {
+    const m = DATA.factions.find(f => !f.neutral);
+    DATA.meta.main = m ? m.id : (DATA.factions[0] ? DATA.factions[0].id : '');
+  }
+}
+function today() {
+  const d = new Date();
+  return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function logAdd(kind, tag, text) {
+  DATA.log.unshift({ d: today(), kind, tag, text });
+  if (DATA.log.length > 200) DATA.log.length = 200;
+}
+function neutralId() {
+  const n = DATA.factions.find(f => f.neutral);
+  return n ? n.id : (DATA.factions[0] ? DATA.factions[0].id : '__unknown');
+}
+function loadData(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {};
+  const dm = d.meta || {};
+  DATA = {
+    meta: {
+      name: dm.name || 'Карта кампании',
+      eyebrow: dm.eyebrow || 'Оперативная сводка',
+      main: dm.main || '',
+      esc: {
+        level: Number.isFinite(dm.esc && dm.esc.level) ? dm.esc.level : 1,
+        max: Number.isFinite(dm.esc && dm.esc.max) ? dm.esc.max : 4,
+        note: (dm.esc && dm.esc.note) || ''
+      },
+      supply: Object.assign({}, SUPPLY_DEFAULT, dm.supply || {}),
+      grid: {
+        size: (dm.grid && dm.grid.size) || 120,
+        ox: (dm.grid && dm.grid.ox) || 0,
+        oy: (dm.grid && dm.grid.oy) || 0,
+        show: dm.grid ? dm.grid.show !== false : true
+      },
+      center: { x: (dm.center && dm.center.x) || 300, y: (dm.center && dm.center.y) || 260 },
+      bg: {
+        src: (dm.bg && dm.bg.src) || '',
+        x: Number.isFinite(dm.bg && dm.bg.x) ? dm.bg.x : -200,
+        y: Number.isFinite(dm.bg && dm.bg.y) ? dm.bg.y : -120,
+        w: Number.isFinite(dm.bg && dm.bg.w) ? dm.bg.w : 1600,
+        op: Number.isFinite(dm.bg && dm.bg.op) ? dm.bg.op : .5,
+        on: !!(dm.bg && dm.bg.on)
+      }
+    },
+    factions: Array.isArray(d.factions) && d.factions.length ? d.factions : DEFAULT_DATA.factions.map(f => ({ ...f })),
+    sectors: Array.isArray(d.sectors) ? d.sectors : [],
+    systems: Array.isArray(d.systems) ? d.systems.map(s => ({ ...s })) : [],
+    lanes: Array.isArray(d.lanes) ? d.lanes.map(l => [l[0], l[1]]) : [],
+    regions: Array.isArray(d.regions) ? d.regions.map(r => ({ ...r })) : [],
+    routes: Array.isArray(d.routes) ? d.routes.map(r => ({ ...r, path: (r.path || []).slice() })) : [],
+    battles: Array.isArray(d.battles) ? d.battles.map(b => ({ prog: 50, since: '', ...b })) : [],
+    blockades: Array.isArray(d.blockades) ? d.blockades.map(b => ({ ...b })) : [],
+    log: Array.isArray(d.log) ? d.log.map(e => ({ ...e })) : []
+  };
+  DATA.factions.forEach(f => { if (!Array.isArray(f.res)) f.res = []; });
+  indexData();
+}
+function cloneDefault() {
+  return JSON.parse(JSON.stringify(DEFAULT_DATA));
+}
+
+/* ---------- math ---------- */
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+  return many;
+}
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+/* wrapping value-noise grid: sampled bilinearly, no per-pixel hashing */
+const GW = 128, GH = 64;
+function makeGrid(rand) {
+  const g = new Float32Array(GW * GH);
+  for (let i = 0; i < g.length; i++) g[i] = rand();
+  return g;
+}
+/* u,v are grid-cell coordinates: octave frequency sets continent scale directly */
+function sampleGrid(g, u, v) {
+  const x = u, y = v;
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x - x0, fy = y - y0;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const xa = ((x0 % GW) + GW) % GW, xb = (xa + 1) % GW;
+  const ya = ((y0 % GH) + GH) % GH, yb = (ya + 1) % GH;
+  const r0 = ya * GW, r1 = yb * GW;
+  const top = g[r0 + xa] + (g[r0 + xb] - g[r0 + xa]) * sx;
+  const bot = g[r1 + xa] + (g[r1 + xb] - g[r1 + xa]) * sx;
+  return top + (bot - top) * sy;
+}
+function fbmGrid(g, u, v, oct, f0) {
+  let s = 0, amp = .5, f = f0, norm = 0;
+  for (let i = 0; i < oct; i++) {
+    s += amp * sampleGrid(g, u * f, v * f);
+    norm += amp; amp *= .5; f *= 2;
+  }
+  return s / norm;
+}
+
+/* ---------- planet surface textures ---------- */
+function kindOf(sys) {
+  const base = KIND[sys.kind] || KIND.terran;
+  if (!sys.pal) return base;
+  const p = sys.pal, out = Object.assign({}, base);
+  ['sea', 'land', 'high', 'atmo', 'cloudCol'].forEach(k => { if (Array.isArray(p[k])) out[k] = p[k]; });
+  if (Number.isFinite(p.cloud)) out.cloud = p.cloud;
+  return out;
+}
+function rgbHex(c) {
+  return '#' + c.map(v => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('');
+}
+
+/* ---------- palette from a reference image ---------- */
+function extractPalette(img) {
+  const W0 = 140, H0 = Math.max(1, Math.round(W0 * (img.naturalHeight || img.height) / (img.naturalWidth || img.width)));
+  const cnv = document.createElement('canvas');
+  cnv.width = W0; cnv.height = H0;
+  const c = cnv.getContext('2d', { willReadFrequently: true });
+  c.drawImage(img, 0, 0, W0, H0);
+  const d = c.getImageData(0, 0, W0, H0).data;   // throws for cross-origin images without CORS
+
+  const px = [], all = [];
+  let bright = 0, pale = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const lum = .2126 * r + .7152 * g + .0722 * b;
+    all.push([r, g, b]);
+    if (lum < 46) continue;      // space plus the shadowed limb: both would fake a 'dark terrain' cluster
+    px.push([r, g, b]);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const sat = mx ? (mx - mn) / mx : 0;
+    if (lum > 150) { bright++; if (sat < .22) pale++; }
+  }
+  const pts = px.length > 60 ? px : all;
+  const K = 4, cen = [];
+  for (let i = 0; i < K; i++) cen.push(pts[Math.floor((i + .5) * pts.length / K)].slice());
+  const step = Math.max(1, Math.floor(pts.length / 2500));
+  for (let it = 0; it < 8; it++) {
+    const sum = cen.map(() => [0, 0, 0, 0]);
+    for (let i = 0; i < pts.length; i += step) {
+      const p = pts[i];
+      let bi = 0, bd = Infinity;
+      for (let j = 0; j < K; j++) {
+        const dr = p[0] - cen[j][0], dg = p[1] - cen[j][1], db = p[2] - cen[j][2];
+        const dist = dr * dr + dg * dg + db * db;
+        if (dist < bd) { bd = dist; bi = j; }
+      }
+      sum[bi][0] += p[0]; sum[bi][1] += p[1]; sum[bi][2] += p[2]; sum[bi][3]++;
+    }
+    for (let j = 0; j < K; j++) if (sum[j][3]) {
+      cen[j] = [sum[j][0] / sum[j][3], sum[j][1] / sum[j][3], sum[j][2] / sum[j][3]];
+    }
+  }
+  const lum = c2 => .2126 * c2[0] + .7152 * c2[1] + .0722 * c2[2];
+  cen.sort((a, b) => lum(a) - lum(b));
+  const round = c2 => c2.map(v => Math.round(v));
+  const satOf = c2 => { const mx = Math.max(...c2), mn = Math.min(...c2); return mx ? (mx - mn) / mx : 0; };
+  // shading flattens a screenshot, so spread the roles apart around the mid tone
+  const mid = (lum(cen[1]) + lum(cen[2])) / 2 || 96;
+  const toLum = (c2, target) => { const l = lum(c2) || 1; return c2.map(v => clamp(v * target / l, 4, 252)); };
+  const body = satOf(cen[1]) >= satOf(cen[2]) ? cen[1] : cen[2];
+  const sea = round(toLum(cen[0], mid * .5));
+  const land = round(toLum(body, mid));
+  const high = round(toLum(cen[3], Math.min(238, mid * 1.75)));
+  const vivid = cen.slice().sort((a, b) => satOf(b) * lum(b) - satOf(a) * lum(a))[0];
+  const atmo = round(vivid.map(v => clamp(v * .55 + 120, 60, 250)));
+  const cloudCol = round(cen[3].map(v => clamp(v * .35 + 168, 120, 252)));
+  const cloud = clamp(bright ? (pale / bright) * .8 : .25, .05, .7);
+  return { sea, land, high, atmo, cloudCol, cloud: +cloud.toFixed(2) };
+}
+
+const RES = { lo: [224, 112], hi: [768, 384] };
+const texCache = {};
+
+function buildTexture(sys, res) {
+  res = res || 'lo';
+  const key = sys.id + ':' + res;
+  if (texCache[key]) return texCache[key];
+  const [TW, TH] = RES[res];
+  const k = kindOf(sys);
+  const seed = [...sys.id].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7) | 0;
+  const rand = mulberry(seed);
+  const gLand = makeGrid(rand), gDetail = makeGrid(rand), gCloud = makeGrid(rand), gCity = makeGrid(rand);
+  const alb = new Uint8ClampedArray(TW * TH * 3);
+  const lit = new Uint8ClampedArray(TW * TH);
+  const cld = new Uint8ClampedArray(TW * TH);
+  const wet = new Uint8ClampedArray(TW * TH);
+
+  for (let y = 0; y < TH; y++) {
+    const v = (y + .5) / TH;
+    const lat = v * 2 - 1;
+    const polar = Math.pow(Math.abs(lat), 2.8);
+    const squash = .55 + .45 * Math.cos(lat * 1.5708);
+    for (let x = 0; x < TW; x++) {
+      const u = (x + .5) / TW;
+      let h = fbmGrid(gLand, u, v * squash + .18, 5, 3) * .84
+            + fbmGrid(gDetail, u, v * squash + .18, 3, 11) * .16;
+      const land = h > k.sea_lvl;
+      const t = clamp((h - k.sea_lvl) / (1 - k.sea_lvl + 1e-6), 0, 1);
+      let r, g, b;
+      if (land) {
+        const p = Math.pow(t, .75);
+        r = lerp(k.land[0], k.high[0], p);
+        g = lerp(k.land[1], k.high[1], p);
+        b = lerp(k.land[2], k.high[2], p);
+        const grain = (fbmGrid(gDetail, u, v * squash + 5.3, 2, 26) - .5) * 16;
+        r += grain; g += grain; b += grain;
+      } else {
+        const d = clamp((k.sea_lvl - h) / (k.sea_lvl + 1e-6), 0, 1);
+        r = lerp(k.sea[0] * 1.3, k.sea[0] * .68, d);
+        g = lerp(k.sea[1] * 1.3, k.sea[1] * .68, d);
+        b = lerp(k.sea[2] * 1.3, k.sea[2] * .68, d);
+      }
+      if (sys.kind === 'ice' || polar > .5) {
+        const ice = smooth(.5, .95, polar) * (sys.kind === 'ice' ? .95 : .7);
+        r = lerp(r, 222, ice); g = lerp(g, 232, ice); b = lerp(b, 242, ice);
+      }
+      const i = y * TW + x;
+      alb[i * 3] = r; alb[i * 3 + 1] = g; alb[i * 3 + 2] = b;
+
+      let glow = 0;
+      if (k.emit === 'lava') {
+        const rid = 1 - Math.abs(2 * fbmGrid(gCity, u, v * squash + 2.2, 4, 5) - 1);
+        const crack = smooth(.82, .99, rid) * (.5 + .5 * (1 - t));
+        glow = crack * k.emitAmt;
+      } else if (land && k.emitAmt > 0) {
+        const cluster = fbmGrid(gCity, u, v * squash + 1.1, 4, 7);
+        const speck = fbmGrid(gCity, u, v * squash + 8.3, 2, 44);
+        glow = smooth(.5, .72, cluster) * k.emitAmt * (1 - polar * .85) * (.3 + .7 * speck);
+      }
+      lit[i] = glow * 255;
+
+      const cf = fbmGrid(gCloud, u + .3, v * squash * .8 + .4, 4, 5);
+      cld[i] = smooth(.42, .74, cf) * k.cloud * 255 * (1 - polar * .3);
+      wet[i] = land ? 0 : 255 * k.water;
+    }
+  }
+  return texCache[key] = { alb, lit, cld, wet, kind: k, w: TW, h: TH };
+}
+function bestTex(sys) {
+  return texCache[sys.id + ':hi'] || buildTexture(sys, 'lo');
+}
+
+/* ---------- small sphere sprites for the map ---------- */
+const spriteCache = {};
+function sprite(sys, px) {
+  px = Math.max(12, Math.round(px / 8) * 8);
+  const key = sys.id + '@' + px;
+  if (spriteCache[key]) return spriteCache[key];
+  const tex = buildTexture(sys, 'lo'), S = px * 2;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const cx = cv.getContext('2d');
+  const img = cx.createImageData(S, S);
+  const d = img.data, R = px, L = [.62, -.45, .65];
+  const ln = Math.hypot(L[0], L[1], L[2]);
+  L[0] /= ln; L[1] /= ln; L[2] /= ln;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const nx = (x - R + .5) / R, ny = (y - R + .5) / R;
+      const q = nx * nx + ny * ny;
+      const o = (y * S + x) * 4;
+      if (q > 1) { d[o + 3] = 0; continue; }
+      const nz = Math.sqrt(1 - q);
+      const lonf = (Math.atan2(nx, nz) / (Math.PI * 2) + .5) % 1;
+      const latf = clamp((Math.asin(clamp(ny, -1, 1)) / Math.PI + .5), 0, .999);
+      const ti = ((latf * tex.h) | 0) * tex.w + ((lonf * tex.w) | 0);
+      const diff = smooth(-.18, .55, nx * L[0] + ny * L[1] + nz * L[2]);
+      const sh = .12 + .88 * diff;
+      const rim = Math.pow(1 - nz, 3.2) * .45;
+      const em = tex.lit[ti] / 255 * (tex.kind.emit === 'lava' ? .8 : .25);
+      d[o] = tex.alb[ti * 3] * sh + tex.kind.atmo[0] * rim + tex.kind.emitCol[0] * em;
+      d[o + 1] = tex.alb[ti * 3 + 1] * sh + tex.kind.atmo[1] * rim + tex.kind.emitCol[1] * em;
+      d[o + 2] = tex.alb[ti * 3 + 2] * sh + tex.kind.atmo[2] * rim + tex.kind.emitCol[2] * em;
+      d[o + 3] = 255;
+    }
+  }
+  cx.putImageData(img, 0, 0);
+  spriteCache[key] = cv;
+  return cv;
+}
+/* ---------- state ---------- */
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+const cam = { x: 495, y: 285, z: .95, tx: 495, ty: 285, tz: .95, tilt: .52 };
+let selected = null, hovered = null, mode = 'map', trans = 0, transDir = 0, diveTarget = null;
+let editing = false, linkFrom = null, dragNode = null;
+let spin = 0, t0 = performance.now(), now = 0;
+let drag = null, moved = 0;
+
+/* ---------- projection: tilted galactic plane ---------- */
+const PLANE_H = 26;                       // node stand height in plane units
+function proj(x, y, h) {
+  const s = cam.z;
+  return {
+    x: W / 2 + (x - cam.x) * s,
+    y: H / 2 + (y - cam.y) * s * cam.tilt - (h || 0) * s
+  };
+}
+function unproj(sx, sy) {
+  const s = cam.z;
+  return { x: (sx - W / 2) / s + cam.x, y: (sy - H / 2) / (s * cam.tilt) + cam.y };
+}
+
+/* ---------- starfield ---------- */
+const stars = [];
+for (let i = 0; i < 620; i++) {
+  const layer = i < 300 ? 0 : i < 520 ? 1 : 2;
+  stars.push({
+    x: Math.random() * 2400 - 700, y: Math.random() * 1600 - 500,
+    d: [.14, .34, .62][layer], r: [.6, .9, 1.5][layer] * (.6 + Math.random() * .8),
+    a: [.3, .5, .85][layer] * (.5 + Math.random() * .5),
+    tw: Math.random() * 6.28
+  });
+}
+
+/* ---------- nebula plate (pre-rendered once, drawn in plane space) ---------- */
+const NEB_W = 1500, NEB_H = 900;
+const neb = document.createElement('canvas');
+neb.width = NEB_W; neb.height = NEB_H;
+(function paintNebula() {
+  const g = neb.getContext('2d');
+  g.clearRect(0, 0, NEB_W, NEB_H);
+  const cxp = NEB_W * .5, cyp = NEB_H * .5;
+  const core = g.createRadialGradient(cxp, cyp, 20, cxp, cyp, NEB_W * .48);
+  core.addColorStop(0, 'rgba(140,168,212,.17)');
+  core.addColorStop(.28, 'rgba(74,102,158,.10)');
+  core.addColorStop(.62, 'rgba(38,56,102,.055)');
+  core.addColorStop(1, 'rgba(8,12,26,0)');
+  g.fillStyle = core;
+  g.fillRect(0, 0, NEB_W, NEB_H);
+  g.globalCompositeOperation = 'lighter';
+  for (let arm = 0; arm < 2; arm++) {
+    for (let i = 0; i < 190; i++) {
+      const t = i / 190, ang = arm * Math.PI + t * 2.5 + .4;
+      const rad = 60 + t * NEB_W * .46;
+      const x = cxp + Math.cos(ang) * rad, y = cyp + Math.sin(ang) * rad * .92;
+      const sz = 70 + Math.random() * 190 * (1 - t * .5);
+      const gr = g.createRadialGradient(x, y, 0, x, y, sz);
+      const warm = Math.random() < .22;
+      gr.addColorStop(0, warm ? 'rgba(190,120,80,.038)' : 'rgba(96,140,205,.034)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(x, y, sz, 0, 6.2832); g.fill();
+    }
+  }
+  for (let i = 0; i < 2600; i++) {
+    const ang = Math.random() * 6.2832, t = Math.pow(Math.random(), .6);
+    const rad = t * NEB_W * .5;
+    const x = cxp + Math.cos(ang) * rad, y = cyp + Math.sin(ang) * rad * .9;
+    g.fillStyle = 'rgba(224,236,255,' + (.04 + Math.random() * .17) + ')';
+    g.fillRect(x, y, 1.1, 1.1);
+  }
+  g.globalCompositeOperation = 'source-over';
+})();
+
+/* ---------- strategy ---------- */
+let strat = { disputed: [], cut: new Set(), supply: {} };
+function recompute() {
+  const disputed = [], cut = new Set(), supply = {}, sup = {};
+  LANES.forEach(([a, b]) => {
+    const oa = SYS[a].own, ob = SYS[b].own;
+    if (!isNeu(oa) && !isNeu(ob) && oa !== ob) disputed.push([a, b]);
+  });
+  // connectivity ignores blockaded lanes: a closed lane carries nothing
+  for (const f of DATA.factions) {
+    if (f.neutral) continue;
+    const own = SYSTEMS.filter(s => s.own === f.id).map(s => s.id);
+    const seen = new Set(), comps = [];
+    for (const s of own) {
+      if (seen.has(s)) continue;
+      const q = [s], c = []; seen.add(s);
+      while (q.length) {
+        const v = q.pop(); c.push(v);
+        for (const w of ADJ[v]) {
+          if (SYS[w].own === f.id && !seen.has(w) && !isBlocked(v, w)) { seen.add(w); q.push(w); }
+        }
+      }
+      comps.push(c);
+    }
+    comps.sort((p, q2) => q2.length - p.length);
+    comps.forEach((c, i) => {
+      const weight = c.reduce((a, id) => a + SYS[id].gar, 0);
+      c.forEach(id => supply[id] = i === 0 ? weight : 0);
+      if (i > 0) c.forEach(id => cut.add(id));
+    });
+  }
+  SYSTEMS.forEach(s => { if (isNeu(s.own)) supply[s.id] = null; });
+
+  // resources and military power: derived, never typed by hand
+  const P = DATA.meta.supply;
+  SYSTEMS.forEach(s => {
+    let open = 0, major = 0, blocked = 0, front = 0;
+    ADJ[s.id].forEach(n => {
+      const closed = isBlocked(s.id, n);
+      if (closed) { blocked++; return; }
+      const same = SYS[n].own === s.own && !isNeu(s.own);
+      if (same) { open++; if (ROUTE[laneKey(s.id, n)]) major++; }
+      else if (!isNeu(SYS[n].own) && !isNeu(s.own)) front++;
+    });
+    const isolated = cut.has(s.id) || isNeu(s.own);
+    const res = isolated ? 0 : Math.round(P.base + P.perLane * open + P.major * major);
+    const power = isolated
+      ? Math.round(s.gar * P.perRegiment * .5)
+      : Math.round(s.gar * P.perRegiment + res * P.fromSupply);
+    sup[s.id] = { open, major, blocked, front, res, power, isolated };
+  });
+  strat = { disputed, cut, supply, sup };
+  return strat;
+}
+function factionIncome(fid) {
+  return SYSTEMS.filter(s => s.own === fid).reduce((a, s) => a + (strat.sup[s.id] ? strat.sup[s.id].res : 0), 0);
+}
+
+/* ---------- map drawing ---------- */
+function drawStars(alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  for (const s of stars) {
+    const x = W / 2 + (s.x - cam.x * s.d) * .6, y = H / 2 + (s.y - cam.y * s.d) * .6;
+    if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
+    const tw = RM ? 1 : .72 + .28 * Math.sin(now * .0011 + s.tw);
+    ctx.globalAlpha = alpha * s.a * tw;
+    ctx.fillStyle = '#dfe9ff';
+    ctx.beginPath(); ctx.arc(x, y, s.r, 0, 6.2832); ctx.fill();
+  }
+  ctx.restore();
+}
+
+let bgImg = null, bgSrc = '';
+function syncBackdrop() {
+  const bg = DATA.meta.bg;
+  if (!bg.src) { bgImg = null; bgSrc = ''; return; }
+  if (bg.src === bgSrc && bgImg) return;
+  bgSrc = bg.src;
+  const im = new Image();
+  im.crossOrigin = 'anonymous';
+  im.onload = () => { bgImg = im; };
+  im.onerror = () => { bgImg = null; };
+  im.src = bg.src;
+}
+function drawBackdrop(alpha) {
+  const bg = DATA.meta.bg;
+  if (!bg.on || !bgImg || !bgImg.width) return;
+  const a = proj(bg.x, bg.y, 0);
+  const w = bg.w * cam.z;
+  const h = bg.w * (bgImg.height / bgImg.width) * cam.z * cam.tilt;
+  ctx.save();
+  ctx.globalAlpha = alpha * bg.op;
+  ctx.drawImage(bgImg, a.x, a.y, w, h);
+  ctx.restore();
+}
+function drawRegions(alpha) {
+  if (!DATA.regions.length) return;
+  const c = DATA.meta.center;
+  ctx.save();
+  for (let i = DATA.regions.length - 1; i >= 0; i--) {
+    const r = DATA.regions[i];
+    const p = proj(c.x, c.y, 0);
+    const rx = r.r * cam.z, ry = r.r * cam.z * cam.tilt;
+    ctx.globalAlpha = alpha * (DATA.meta.bg.on ? .05 : .085);
+    ctx.fillStyle = r.color;
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, rx, ry, 0, 0, 6.2832); ctx.fill();
+    ctx.globalAlpha = alpha * .3;
+    ctx.strokeStyle = r.color; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, rx, ry, 0, 0, 6.2832); ctx.stroke();
+    if (cam.z > .38) {
+      ctx.globalAlpha = alpha * .65;
+      ctx.fillStyle = r.color;
+      ctx.font = '400 10.5px "IBM Plex Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(r.name.toUpperCase(), p.x, p.y - ry - 6);
+    }
+  }
+  ctx.restore();
+}
+
+function drawNebula(alpha) {
+  const a = proj(495 - NEB_W / 2, 285 - NEB_H / 2, 0);
+  const w = NEB_W * cam.z, h = NEB_H * cam.z * cam.tilt;
+  ctx.save();
+  ctx.globalAlpha = alpha * .62;
+  ctx.drawImage(neb, a.x, a.y, w, h);
+  ctx.restore();
+}
+
+function drawGrid(alpha) {
+  const g = DATA.meta.grid;
+  if (!g.show) return;
+  const step = g.size || 120;
+  const tl = unproj(0, 0), br = unproj(W, H);
+  const c0 = Math.floor((tl.x - g.ox) / step) - 1, c1 = Math.ceil((br.x - g.ox) / step) + 1;
+  const r0 = Math.floor((tl.y - g.oy) / step) - 1, r1 = Math.ceil((br.y - g.oy) / step) + 1;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(143,184,216,.085)';
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = alpha * .5;
+  for (let c = c0; c <= c1; c++) {
+    const x = g.ox + c * step;
+    const a = proj(x, g.oy + r0 * step, 0), b = proj(x, g.oy + r1 * step, 0);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  for (let r = r0; r <= r1; r++) {
+    const y = g.oy + r * step;
+    const a = proj(g.ox + c0 * step, y, 0), b = proj(g.ox + c1 * step, y, 0);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  if (cam.z > .42) {
+    ctx.globalAlpha = alpha * .55;
+    ctx.fillStyle = '#5d7288';
+    ctx.font = '400 10.5px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'center';
+    for (let c = c0; c <= c1; c++) {
+      if (c < 0) continue;
+      const x = g.ox + (c + .5) * step;
+      ctx.fillText(colLabel(c), proj(x, 0, 0).x, 14);
+    }
+    ctx.textAlign = 'left';
+    for (let r = r0; r <= r1; r++) {
+      if (r < 0) continue;
+      const y = g.oy + (r + .5) * step;
+      ctx.fillText(String(r + 1), 6, proj(0, y, 0).y + 4);
+    }
+  }
+  ctx.restore();
+}
+function colLabel(c) {
+  let s = '', n = c;
+  do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return s;
+}
+
+function laneStyle(a, b) {
+  if (isBlocked(a, b)) return { col: '#b0453c', w: 2, hot: false, blocked: true };
+  const rt = ROUTE[laneKey(a, b)];
+  const oa = SYS[a].own, ob = SYS[b].own;
+  if (rt && !(!isNeu(oa) && !isNeu(ob) && oa !== ob)) return { col: rt.color, w: 2.6, hot: false, route: rt };
+  if (rt) return { col: HOT, w: 3, hot: true, route: rt };
+  if (!isNeu(oa) && !isNeu(ob) && oa !== ob) return { col: HOT, w: 2.2, hot: true };
+  if (oa === ob && !isNeu(oa)) return { col: facOf(oa).col, w: 1.6, hot: false };
+  return { col: 'rgba(163,196,224,.62)', w: 1.3, hot: false };
+}
+
+function drawLanes(alpha) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (const [ia, ib] of LANES) {
+    const A = SYS[ia], B = SYS[ib];
+    const p = proj(A.x, A.y, PLANE_H), q = proj(B.x, B.y, PLANE_H);
+    const st = laneStyle(ia, ib);
+    const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2 - Math.hypot(q.x - p.x, q.y - p.y) * .07;
+    const near = selected && (selected === ia || selected === ib);
+    ctx.globalAlpha = alpha * (near ? .95 : st.hot ? .8 : .55);
+    ctx.strokeStyle = st.col;
+    ctx.lineWidth = st.w * (near ? 1.7 : 1);
+    if (st.hot && !RM) ctx.setLineDash([9, 7]), ctx.lineDashOffset = -(now * .04) % 16;
+    else if (st.blocked) ctx.setLineDash([3, 6]);
+    else ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo(mx, my, q.x, q.y); ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (st.blocked) {
+      const bl = BLOCK[laneKey(ia, ib)];
+      const mxp = .25 * p.x + .5 * mx + .25 * q.x, myp = .25 * p.y + .5 * my + .25 * q.y;
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = facOf(bl.fac).col;
+      ctx.lineWidth = 2;
+      const r0 = 6;
+      ctx.beginPath();
+      ctx.moveTo(mxp - r0, myp - r0); ctx.lineTo(mxp + r0, myp + r0);
+      ctx.moveTo(mxp + r0, myp - r0); ctx.lineTo(mxp - r0, myp + r0);
+      ctx.stroke();
+      continue;
+    }
+    if (!RM) {
+      const cadence = st.hot ? 1400 : st.route ? 2100 : 3000;
+      const phase = ((now + (ia.length * 311 + ib.length * 97) * 13) % cadence) / cadence;
+      const dir = phase;
+      const t = dir, it = 1 - t;
+      const px = it * it * p.x + 2 * it * t * mx + t * t * q.x;
+      const py = it * it * p.y + 2 * it * t * my + t * t * q.y;
+      ctx.globalAlpha = alpha * (st.hot ? .95 : .5) * Math.sin(phase * Math.PI);
+      ctx.fillStyle = st.hot ? HOT : st.col;
+      ctx.beginPath(); ctx.arc(px, py, st.hot ? 2.6 : 1.9, 0, 6.2832); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawRouteLabels(alpha) {
+  if (cam.z < .5) return;
+  ctx.save();
+  ctx.font = '400 10.5px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'center';
+  for (const rt of DATA.routes) {
+    if (rt.path.length < 2) continue;
+    let best = null, bl = 0;
+    for (let i = 0; i < rt.path.length - 1; i++) {
+      const A = SYS[rt.path[i]], B = SYS[rt.path[i + 1]];
+      const p = proj(A.x, A.y, PLANE_H), q = proj(B.x, B.y, PLANE_H);
+      const l = Math.hypot(q.x - p.x, q.y - p.y);
+      if (l > bl) { bl = l; best = [p, q]; }
+    }
+    if (!best || bl < 70) continue;
+    const [p, q] = best;
+    let ang = Math.atan2(q.y - p.y, q.x - p.x);
+    if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
+    ctx.save();
+    ctx.translate((p.x + q.x) / 2, (p.y + q.y) / 2);
+    ctx.rotate(ang);
+    ctx.globalAlpha = alpha * .85;
+    ctx.fillStyle = rt.color;
+    ctx.shadowColor = 'rgba(3,5,10,.95)'; ctx.shadowBlur = 6;
+    ctx.fillText(rt.name.toUpperCase(), 0, -9);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawNodes(alpha) {
+  labelJobs = [];
+  const order = [...SYSTEMS].sort((a, b) => a.y - b.y);
+  ctx.save();
+  for (const s of order) {
+    const own = s.own, fac = facOf(own);
+    const base = proj(s.x, s.y, 0), top = proj(s.x, s.y, PLANE_H);
+    const rad = s.r * cam.z;
+    const isSel = selected === s.id, isHov = hovered === s.id;
+
+    ctx.globalAlpha = alpha * .5;
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.beginPath();
+    ctx.ellipse(base.x, base.y, rad * 1.15, rad * .42, 0, 0, 6.2832);
+    ctx.fill();
+
+    ctx.globalAlpha = alpha * .45;
+    ctx.strokeStyle = fac.col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(base.x, base.y); ctx.lineTo(top.x, top.y); ctx.stroke();
+
+    const pulse = RM ? 0 : .5 + .5 * Math.sin(now * .002 + s.x);
+    const glowR = rad * (2.4 + (isSel ? .9 : 0) + pulse * .18);
+    const g = ctx.createRadialGradient(top.x, top.y, rad * .7, top.x, top.y, glowR);
+    g.addColorStop(0, 'rgba(' + fac.rgb.join(',') + ',' + (.30 + (isSel ? .22 : 0)) + ')');
+    g.addColorStop(1, 'rgba(' + fac.rgb.join(',') + ',0)');
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(top.x, top.y, glowR, 0, 6.2832); ctx.fill();
+
+    const px = clamp(Math.round(rad * 1.6), 12, 96);
+    const sp = sprite(s, px);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(sp, top.x - rad, top.y - rad, rad * 2, rad * 2);
+
+    ctx.globalAlpha = alpha * (isSel ? .95 : isHov ? .7 : .4);
+    ctx.strokeStyle = fac.col; ctx.lineWidth = isSel ? 1.8 : 1;
+    ctx.beginPath(); ctx.arc(top.x, top.y, rad + 4, 0, 6.2832); ctx.stroke();
+
+    const bt = BATTLE[s.id];
+    if (bt) {
+      const col = LIVE_STAGES[bt.status] ? HOT : bt.status === 'planned' ? '#8fb8d8' : '#5d7288';
+      const beat = RM ? .6 : .45 + .55 * (0.5 + 0.5 * Math.sin(now * .004));
+      ctx.globalAlpha = alpha * (bt.status === 'done' ? .4 : beat);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = LIVE_STAGES[bt.status] ? 2 : 1.2;
+      if (bt.status === 'planned') ctx.setLineDash([4, 5]);
+      ctx.beginPath(); ctx.arc(top.x, top.y, rad + 8, 0, 6.2832); ctx.stroke();
+      if (LIVE_STAGES[bt.status]) {
+        ctx.globalAlpha = alpha * (1 - beat) * .9;
+        ctx.beginPath(); ctx.arc(top.x, top.y, rad + 16, 0, 6.2832); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+    if (strat.cut.has(s.id)) {
+      ctx.globalAlpha = alpha * .9;
+      ctx.strokeStyle = HOT; ctx.lineWidth = 1.4;
+      ctx.setLineDash([3, 5]);
+      ctx.lineDashOffset = RM ? 0 : (now * .02) % 8;
+      ctx.beginPath(); ctx.arc(top.x, top.y, rad + 11, 0, 6.2832); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    if (editing && linkFrom === s.id) {
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = HOT; ctx.lineWidth = 1.6;
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.arc(top.x, top.y, rad + 7, 0, 6.2832); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (isSel) {
+      ctx.globalAlpha = alpha * .8;
+      ctx.strokeStyle = HOT; ctx.lineWidth = 1;
+      const rr = rad + 18;
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const a0 = k * Math.PI / 2 + (RM ? 0 : now * .0006);
+        ctx.moveTo(top.x + Math.cos(a0) * rr, top.y + Math.sin(a0) * rr);
+        ctx.arc(top.x, top.y, rr, a0, a0 + .55);
+      }
+      ctx.stroke();
+    }
+
+    labelJobs.push({ s: s, x: top.x, y: top.y, rad: rad, sel: isSel, hov: isHov, col: fac.col });
+  }
+  ctx.restore();
+  drawLabels(alpha);
+}
+
+let labelJobs = [];
+function overlaps(a, b) {
+  return !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1);
+}
+function drawLabels(alpha) {
+  const placed = [];
+  const jobs = labelJobs.sort((a, b) => (b.sel ? 1 : 0) - (a.sel ? 1 : 0) || (b.hov ? 1 : 0) - (a.hov ? 1 : 0) || b.s.r - a.s.r);
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(3,5,10,.95)';
+  for (const j of jobs) {
+    const size = Math.max(11, Math.min(15, 12 * cam.z + 3));
+    ctx.font = (j.sel ? '500 ' : '400 ') + size + 'px "Chakra Petch", sans-serif';
+    const w = ctx.measureText(j.s.name).width;
+    const above = { x0: j.x - w / 2 - 4, x1: j.x + w / 2 + 4, y0: j.y - j.rad - 13 - size, y1: j.y - j.rad - 9 };
+    const below = { x0: j.x - w / 2 - 4, x1: j.x + w / 2 + 4, y0: j.y + j.rad + 12, y1: j.y + j.rad + 14 + size };
+    let box = above;
+    if (placed.some(p => overlaps(above, p))) {
+      box = placed.some(p => overlaps(below, p)) ? null : below;
+    }
+    const forced = j.sel || j.hov;
+    if (!box && !forced) continue;
+    if (!box) box = above;
+    if (!forced && cam.z <= .55) continue;
+    placed.push(box);
+    ctx.globalAlpha = alpha * (forced ? 1 : .74);
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = j.sel ? '#e8e2d2' : '#a9c3d8';
+    ctx.fillText(j.s.name, j.x, box.y1 - 3);
+    if (forced) {
+      ctx.font = '400 11px "IBM Plex Mono", monospace';
+      const sub = j.s.gar + ' ' + plural(j.s.gar, 'полк', 'полка', 'полков') + ' · ' +
+        ADJ[j.s.id].length + ' ' + plural(ADJ[j.s.id].length, 'трасса', 'трассы', 'трасс');
+      const sw = ctx.measureText(sub).width;
+      const sbox = box === above
+        ? { x0: j.x - sw / 2 - 4, x1: j.x + sw / 2 + 4, y0: j.y + j.rad + 12, y1: j.y + j.rad + 26 }
+        : { x0: j.x - sw / 2 - 4, x1: j.x + sw / 2 + 4, y0: j.y - j.rad - 26, y1: j.y - j.rad - 12 };
+      placed.push(sbox);
+      ctx.globalAlpha = alpha * .85;
+      ctx.fillStyle = '#7f95a8';
+      ctx.fillText(sub, j.x, sbox.y1 - 3);
+    }
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function pickAt(sx, sy) {
+  let best = null, bd = 1e9;
+  for (const s of SYSTEMS) {
+    const p = proj(s.x, s.y, PLANE_H);
+    const d = Math.hypot(p.x - sx, p.y - sy);
+    const hit = Math.max(18, s.r * cam.z + 10);
+    if (d < hit && d < bd) { bd = d; best = s.id; }
+  }
+  return best;
+}
+/* ---------- close-up sphere: geometry LUT + per-frame shading ---------- */
+let lut = null, lutImg = null, lutCv = null, lutCx = null;
+const LDIR = (() => { const v = [.62, -.34, .71], n = Math.hypot(...v); return v.map(c => c / n); })();
+
+function buildLUT(R) {
+  if (lut && lut.R === R) return lut;
+  const S = R * 2, N = S * S;
+  const inside = new Uint8Array(N), lat = new Float32Array(N);
+  const lon = new Float32Array(N), sh = new Float32Array(N), rim = new Float32Array(N), night = new Float32Array(N), spec = new Float32Array(N);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const i = y * S + x;
+      const nx = (x - R + .5) / R, ny = (y - R + .5) / R;
+      const q = nx * nx + ny * ny;
+      if (q > 1) { inside[i] = 0; continue; }
+      inside[i] = 1;
+      const nz = Math.sqrt(1 - q);
+      // small axial tilt so poles read correctly
+      const ty = ny * .966 - nz * .259, tz = ny * .259 + nz * .966;
+      lon[i] = Math.atan2(nx, tz);
+      lat[i] = clamp((Math.asin(clamp(ty, -1, 1)) / Math.PI + .5), 0, .9999);
+      const d = nx * LDIR[0] + ny * LDIR[1] + nz * LDIR[2];
+      sh[i] = .04 + .96 * smooth(-.16, .52, d);
+      night[i] = 1 - smooth(-.06, .3, d);
+      rim[i] = Math.pow(1 - nz, 2.6) * (.2 + .8 * smooth(-.35, .55, d));
+      spec[i] = Math.pow(smooth(.74, .998, d), 9);
+    }
+  }
+  lutCv = document.createElement('canvas');
+  lutCv.width = lutCv.height = S;
+  lutCx = lutCv.getContext('2d');
+  lutImg = lutCx.createImageData(S, S);
+  lut = { R, S, inside, lat, lon, sh, rim, night, spec };
+  return lut;
+}
+
+function renderSphere(sys, R, yaw) {
+  const L = buildLUT(R), tex = bestTex(sys), k = tex.kind;
+  const TW = tex.w, TH = tex.h;
+  const d = lutImg.data, S = L.S, inv = 1 / (Math.PI * 2);
+  const cloudYaw = yaw * 1.14 + 1.7;
+  for (let i = 0, n = S * S; i < n; i++) {
+    const o = i * 4;
+    if (!L.inside[i]) { d[o + 3] = 0; continue; }
+
+    const fy = L.lat[i] * TH - .5;
+    const y0 = Math.floor(fy), wy = fy - y0;
+    const ra = ((y0 % TH) + TH) % TH, rb = (ra + 1) % TH;
+    const r0 = ra * TW, r1 = rb * TW;
+
+    let u = (L.lon[i] + yaw) * inv + .5; u -= Math.floor(u);
+    const fx = u * TW - .5;
+    const x0 = Math.floor(fx), wx = fx - x0;
+    const xa = ((x0 % TW) + TW) % TW, xb = (xa + 1) % TW;
+
+    // bilinear albedo: kills the blocky look on large spheres
+    const i00 = (r0 + xa) * 3, i10 = (r0 + xb) * 3, i01 = (r1 + xa) * 3, i11 = (r1 + xb) * 3;
+    const a = tex.alb;
+    let r = (a[i00] + (a[i10] - a[i00]) * wx) + ((a[i01] + (a[i11] - a[i01]) * wx) - (a[i00] + (a[i10] - a[i00]) * wx)) * wy;
+    let g = (a[i00 + 1] + (a[i10 + 1] - a[i00 + 1]) * wx) + ((a[i01 + 1] + (a[i11 + 1] - a[i01 + 1]) * wx) - (a[i00 + 1] + (a[i10 + 1] - a[i00 + 1]) * wx)) * wy;
+    let b = (a[i00 + 2] + (a[i10 + 2] - a[i00 + 2]) * wx) + ((a[i01 + 2] + (a[i11 + 2] - a[i01 + 2]) * wx) - (a[i00 + 2] + (a[i10 + 2] - a[i00 + 2]) * wx)) * wy;
+
+    let uc = (L.lon[i] + cloudYaw) * inv + .5; uc -= Math.floor(uc);
+    const cxi = (uc * TW) | 0;
+    const cl = (tex.cld[r0 + cxi] * (1 - wy) + tex.cld[r1 + cxi] * wy) / 255;
+
+    const sh = L.sh[i], rim = L.rim[i], ng = L.night[i];
+    if (cl > .01) { r = lerp(r, k.cloudCol[0], cl); g = lerp(g, k.cloudCol[1], cl); b = lerp(b, k.cloudCol[2], cl); }
+    r *= sh; g *= sh; b *= sh;
+    const wet = tex.wet[r0 + xa] / 255 * (1 - cl);
+    if (wet > .01) {
+      const sp = L.spec[i] * wet * 95;
+      r += sp; g += sp * 1.02; b += sp * .95;
+    }
+    const emit = (tex.lit[r0 + xa] * (1 - wy) + tex.lit[r1 + xa] * wy) / 255 * (1 - cl * .8);
+    const eg = emit * (k.emit === 'lava' ? (.35 + .65 * ng) : ng);
+    if (eg > .008) { r += eg * k.emitCol[0]; g += eg * k.emitCol[1]; b += eg * k.emitCol[2]; }
+    const am = k.atmoAmt;
+    r += k.atmo[0] * rim * am; g += k.atmo[1] * rim * am; b += k.atmo[2] * rim * am;
+    d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+  }
+  lutCx.putImageData(lutImg, 0, 0);
+  return lutCv;
+}
+
+function sphereLayout() {
+  const wide = W > 820;
+  const disp = clamp(wide ? Math.min(H * .3, W * .23) : Math.min(H * .2, W * .32), 60, 250);
+  return {
+    x: wide ? W * .36 : W * .5,
+    y: wide ? H * .5 : H * .34,
+    disp: disp,
+    R: Math.round(Math.min(disp, 200))          // render resolution stays fixed: one LUT, no rebuilds
+  };
+}
+
+let sphereCache = { id: null, img: null, tick: 0 };
+function sphereFrame(sys, R) {
+  if (sphereCache.id !== sys.id || !sphereCache.img) {
+    renderSphere(sys, R, spin);
+    sphereCache.id = sys.id; sphereCache.img = lutCv;
+    return sphereCache.img;
+  }
+  if (!RM && (++sphereCache.tick & 1) === 0) renderSphere(sys, R, spin);
+  return sphereCache.img;
+}
+
+function drawPlanetScene(sys, alpha, t) {
+  const lay = sphereLayout();
+  const node = proj(sys.x, sys.y, PLANE_H);
+  const R = lerp(Math.max(10, sys.r * cam.z), lay.disp, easeIO(t));
+  const cxp = lerp(node.x, lay.x, easeIO(t));
+  const cyp = lerp(node.y, lay.y, easeIO(t));
+  const fac = facOf(sys.own), k = kindOf(sys);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const halo = ctx.createRadialGradient(cxp, cyp, R * .95, cxp, cyp, R * 1.9);
+  halo.addColorStop(0, 'rgba(' + k.atmo.join(',') + ',' + (.3 * k.atmoAmt / .62) + ')');
+  halo.addColorStop(.45, 'rgba(' + k.atmo.join(',') + ',' + (.09 * k.atmoAmt / .62) + ')');
+  halo.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(cxp, cyp, R * 1.9, 0, 6.2832); ctx.fill();
+
+  ctx.globalAlpha = alpha * .5 * t;
+  ctx.strokeStyle = fac.col;
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 2; i++) {
+    const rr = R * (1.3 + i * .26), sq = .2 + i * .07;
+    ctx.beginPath();
+    ctx.ellipse(cxp, cyp, rr, rr * sq, -.42 + i * .3, 0, 6.2832);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = alpha;
+  const img = sphereFrame(sys, lay.R);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, cxp - R, cyp - R, R * 2, R * 2);
+
+  // one marker riding the near side of the inner ring
+  const mark = RM ? 1.2 : spin * .8;
+  if (Math.sin(mark) > 0) {
+    const rr = R * 1.3, tl = -.42;
+    const ex = Math.cos(mark) * rr, ey = Math.sin(mark) * rr * .2;
+    ctx.globalAlpha = alpha * .95 * t;
+    ctx.fillStyle = fac.col;
+    ctx.beginPath();
+    ctx.arc(cxp + ex * Math.cos(tl) - ey * Math.sin(tl), cyp + ex * Math.sin(tl) + ey * Math.cos(tl), 2.8, 0, 6.2832);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ---------- UI ---------- */
+const el = id => document.getElementById(id);
+const panel = el('panel'), detail = el('detail'), dataDrawer = el('drawer'), facDrawer = el('facdrawer');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function invalidate(id) {
+  delete texCache[id + ':lo']; delete texCache[id + ':hi'];
+  Object.keys(spriteCache).forEach(k => { if (k.split('@')[0] === id) delete spriteCache[k]; });
+  if (sphereCache.id === id) sphereCache.id = null;
+}
+function supplyText(id) {
+  const s = strat.supply[id];
+  if (s === null || s === undefined) return 'вне сети снабжения';
+  if (strat.cut.has(id)) return 'отрезано от ядра';
+  return s + ' полк. в общей сети';
+}
+
+/* ---------- panel ---------- */
+function syncPanel() {
+  if (!selected || !SYS[selected]) { selected = null; panel.classList.remove('open'); return; }
+  const s = SYS[selected];
+  panel.classList.add('open');
+  const facBtns = DATA.factions.map(f =>
+    '<button data-act="own" data-id="' + esc(f.id) + '" aria-pressed="' + (f.id === s.own) + '"' +
+    (f.id === s.own ? ' style="color:' + esc(f.color) + ';border-color:' + esc(f.color) + '"' : '') +
+    '>' + esc(f.name) + '</button>').join('');
+
+  const lanes = ADJ[s.id].map(n => {
+    const st = laneStyle(s.id, n);
+    const tag = st.blocked ? 'перекрыта' : st.hot ? 'спорная' :
+      (SYS[n].own === s.own && !isNeu(s.own)) ? 'своя' : 'нейтральная';
+    return '<div><span>' + esc(SYS[n].name) + '</span><span style="display:flex;gap:8px;align-items:center">' +
+      '<span class="tag" style="color:' + st.col + '">' + tag + '</span>' +
+      (editing ? '<button class="mini" data-act="unlink" data-id="' + esc(n) + '" aria-label="Убрать трассу">×</button>' : '') +
+      '</span></div>';
+  }).join('') || '<div style="color:var(--dim)">нет трасс</div>';
+
+  const sp = strat.sup[s.id] || { open: 0, major: 0, blocked: 0, res: 0, power: 0 };
+  const bt = BATTLE[s.id];
+  const supBlock = '<div class="field"><div class="lab">Снабжение и мощь</div>' +
+    '<div class="kv"><span>Ресурсы</span><span class="v">' + sp.res + '</span></div>' +
+    '<div class="kv" style="margin-top:5px"><span>Военная мощь</span><span class="v">' + sp.power + '</span></div>' +
+    '<div class="hint" style="margin-top:6px">' +
+      (sp.isolated ? 'Отрезано от сети — приход нулевой.' :
+        'Открытых трасс: ' + sp.open + (sp.major ? ', из них магистралей ' + sp.major : '') +
+        (sp.blocked ? ', перекрыто ' + sp.blocked : '')) +
+    '</div></div>' +
+    (bt ? '<div class="field"><div class="lab">Бой</div>' + battleProgress(bt) + '</div>' : '');
+  const warn = strat.cut.has(s.id)
+    ? '<div class="warn">Система отрезана от основного массива своей фракции. Снабжение не идёт — гарнизон тает без боя.</div>'
+    : ADJ[s.id].some(n => laneStyle(s.id, n).hot)
+      ? '<div class="warn">Система на фронте: как минимум одна трасса спорная.</div>' : '';
+
+  const headBlock = editing
+    ? '<div class="kicker">Система</div>' +
+      '<input class="big" id="f-name" value="' + esc(s.name) + '" aria-label="Название системы">' +
+      '<div class="sub mono" style="font-size:11px;opacity:.7">Квадрат ' + esc(gridRef(s)) +
+        (regionOf(s) ? ' · ' + esc(regionOf(s).name) : '') + '</div>' +
+      '<div class="grid2">' +
+        '<label>Тип<select id="f-kind">' + KIND_ORDER.map(k =>
+          '<option value="' + k + '"' + (k === s.kind ? ' selected' : '') + '>' + esc(KIND[k].label) + '</option>').join('') + '</select></label>' +
+        '<label>Сектор<select id="f-sector"><option value="">—</option>' + DATA.sectors.map(sec =>
+          '<option value="' + esc(sec.id) + '"' + (sec.id === s.sector ? ' selected' : '') + '>' + esc(sec.name) + '</option>').join('') + '</select></label>' +
+      '</div>'
+    : '<div class="kicker">' + esc(KIND[s.kind] ? KIND[s.kind].label : s.kind) +
+        (s.sector && SECTOR[s.sector] ? ' · ' + esc(SECTOR[s.sector].name) : '') +
+        ' · ' + esc(gridRef(s)) +
+        (regionOf(s) && (!s.sector || !SECTOR[s.sector] || SECTOR[s.sector].name !== regionOf(s).name)
+          ? ' · ' + esc(regionOf(s).name) : '') + '</div>' +
+      '<h2>' + esc(s.name) + '</h2>' +
+      '<div class="sub">' + esc(s.note || '') + '</div>';
+
+  panel.innerHTML =
+    '<div>' + headBlock + '</div>' +
+    '<div class="field"><div class="lab">Контроль</div><div class="owners">' + facBtns + '</div></div>' +
+    '<div class="field"><div class="lab">Гарнизон, полки</div><div class="garrison">' +
+      '<button data-act="gar" data-d="-1" aria-label="Убрать полк">−</button>' +
+      '<div class="val mono">' + s.gar + '</div>' +
+      '<button data-act="gar" data-d="1" aria-label="Добавить полк">+</button></div></div>' +
+    (editing ? '<div class="field"><div class="lab">Внешний вид</div>' + palBlock(s) + '</div>' : '') +
+    (editing ? '<div class="field"><div class="lab">Описание</div><textarea id="f-note" rows="3" aria-label="Описание системы">' + esc(s.note || '') + '</textarea></div>' : '') +
+    supBlock +
+    '<div class="field"><div class="lab">Гиперпуть</div><div class="lanes">' + lanes + '</div>' +
+      (editing ? '<button class="wide" data-act="link">' + (linkFrom === s.id ? 'Выбери вторую систему…' : 'Соединить трассой') + '</button>' : '') +
+    '</div>' +
+    warn +
+    '<div class="spacer"></div>' +
+    (editing
+      ? '<button class="wide danger" data-act="del">Удалить систему</button>'
+      : '<button class="wide" data-act="dive">Спуститься к планете</button>');
+
+  if (editing) bindPalette(s);
+  if (editing) {
+    el('f-name').addEventListener('input', e => { s.name = e.target.value; touch(); });
+    el('f-kind').addEventListener('change', e => { s.kind = e.target.value; invalidate(s.id); touch(); });
+    el('f-sector').addEventListener('change', e => { s.sector = e.target.value; touch(); });
+    el('f-note').addEventListener('input', e => { s.note = e.target.value; touch(); });
+  }
+}
+
+panel.addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b || !selected) return;
+  const s = SYS[selected];
+  const act = b.dataset.act;
+  if (act === 'own') {
+    const from = s.own, to = b.dataset.id;
+    if (from !== to) {
+      s.own = to;
+      const main = DATA.meta.main;
+      const kind = to === main ? 'gain' : from === main ? 'loss' : 'info';
+      logAdd(kind, to === main ? 'Планета взята' : from === main ? 'Планета потеряна' : 'Смена контроля',
+        s.name + ': ' + facOf(from).name + ' → ' + facOf(to).name + '.');
+      changed();
+    }
+  }
+  else if (act === 'gar') { s.gar = clamp(s.gar + (+b.dataset.d), 0, 999); changed(); }
+  else if (act === 'dive') dive(selected);
+  else if (act === 'link') { linkFrom = linkFrom === s.id ? null : s.id; syncPanel(); }
+  else if (act === 'unlink') { removeLane(s.id, b.dataset.id); }
+  else if (act === 'pal-reset') { delete s.pal; invalidate(s.id); syncPanel(); touch(); }
+  else if (act === 'del') {
+    if (!canMoveCreate) return;
+    if (!confirm('Удалить систему «' + s.name + '» и все её трассы?')) return;
+    DATA.systems = DATA.systems.filter(x => x.id !== s.id);
+    DATA.lanes = DATA.lanes.filter(([a, b2]) => a !== s.id && b2 !== s.id);
+    selected = null; linkFrom = null;
+    rebuild();
+  }
+});
+
+
+/* ---------- palette from a reference image ---------- */
+const PAL_ROLES = [['sea', 'Вода / низины'], ['land', 'Суша'], ['high', 'Вершины'], ['atmo', 'Атмосфера']];
+function palBlock(s) {
+  const k = kindOf(s);
+  const sw = PAL_ROLES.map(([key, label]) =>
+    '<label style="flex:1 1 40%">' + label +
+    '<input type="color" data-pal="' + key + '" value="' + rgbHex(k[key]) + '" style="width:100%"></label>').join('');
+  return '<div class="editrow"><input id="pal-url" placeholder="ссылка на картинку" value="' + esc(s.pal && s.pal.src || '') + '">' +
+      '<button data-act="pal-url">Взять</button></div>' +
+    '<div class="editrow" style="margin-top:6px"><input type="file" id="pal-file" accept="image/*" aria-label="Картинка с диска"></div>' +
+    '<div id="pal-msg" class="hint" style="margin-top:6px">' +
+      (s.pal ? 'Палитра снята с картинки. Цвета можно править вручную.' : 'Пока цвета берутся из типа планеты.') + '</div>' +
+    '<div class="editgrid" style="margin-top:8px">' + sw + '</div>' +
+    '<label style="margin-top:8px">Облачность<input type="range" id="pal-cloud" min="0" max="0.8" step="0.02" value="' + k.cloud + '"></label>' +
+    (s.pal ? '<button class="wide" data-act="pal-reset" style="margin-top:9px">Вернуть цвета типа</button>' : '');
+}
+function palMsg(t) { const m = el('pal-msg'); if (m) m.textContent = t; }
+function ensurePal(s) {
+  if (!s.pal) {
+    const k = KIND[s.kind] || KIND.terran;
+    s.pal = { sea: k.sea.slice(), land: k.land.slice(), high: k.high.slice(), atmo: k.atmo.slice(), cloudCol: k.cloudCol.slice(), cloud: k.cloud };
+  }
+  return s.pal;
+}
+function applyImage(s, img, src) {
+  let pal;
+  try { pal = extractPalette(img); }
+  catch (err) {
+    palMsg('Хост не отдаёт картинку для чтения (нет CORS). Скачай её и загрузи файлом.');
+    return;
+  }
+  pal.src = src || '';
+  s.pal = pal;
+  invalidate(s.id);
+  syncPanel();
+  palMsg('Палитра снята. Цвета можно править вручную.');
+  touch();
+}
+function bindPalette(s) {
+  const urlBtn = panel.querySelector('[data-act="pal-url"]');
+  if (urlBtn) urlBtn.addEventListener('click', () => {
+    const url = el('pal-url').value.trim();
+    if (!url) { palMsg('Оставь ссылку на картинку.'); return; }
+    palMsg('Загружаю…');
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => applyImage(s, img, url);
+    img.onerror = () => palMsg('Картинка не загрузилась. Проверь ссылку или загрузи файлом.');
+    img.src = url;
+  });
+  const file = el('pal-file');
+  if (file) file.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    palMsg('Читаю файл…');
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => applyImage(s, img, f.name);
+      img.onerror = () => palMsg('Не удалось прочитать изображение.');
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(f);
+  });
+  panel.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', e => {
+    ensurePal(s)[e.target.dataset.pal] = hexRgb(e.target.value);
+    invalidate(s.id); touch();
+  }));
+  const cl = el('pal-cloud');
+  if (cl) cl.addEventListener('input', e => {
+    ensurePal(s).cloud = parseFloat(e.target.value);
+    invalidate(s.id); touch();
+  });
+}
+
+/* ---------- structural edits ---------- */
+function toggleLane(a, b) {
+  if (a === b) return;
+  const i = DATA.lanes.findIndex(([x, y]) => (x === a && y === b) || (x === b && y === a));
+  if (i >= 0) DATA.lanes.splice(i, 1); else DATA.lanes.push([a, b]);
+  rebuild();
+}
+function removeLane(a, b) {
+  const i = DATA.lanes.findIndex(([x, y]) => (x === a && y === b) || (x === b && y === a));
+  if (i >= 0) { DATA.lanes.splice(i, 1); rebuild(); }
+}
+function addSystem(wx, wy) {
+  if (!canMoveCreate) return null;
+  const name = 'Новая система';
+  const id = slug(name, v => !!SYS[v]);
+  DATA.systems.push({
+    id, name, x: Math.round(wx), y: Math.round(wy), r: 14,
+    kind: KIND_ORDER[0], sector: DATA.sectors[0] ? DATA.sectors[0].id : '',
+    own: neutralId(), gar: 0, note: ''
+  });
+  rebuild();
+  selected = id; linkFrom = null;
+  syncPanel();
+  const f = el('f-name');
+  if (f) { f.focus(); f.select(); }
+  return id;
+}
+
+/* ---------- factions & sectors ---------- */
+function syncFactions() {
+  el('fac-list').innerHTML = DATA.factions.map(f =>
+    '<div class="row-edit">' +
+      '<input type="color" value="' + esc(f.color) + '" data-fac="' + esc(f.id) + '" data-k="color" aria-label="Цвет фракции">' +
+      '<input value="' + esc(f.name) + '" data-fac="' + esc(f.id) + '" data-k="name" aria-label="Название фракции">' +
+      '<label class="neu-flag"><input type="checkbox" data-fac="' + esc(f.id) + '" data-k="neutral"' + (f.neutral ? ' checked' : '') + '> нейтральная</label>' +
+      '<button class="mini" data-facdel="' + esc(f.id) + '" aria-label="Удалить фракцию">×</button>' +
+    '</div>').join('');
+  el('sec-list').innerHTML = DATA.sectors.map(s =>
+    '<div class="row-edit">' +
+      '<input value="' + esc(s.name) + '" data-sec="' + esc(s.id) + '" aria-label="Название сектора">' +
+      '<span class="count mono">' + SYSTEMS.filter(x => x.sector === s.id).length + '</span>' +
+      '<button class="mini" data-secdel="' + esc(s.id) + '" aria-label="Удалить сектор">×</button>' +
+    '</div>').join('') || '<div style="color:var(--dim);font-size:12px">секторов пока нет</div>';
+}
+facDrawer.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.fac) {
+    const f = DATA.factions.find(x => x.id === t.dataset.fac);
+    if (!f) return;
+    if (t.dataset.k === 'neutral') {
+      f.neutral = t.checked;
+      if (t.checked) DATA.factions.forEach(o => { if (o !== f) o.neutral = false; });
+      syncFactions();
+    } else f[t.dataset.k] = t.value;
+    indexData(); changed();
+  } else if (t.dataset.sec) {
+    const s = DATA.sectors.find(x => x.id === t.dataset.sec);
+    if (s) { s.name = t.value; touch(); syncPanel(); }
+  }
+});
+facDrawer.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.facdel) {
+    const id = b.dataset.facdel;
+    if (DATA.factions.length < 2) { facMsg('Должна остаться хотя бы одна фракция.'); return; }
+    const used = SYSTEMS.filter(s => s.own === id).length;
+    if (used && !confirm('Фракция занимает ' + used + ' систем. Они станут нейтральными. Удалить?')) return;
+    DATA.factions = DATA.factions.filter(f => f.id !== id);
+    if (!DATA.factions.some(f => f.neutral)) DATA.factions[DATA.factions.length - 1].neutral = true;
+    const nid = neutralId();
+    SYSTEMS.forEach(s => { if (s.own === id) s.own = nid; });
+    rebuild(); syncFactions();
+  } else if (b.dataset.secdel) {
+    const id = b.dataset.secdel;
+    DATA.sectors = DATA.sectors.filter(s => s.id !== id);
+    SYSTEMS.forEach(s => { if (s.sector === id) s.sector = ''; });
+    rebuild(); syncFactions();
+  } else if (b.id === 'fac-add') {
+    const name = 'Новая фракция';
+    DATA.factions.push({ id: slug(name, v => DATA.factions.some(f => f.id === v)), name, color: '#8f7fd8' });
+    rebuild(); syncFactions();
+  } else if (b.id === 'sec-add') {
+    const name = 'Новый сектор';
+    DATA.sectors.push({ id: slug(name, v => DATA.sectors.some(s => s.id === v)), name });
+    rebuild(); syncFactions();
+  }
+});
+function facMsg(t) { el('fac-msg').textContent = t; }
+
+/* ---------- data in / out ---------- */
+let dataTab = 'json';
+function csvEscape(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function parseCSV(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') q = false;
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',' || c === ';') { row.push(cell); cell = ''; }
+    else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (c !== '\r') cell += c;
+  }
+  if (cell.length || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(v => v.trim() !== ''));
+}
+function systemsCSV() {
+  const head = ['id', 'name', 'x', 'y', 'kind', 'sector', 'own', 'gar', 'note'];
+  return [head.join(',')].concat(SYSTEMS.map(s =>
+    head.map(k => csvEscape(s[k])).join(','))).join('\n');
+}
+function lanesCSV() {
+  return ['from,to'].concat(LANES.map(l => l.join(','))).join('\n');
+}
+function fillData() {
+  const t = el('state');
+  if (dataTab === 'json') t.value = JSON.stringify(DATA, null, 1);
+  else if (dataTab === 'csv') t.value = systemsCSV();
+  else t.value = lanesCSV();
+  document.querySelectorAll('[data-tab]').forEach(b =>
+    b.setAttribute('aria-pressed', b.dataset.tab === dataTab ? 'true' : 'false'));
+}
+function applyData() {
+  const raw = el('state').value.trim();
+  if (!raw) { el('err').textContent = 'Поле пустое — вставь данные.'; return; }
+  try {
+    if (dataTab === 'json') {
+      const d = JSON.parse(raw);
+      if (!d || !Array.isArray(d.systems)) throw new Error('нет списка систем');
+      loadData(d);
+    } else if (dataTab === 'csv') {
+      const rows = parseCSV(raw);
+      const head = rows.shift().map(h => h.trim().toLowerCase());
+      const need = ['name', 'x', 'y'];
+      const miss = need.filter(k => head.indexOf(k) < 0);
+      if (miss.length) throw new Error('в шапке не хватает колонок: ' + miss.join(', '));
+      const col = k => head.indexOf(k);
+      const seen = {};
+      DATA.systems = rows.map(r => {
+        const name = r[col('name')] || 'Система';
+        let id = col('id') >= 0 && r[col('id')] ? r[col('id')].trim() : '';
+        if (!id || seen[id]) id = slug(name, v => seen[v]);
+        seen[id] = 1;
+        const kind = col('kind') >= 0 ? (r[col('kind')] || '').trim() : '';
+        return {
+          id, name,
+          x: parseFloat(r[col('x')]) || 0,
+          y: parseFloat(r[col('y')]) || 0,
+          r: col('r') >= 0 ? (parseFloat(r[col('r')]) || 14) : 14,
+          kind: KIND[kind] ? kind : KIND_ORDER[0],
+          sector: col('sector') >= 0 ? (r[col('sector')] || '').trim() : '',
+          own: col('own') >= 0 ? (r[col('own')] || '').trim() : neutralId(),
+          gar: col('gar') >= 0 ? (parseInt(r[col('gar')], 10) || 0) : 0,
+          note: col('note') >= 0 ? r[col('note')] : ''
+        };
+      });
+      const secIds = {};
+      DATA.sectors.forEach(s => secIds[s.id] = 1);
+      DATA.systems.forEach(s => {
+        if (s.sector && !secIds[s.sector]) { DATA.sectors.push({ id: s.sector, name: s.sector }); secIds[s.sector] = 1; }
+      });
+      loadData(DATA);
+    } else {
+      const rows = parseCSV(raw);
+      if (rows[0] && isNaN(parseFloat(rows[0][0])) && !SYS[rows[0][0].trim()]) rows.shift();
+      DATA.lanes = rows.map(r => [String(r[0]).trim(), String(r[1]).trim()]);
+      loadData(DATA);
+    }
+  } catch (e) {
+    el('err').textContent = 'Не принято: ' + e.message + '.';
+    return;
+  }
+  Object.keys(texCache).forEach(k => delete texCache[k]);
+  Object.keys(spriteCache).forEach(k => delete spriteCache[k]);
+  sphereCache.id = null;
+  selected = null; linkFrom = null;
+  syncBackdrop();
+  changed(); syncFactions(); syncMapDrawer(); syncPanel();
+  el('err').textContent = 'Данные загружены: систем ' + SYSTEMS.length + ', трасс ' + LANES.length + '.';
+}
+
+el('btn-apply').addEventListener('click', applyData);
+el('btn-copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(el('state').value); el('err').textContent = 'Скопировано.'; }
+  catch (e) { el('state').select(); el('err').textContent = 'Копирование недоступно — текст выделен, нажми Ctrl+C.'; }
+});
+el('btn-example').addEventListener('click', () => {
+  if (!confirm('Заменить карту примером? Текущая карта будет потеряна.')) return;
+  loadData(cloneDefault());
+  Object.keys(texCache).forEach(k => delete texCache[k]);
+  Object.keys(spriteCache).forEach(k => delete spriteCache[k]);
+  selected = null; changed(); syncFactions(); syncPanel(); fillData();
+  el('err').textContent = 'Загружен пример.';
+});
+el('btn-blank').addEventListener('click', () => {
+  if (!confirm('Начать пустую карту?')) return;
+  loadData({ meta: { name: 'Кампания' }, factions: cloneDefault().factions, sectors: [], systems: [], lanes: [] });
+  selected = null; changed(); syncFactions(); syncPanel(); fillData();
+  el('err').textContent = 'Пустая карта. Включи редактор и добавь первую систему.';
+});
+document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+  dataTab = b.dataset.tab; el('err').textContent = ''; fillData();
+}));
+el('state').addEventListener('input', () => el('err').textContent = '');
+
+
+/* ---------- map drawer: backdrop, grid, regions, routes ---------- */
+const mapDrawer = el('mapdrawer');
+function syncMapDrawer() {
+  const m = DATA.meta, bg = m.bg, g = m.grid;
+  el('bg-body').innerHTML =
+    '<div class="editrow"><input id="bg-url" placeholder="ссылка на картинку" value="' + esc(bg.src.slice(0, 5) === 'data:' ? '' : bg.src) + '">' +
+      '<button id="bg-take">Взять</button></div>' +
+    '<div class="editrow" style="margin-top:6px"><input type="file" id="bg-file" accept="image/*" aria-label="Подложка с диска"></div>' +
+    '<div class="editrow" style="margin-top:8px">' +
+      '<label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="bg-on"' + (bg.on ? ' checked' : '') + '>показывать</label>' +
+      '<button class="mini" id="bg-fit" style="border:1px solid var(--line);padding:4px 8px">под системы</button>' +
+      '<button class="mini" id="bg-clear" style="border:1px solid var(--line);padding:4px 8px">убрать</button></div>' +
+    '<div class="editgrid" style="margin-top:8px">' +
+      '<label>Ширина<input type="number" id="bg-w" value="' + Math.round(bg.w) + '" step="20"></label>' +
+      '<label>Прозрачность<input type="range" id="bg-op" min="0.1" max="1" step="0.05" value="' + bg.op + '"></label></div>' +
+    '<div class="editgrid" style="margin-top:6px">' +
+      '<label>Сдвиг X<input type="number" id="bg-x" value="' + Math.round(bg.x) + '" step="10"></label>' +
+      '<label>Сдвиг Y<input type="number" id="bg-y" value="' + Math.round(bg.y) + '" step="10"></label></div>' +
+    '<div class="hint" id="bg-msg">' + (bg.src ? (bg.src.slice(0, 5) === 'data:' ? 'Загружена картинка с диска.' : 'Подложка по ссылке.') : 'Подложки нет.') + '</div>';
+
+  el('grid-body').innerHTML =
+    '<div class="editgrid">' +
+      '<label>Шаг квадрата<input type="number" id="g-size" value="' + g.size + '" step="10" min="20"></label>' +
+      '<label style="flex-direction:row;align-items:center;gap:6px;margin-top:16px"><input type="checkbox" id="g-show"' + (g.show ? ' checked' : '') + '>сетка видна</label>' +
+    '</div>' +
+    '<div class="editgrid" style="margin-top:6px">' +
+      '<label>Начало X<input type="number" id="g-ox" value="' + g.ox + '" step="10"></label>' +
+      '<label>Начало Y<input type="number" id="g-oy" value="' + g.oy + '" step="10"></label></div>' +
+    '<div class="editgrid" style="margin-top:6px">' +
+      '<label>Центр X<input type="number" id="g-cx" value="' + m.center.x + '" step="10"></label>' +
+      '<label>Центр Y<input type="number" id="g-cy" value="' + m.center.y + '" step="10"></label></div>' +
+    '<div class="hint">Центр — точка, от которой считаются кольца регионов.</div>';
+
+  el('reg-body').innerHTML = DATA.regions.map((r, i) =>
+    '<div class="editrow"><input type="color" data-reg="' + i + '" data-k="color" value="' + esc(r.color) + '" aria-label="Цвет региона">' +
+    '<input data-reg="' + i + '" data-k="name" value="' + esc(r.name) + '" aria-label="Название региона">' +
+    '<input type="number" data-reg="' + i + '" data-k="r" value="' + Math.round(r.r) + '" step="20" aria-label="Радиус">' +
+    '<button class="mini" data-regdel="' + i + '" aria-label="Убрать регион">×</button></div>').join('') +
+    '<button id="reg-add" style="margin-top:6px">Добавить кольцо</button>';
+
+  el('route-body').innerHTML = DATA.routes.map((rt, i) =>
+    '<div style="border-left:2px solid ' + esc(rt.color) + ';padding-left:9px;margin-bottom:10px">' +
+    '<div class="editrow"><input type="color" data-rt="' + i + '" data-k="color" value="' + esc(rt.color) + '" aria-label="Цвет маршрута">' +
+    '<input data-rt="' + i + '" data-k="name" value="' + esc(rt.name) + '" aria-label="Название маршрута">' +
+    '<button class="mini" data-rtdel="' + i + '" aria-label="Убрать маршрут">×</button></div>' +
+    '<div class="hint" style="margin-top:5px">' + (rt.path.map(id => SYS[id] ? SYS[id].name : id).join(' → ') || 'маршрут пуст') + '</div>' +
+    '<div class="editrow" style="margin-top:5px">' +
+      '<button class="mini" data-rtadd="' + i + '" style="border:1px solid var(--line);padding:4px 8px">+ выбранная система</button>' +
+      '<button class="mini" data-rtpop="' + i + '" style="border:1px solid var(--line);padding:4px 8px">убрать последнюю</button>' +
+    '</div></div>').join('') +
+    '<button id="route-add">Добавить маршрут</button>' +
+    '<div class="hint">Выдели систему на карте и жми «+ выбранная система» — маршрут строится по порядку. Его отрезки становятся магистралями и рисуются цветом маршрута.</div>';
+}
+function downscale(img, maxW) {
+  const w = Math.min(maxW, img.naturalWidth || img.width);
+  const h = Math.round(w * (img.naturalHeight || img.height) / (img.naturalWidth || img.width));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(img, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', .72);
+}
+function setBackdrop(src, msg) {
+  DATA.meta.bg.src = src;
+  DATA.meta.bg.on = true;
+  syncBackdrop();
+  syncMapDrawer();
+  el('bg-msg').textContent = msg;
+  touch();
+}
+mapDrawer.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const m = DATA.meta;
+  if (b.id === 'bg-take') {
+    const url = el('bg-url').value.trim();
+    if (!url) { el('bg-msg').textContent = 'Оставь ссылку.'; return; }
+    setBackdrop(url, 'Подложка по ссылке.');
+  } else if (b.id === 'bg-clear') {
+    m.bg.src = ''; m.bg.on = false; syncBackdrop(); syncMapDrawer(); touch();
+  } else if (b.id === 'bg-fit') {
+    if (!SYSTEMS.length) return;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity;
+    SYSTEMS.forEach(s => { x0 = Math.min(x0, s.x); x1 = Math.max(x1, s.x); y0 = Math.min(y0, s.y); });
+    m.bg.x = Math.round(x0 - 120); m.bg.y = Math.round(y0 - 120); m.bg.w = Math.round((x1 - x0) + 240);
+    syncMapDrawer(); touch();
+  } else if (b.id === 'reg-add') {
+    const last = DATA.regions[DATA.regions.length - 1];
+    DATA.regions.push({ id: 'reg' + Date.now(), name: 'Новое кольцо', r: last ? last.r + 200 : 300, color: '#7c8794' });
+    indexData(); syncMapDrawer(); changed();
+  } else if (b.dataset.regdel !== undefined) {
+    DATA.regions.splice(+b.dataset.regdel, 1); indexData(); syncMapDrawer(); changed();
+  } else if (b.id === 'route-add') {
+    DATA.routes.push({ id: 'rt' + Date.now(), name: 'Новый маршрут', color: '#f0d08a', path: [] });
+    indexData(); syncMapDrawer(); changed();
+  } else if (b.dataset.rtdel !== undefined) {
+    DATA.routes.splice(+b.dataset.rtdel, 1); rebuild(); syncMapDrawer();
+  } else if (b.dataset.rtadd !== undefined) {
+    const rt = DATA.routes[+b.dataset.rtadd];
+    if (!selected) { return; }
+    if (rt.path[rt.path.length - 1] !== selected) rt.path.push(selected);
+    rebuild(); syncMapDrawer();
+  } else if (b.dataset.rtpop !== undefined) {
+    DATA.routes[+b.dataset.rtpop].path.pop();
+    rebuild(); syncMapDrawer();
+  }
+});
+mapDrawer.addEventListener('change', e => {
+  const t = e.target, m = DATA.meta;
+  if (t.id === 'bg-file') {
+    const f = t.files && t.files[0];
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => setBackdrop(downscale(img, 1400), 'Картинка сжата и загружена.');
+      img.onerror = () => { el('bg-msg').textContent = 'Не удалось прочитать изображение.'; };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(f);
+  } else if (t.id === 'bg-on') { m.bg.on = t.checked; touch(); }
+  else if (t.id === 'g-show') { m.grid.show = t.checked; touch(); }
+});
+mapDrawer.addEventListener('input', e => {
+  const t = e.target, m = DATA.meta;
+  const num = () => parseFloat(t.value) || 0;
+  if (t.id === 'bg-w') { m.bg.w = Math.max(50, num()); touch(); }
+  else if (t.id === 'bg-op') { m.bg.op = parseFloat(t.value); touch(); }
+  else if (t.id === 'bg-x') { m.bg.x = num(); touch(); }
+  else if (t.id === 'bg-y') { m.bg.y = num(); touch(); }
+  else if (t.id === 'g-size') { m.grid.size = Math.max(20, num()); syncPanel(); touch(); }
+  else if (t.id === 'g-ox') { m.grid.ox = num(); syncPanel(); touch(); }
+  else if (t.id === 'g-oy') { m.grid.oy = num(); syncPanel(); touch(); }
+  else if (t.id === 'g-cx') { m.center.x = num(); syncPanel(); touch(); }
+  else if (t.id === 'g-cy') { m.center.y = num(); syncPanel(); touch(); }
+  else if (t.dataset.reg !== undefined) {
+    const r = DATA.regions[+t.dataset.reg];
+    if (!r) return;
+    r[t.dataset.k] = t.dataset.k === 'r' ? Math.max(20, num()) : t.value;
+    indexData(); syncPanel(); touch();
+  } else if (t.dataset.rt !== undefined) {
+    const rt = DATA.routes[+t.dataset.rt];
+    if (rt) { rt[t.dataset.k] = t.value; indexData(); touch(); }
+  }
+});
+el('btn-map').addEventListener('click', () => openDrawer('map'));
+
+/* ---------- drawers & mode ---------- */
+const DRAWERS = { data: ['drawer', 'btn-drawer'], fac: ['facdrawer', 'btn-fac'], map: ['mapdrawer', 'btn-map'] };
+function openDrawer(which) {
+  const willOpen = !el(DRAWERS[which][0]).classList.contains('open');
+  Object.keys(DRAWERS).forEach(k => {
+    const on = k === which && willOpen;
+    el(DRAWERS[k][0]).classList.toggle('open', on);
+    el(DRAWERS[k][1]).setAttribute('aria-expanded', on ? 'true' : 'false');
+  });
+  if (willOpen) {
+    if (which === 'data') fillData();
+    if (which === 'fac') syncFactions();
+    if (which === 'map') syncMapDrawer();
+  }
+}
+el('btn-drawer').addEventListener('click', () => openDrawer('data'));
+el('btn-fac').addEventListener('click', () => openDrawer('fac'));
+el('btn-fit').addEventListener('click', fitView);
+el('btn-add').addEventListener('click', () => {
+  const c = unproj(W / 2, H / 2);
+  addSystem(c.x, c.y - PLANE_H);
+});
+el('btn-mode').addEventListener('click', () => {
+  if (!canEditAtAll) return;
+  const wasProposing = editing && !canMoveCreate;
+  editing = !editing;
+  linkFrom = null;
+  document.body.classList.toggle('editing', editing && canMoveCreate);
+  document.body.classList.toggle('proposing', editing && !canMoveCreate);
+  el('btn-mode').textContent = !editing ? 'Режим: обзор' : (canMoveCreate ? 'Режим: редактор' : 'Режим: предложение правки');
+  el('btn-mode').setAttribute('aria-pressed', editing ? 'true' : 'false');
+  syncPanel(); syncStats();
+  // Ивентолог без права прямой правки: выход из режима "предложение" —
+  // повод отправить черновик на рассмотрение (см. submitProposal)
+  if (wasProposing && !editing) submitProposal();
+});
+
+/* ---------- planet view ---------- */
+function focusOn(id) {
+  const s = SYS[id];
+  if (!s) return;
+  if (W > 820) { cam.tx = s.x + 150 / cam.z * .9; cam.ty = s.y; }
+  else { cam.tx = s.x; cam.ty = s.y + (H * .2) / (cam.z * cam.tilt); }
+}
+function dive(id) {
+  if (!id || mode !== 'map' || editing) return;
+  diveTarget = id; selected = id;
+  mode = 'diving'; transDir = 1;
+  panel.classList.remove('open');
+  document.body.classList.add('in-planet');
+  reflow();
+  el('back').classList.add('show');
+  syncDetail();
+  setTimeout(() => { if (SYS[id]) { buildTexture(SYS[id], 'hi'); sphereCache.id = null; } }, 60);
+}
+function surface() {
+  if (mode !== 'planet') return;
+  mode = 'rising'; transDir = -1;
+  detail.classList.remove('show');
+  document.body.classList.remove('in-planet');
+  reflow();
+  el('back').classList.remove('show');
+}
+function syncDetail() {
+  if (!diveTarget || !SYS[diveTarget]) return;
+  const s = SYS[diveTarget];
+  el('d-kicker').textContent = (KIND[s.kind] ? KIND[s.kind].label : s.kind) +
+    (s.sector && SECTOR[s.sector] ? ' · ' + SECTOR[s.sector].name : '') + ' · ' + gridRef(s) +
+    (regionOf(s) ? ' · ' + regionOf(s).name : '');
+  el('d-name').textContent = s.name;
+  el('d-blurb').textContent = s.note || '';
+  el('d-own').textContent = facOf(s.own).name;
+  el('d-own').style.color = facOf(s.own).color;
+  el('d-gar').textContent = s.gar + ' полк.';
+  el('d-lanes').textContent = ADJ[s.id].map(n => SYS[n].name).join(', ') || '—';
+  el('d-sup').textContent = supplyText(s.id);
+}
+el('back').addEventListener('click', surface);
+
+/* ---------- state sync ---------- */
+function bar(colour, frac) {
+  return '<div class="bar"><i style="width:' + Math.round(clamp(frac, 0, 1) * 100) + '%;background:' + colour + '"></i></div>';
+}
+function syncCtrl() {
+  const total = Math.max(1, SYSTEMS.length);
+  el('ctrl-list').innerHTML = DATA.factions.map(f => {
+    const n = SYSTEMS.filter(s => s.own === f.id).length;
+    return '<div class="fac-row"><div class="t"><span><span class="dot" style="background:' + esc(f.color) + '"></span>' +
+      esc(f.name) + '</span><b>' + n + '</b></div>' + bar(f.color, n / total) + '</div>';
+  }).join('') +
+    '<div class="fac-row" style="border-top:1px solid var(--line);padding-top:10px">' +
+      '<div class="t"><span>Спорные трассы</span><b style="color:' + HOT + '">' + strat.disputed.length + '</b></div>' +
+      '<div class="t"><span>Отрезано систем</span><b style="color:' + (strat.cut.size ? HOT : 'inherit') + '">' + strat.cut.size + '</b></div>' +
+    '</div>';
+  el('legend').innerHTML = DATA.factions.map(f =>
+    '<span><i style="background:' + esc(f.color) + '"></i>' + esc(f.name) + '</span>').join('');
+  el('c-sys').textContent = SYSTEMS.length;
+  el('c-lane').textContent = LANES.length;
+  el('c-date').textContent = today();
+  el('camp-name').textContent = DATA.meta.name;
+  el('camp-eyebrow').textContent = DATA.meta.eyebrow;
+}
+function syncRes() {
+  const f = facOf(DATA.meta.main);
+  el('res-title').textContent = 'Ресурсы · ' + f.name;
+  el('res-add').hidden = !editing;
+  const rows = (f.res || []).map((r, i) => editing
+    ? '<div class="editrow"><input value="' + esc(r.k) + '" data-res="' + i + '" data-k="k" aria-label="Название ресурса">' +
+      '<input value="' + esc(r.v) + '" data-res="' + i + '" data-k="v" style="flex:0 0 92px" aria-label="Значение">' +
+      '<button class="mini" data-resdel="' + i + '" aria-label="Убрать строку">×</button></div>'
+    : '<div class="kv"><span>' + esc(r.k) + '</span><span class="v">' + esc(r.v) + '</span></div>').join('');
+  const picker = editing
+    ? '<label style="margin-top:4px">Чьи ресурсы<select id="res-fac">' + DATA.factions.filter(x => !x.neutral).map(x =>
+        '<option value="' + esc(x.id) + '"' + (x.id === DATA.meta.main ? ' selected' : '') + '>' + esc(x.name) + '</option>').join('') +
+      '</select></label>' : '';
+  const inc = '<div class="kv" style="border-top:1px solid var(--line);padding-top:9px;margin-top:2px">' +
+    '<span>Приход по снабжению</span><span class="v" style="color:' + esc(f.color) + '">+' + factionIncome(f.id) + '</span></div>';
+  el('res-list').innerHTML = (rows || '<div style="color:var(--dim);font-size:12px">пусто</div>') + inc + picker;
+  if (editing) el('res-fac').addEventListener('change', e => { DATA.meta.main = e.target.value; syncRes(); touch(); });
+}
+function syncEsc() {
+  const e0 = DATA.meta.esc;
+  const scale = '<div class="esc-scale">' + Array.from({ length: e0.max }, (_, i) =>
+    '<span style="background:' + (i < e0.level ? HOT : 'rgba(143,184,216,.14)') + '"></span>').join('') + '</div>';
+  el('esc-body').innerHTML = editing
+    ? scale + '<div class="editgrid"><label>Уровень<input type="number" id="esc-lv" min="0" max="12" value="' + e0.level + '"></label>' +
+      '<label>Всего<input type="number" id="esc-mx" min="1" max="12" value="' + e0.max + '"></label></div>' +
+      '<textarea id="esc-note" rows="3" aria-label="Описание фазы">' + esc(e0.note) + '</textarea>'
+    : scale + '<div class="kv"><span>Уровень ' + e0.level + ' из ' + e0.max + '</span></div>' +
+      '<div class="esc-note">' + esc(e0.note) + '</div>';
+  if (editing) {
+    el('esc-lv').addEventListener('input', ev => { e0.level = clamp(parseInt(ev.target.value, 10) || 0, 0, e0.max); syncEsc(); touch(); });
+    el('esc-mx').addEventListener('input', ev => { e0.max = clamp(parseInt(ev.target.value, 10) || 1, 1, 12); e0.level = Math.min(e0.level, e0.max); syncEsc(); touch(); });
+    el('esc-note').addEventListener('input', ev => { e0.note = ev.target.value; touch(); });
+  }
+}
+function sysOptions(cur) {
+  return SYSTEMS.map(s => '<option value="' + esc(s.id) + '"' + (s.id === cur ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
+}
+function facOptions(cur) {
+  return DATA.factions.map(f => '<option value="' + esc(f.id) + '"' + (f.id === cur ? ' selected' : '') + '>' + esc(f.name) + '</option>').join('');
+}
+function battleProgress(b) {
+  const att = facOf(b.att), def = facOf(b.def);
+  const p = clamp(Number.isFinite(b.prog) ? b.prog : 50, 0, 100);
+  const days = daysSince(b.since);
+  const lead = p > 56 ? att.name : p < 44 ? def.name : 'равновесие';
+  return '<div class="prog"><i style="width:' + p + '%;background:' + att.color + '"></i>' +
+      '<u style="width:' + (100 - p) + '%;background:' + def.color + '"></u></div>' +
+    '<div class="m" style="margin-top:5px">' +
+      '<span>' + esc(BATTLE_STATUS[b.status] || b.status) + '</span><span>·</span>' +
+      '<span>перевес: ' + esc(lead) + '</span>' +
+      (days !== null ? '<span>·</span><span>идёт ' + days + ' ' + plural(days, 'сутки', 'суток', 'суток') + '</span>' : '') +
+      (b.when ? '<span>·</span><span>' + esc(b.when) + '</span>' : '') +
+    '</div>';
+}
+function syncBattles() {
+  el('bat-add').hidden = !editing;
+  const list = DATA.battles;
+  if (!list.length) { el('bat-list').innerHTML = '<div style="color:var(--dim);font-size:12px">боёв нет</div>'; return; }
+  el('bat-list').innerHTML = list.map((b, i) => {
+    const s = SYS[b.sys];
+    if (!s) return '';
+    const live = LIVE_STAGES[b.status] ? '' : b.status === 'planned' ? ' planned' : ' done';
+    if (editing) return '<div class="battle' + live + '">' +
+      '<div class="editrow"><select data-bat="' + i + '" data-k="sys">' + sysOptions(b.sys) + '</select>' +
+      '<button class="mini" data-batdel="' + i + '" aria-label="Убрать бой">×</button></div>' +
+      '<div class="editgrid"><select data-bat="' + i + '" data-k="att">' + facOptions(b.att) + '</select>' +
+      '<select data-bat="' + i + '" data-k="def">' + facOptions(b.def) + '</select></div>' +
+      '<div class="editgrid"><select data-bat="' + i + '" data-k="status">' +
+        Object.keys(BATTLE_STATUS).map(k => '<option value="' + k + '"' + (k === b.status ? ' selected' : '') + '>' + BATTLE_STATUS[k] + '</option>').join('') +
+      '</select><input value="' + esc(b.since || '') + '" data-bat="' + i + '" data-k="since" placeholder="с 12.08"></div>' +
+      '<label style="margin-top:6px">Перевес атакующего<input type="range" data-bat="' + i + '" data-k="prog" min="0" max="100" step="2" value="' +
+        (Number.isFinite(b.prog) ? b.prog : 50) + '"></label>' +
+      battleProgress(b) +
+      '<input value="' + esc(b.when || '') + '" data-bat="' + i + '" data-k="when" placeholder="примечание" style="margin-top:6px"></div>';
+    return '<div class="battle' + live + '" data-goto="' + esc(b.sys) + '" role="button" tabindex="0">' +
+      '<div class="n">' + esc(s.name) + '</div><div class="m">' +
+      '<span style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</span> против ' +
+      '<span style="color:' + esc(facOf(b.def).color) + '">' + esc(facOf(b.def).name) + '</span></div>' +
+      battleProgress(b) + '</div>';
+  }).join('');
+}
+function syncBlocks() {
+  el('blk-add').hidden = !editing;
+  const list = DATA.blockades;
+  if (!list.length) { el('blk-list').innerHTML = '<div style="color:var(--dim);font-size:12px">блокад нет</div>'; return; }
+  el('blk-list').innerHTML = list.map((b, i) => {
+    const A = SYS[b.a], B = SYS[b.b];
+    if (!A || !B) return '';
+    if (editing) return '<div class="battle planned">' +
+      '<div class="editrow"><div class="n" style="flex:1">' + esc(A.name) + ' — ' + esc(B.name) + '</div>' +
+      '<button class="mini" data-blkdel="' + i + '" aria-label="Снять блокаду">×</button></div>' +
+      '<div class="editgrid" style="margin-top:5px"><select data-blk="' + i + '" data-k="fac">' + facOptions(b.fac) + '</select>' +
+      '<input type="number" data-blk="' + i + '" data-k="str" value="' + (b.str || 1) + '" min="1" aria-label="Сила"></div>' +
+      '<input value="' + esc(b.note || '') + '" data-blk="' + i + '" data-k="note" placeholder="примечание" style="margin-top:5px"></div>';
+    return '<div class="battle planned" data-goto="' + esc(b.a) + '" role="button" tabindex="0">' +
+      '<div class="n">' + esc(A.name) + ' — ' + esc(B.name) + '</div><div class="m">' +
+      '<span style="color:' + esc(facOf(b.fac).color) + '">' + esc(facOf(b.fac).name) + '</span><span>·</span>' +
+      '<span>слой ' + (b.str || 1) + '</span>' + (b.note ? '<span>·</span><span>' + esc(b.note) + '</span>' : '') +
+      '</div></div>';
+  }).join('');
+}
+function syncLog() {
+  el('log-add').hidden = !editing;
+  if (!DATA.log.length) { el('log-list').innerHTML = '<div style="color:var(--dim);font-size:12px">записей нет</div>'; return; }
+  el('log-list').innerHTML = DATA.log.map((e0, i) => {
+    const col = (LOG_KINDS[e0.kind] || LOG_KINDS.info).color;
+    if (editing) return '<div class="e" style="grid-template-columns:1fr">' +
+      '<div class="editrow"><input value="' + esc(e0.d) + '" data-log="' + i + '" data-k="d" style="flex:0 0 56px" aria-label="Дата">' +
+      '<select data-log="' + i + '" data-k="kind">' + Object.keys(LOG_KINDS).map(k =>
+        '<option value="' + k + '"' + (k === e0.kind ? ' selected' : '') + '>' + LOG_KINDS[k].label + '</option>').join('') + '</select>' +
+      '<button class="mini" data-logdel="' + i + '" aria-label="Убрать запись">×</button></div>' +
+      '<div class="editrow" style="margin-top:5px"><input value="' + esc(e0.tag) + '" data-log="' + i + '" data-k="tag" placeholder="метка"></div>' +
+      '<div class="editrow" style="margin-top:5px"><input value="' + esc(e0.text) + '" data-log="' + i + '" data-k="text" placeholder="текст"></div></div>';
+    return '<div class="e"><div class="d">' + esc(e0.d) + '</div><div class="txt">' +
+      (e0.tag ? '<span class="tag" style="color:' + col + '">' + esc(e0.tag) + '</span>' : '') + esc(e0.text) + '</div></div>';
+  }).join('');
+}
+function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncBattles(); syncBlocks(); syncLog(); syncRequests(); }
+
+el('rail-r').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b) {
+    if (b.id === 'bat-add') {
+      const sysId = selected || (SYSTEMS[0] && SYSTEMS[0].id);
+      if (!sysId) return;
+      const foes = DATA.factions.filter(f => !f.neutral);
+      DATA.battles.unshift({
+        id: 'b' + Date.now(), sys: sysId,
+        att: (foes[1] || foes[0] || {}).id, def: (foes[0] || {}).id,
+        status: 'active', when: ''
+      });
+      indexData(); syncBattles(); touch();
+      return;
+    }
+    if (b.dataset.batdel !== undefined) { DATA.battles.splice(+b.dataset.batdel, 1); indexData(); syncBattles(); touch(); return; }
+    if (b.id === 'blk-add') {
+      if (!selected || !ADJ[selected].length) { return; }
+      const n = ADJ[selected].find(x => !isBlocked(selected, x));
+      if (!n) return;
+      DATA.blockades.push({ id: 'bl' + Date.now(), a: selected, b: n, fac: DATA.factions.find(f => !f.neutral).id, str: 1, note: '' });
+      logAdd('battle', 'Блокада', SYS[selected].name + ' — ' + SYS[n].name + ': трасса перекрыта.');
+      rebuild(); syncStats();
+      return;
+    }
+    if (b.dataset.blkdel !== undefined) {
+      const bl = DATA.blockades[+b.dataset.blkdel];
+      logAdd('gain', 'Блокада снята', SYS[bl.a].name + ' — ' + SYS[bl.b].name + '.');
+      DATA.blockades.splice(+b.dataset.blkdel, 1);
+      rebuild(); syncStats();
+      return;
+    }
+    if (b.id === 'log-add') { logAdd('info', 'Событие', ''); syncLog(); touch(); return; }
+    if (b.dataset.logdel !== undefined) { DATA.log.splice(+b.dataset.logdel, 1); syncLog(); touch(); return; }
+  }
+  const card = e.target.closest('[data-goto]');
+  if (card && SYS[card.dataset.goto]) { selected = card.dataset.goto; focusOn(selected); syncPanel(); }
+});
+el('rail-r').addEventListener('keydown', e => {
+  const card = e.target.closest('[data-goto]');
+  if (card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); card.click(); }
+});
+el('rail-r').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.bat !== undefined) {
+    const b = DATA.battles[+t.dataset.bat];
+    if (b) { b[t.dataset.k] = t.value; indexData(); syncBattles(); syncPanel(); touch(); }
+  } else if (t.dataset.blk !== undefined) {
+    const bl = DATA.blockades[+t.dataset.blk];
+    if (bl) { bl[t.dataset.k] = t.dataset.k === 'str' ? Math.max(1, parseInt(t.value, 10) || 1) : t.value; rebuild(); syncStats(); }
+  } else if (t.dataset.log !== undefined) {
+    const l = DATA.log[+t.dataset.log];
+    if (l) { l[t.dataset.k] = t.value; syncLog(); touch(); }
+  }
+});
+el('rail-r').addEventListener('input', e => {
+  const t = e.target;
+  if (t.tagName !== 'INPUT') return;
+  if (t.dataset.bat !== undefined) {
+    const b = DATA.battles[+t.dataset.bat];
+    if (!b) return;
+    if (t.dataset.k === 'prog') { b.prog = parseInt(t.value, 10); syncBattles(); syncPanel(); }
+    else b[t.dataset.k] = t.value;
+    touch();
+  } else if (t.dataset.blk !== undefined) {
+    const bl = DATA.blockades[+t.dataset.blk];
+    if (bl) { bl[t.dataset.k] = t.value; touch(); }
+  }
+  else if (t.dataset.log !== undefined) { const l = DATA.log[+t.dataset.log]; if (l) { l[t.dataset.k] = t.value; touch(); } }
+});
+el('rail-l').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const f = facOf(DATA.meta.main);
+  if (b.id === 'res-add') { f.res.push({ k: 'Ресурс', v: '0' }); syncRes(); touch(); }
+  else if (b.dataset.resdel !== undefined) { f.res.splice(+b.dataset.resdel, 1); syncRes(); touch(); }
+  else if (b.dataset.reqview !== undefined) { previewRequest(b.dataset.reqview); }
+  else if (b.dataset.reqok !== undefined) { decideRequest(b.dataset.reqok, true); }
+  else if (b.dataset.reqno !== undefined) { decideRequest(b.dataset.reqno, false); }
+});
+el('rail-l').addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.res === undefined) return;
+  const f = facOf(DATA.meta.main);
+  if (f.res[+t.dataset.res]) { f.res[+t.dataset.res][t.dataset.k] = t.value; touch(); }
+});
+el('railtoggle').addEventListener('click', e => {
+  const b = e.target.closest('button[data-rail]');
+  if (!b) return;
+  const cls = 'rail-' + b.dataset.rail;
+  const on = document.body.classList.contains(cls);
+  document.body.classList.remove('rail-l', 'rail-r');
+  if (!on) document.body.classList.add(cls);
+  el('railtoggle').querySelectorAll('button').forEach(x =>
+    x.setAttribute('aria-pressed', document.body.classList.contains('rail-' + x.dataset.rail) ? 'true' : 'false'));
+});
+cv.addEventListener('pointerdown', () => document.body.classList.remove('rail-l', 'rail-r'));
+
+/* ---------- permissions + persistence (backend, not localStorage) ---------- */
+let ACCESS = { canEdit: false, canPropose: false, username: '' };
+let canEditAtAll = false, canMoveCreate = false;
+let pendingRequests = [];
+let saveTimer = null;
+
+function setSaveStatus(text) { const s = el('save-status'); if (s) s.textContent = text; }
+
+async function loadAccess() {
+  const me = await api('/me');
+  ACCESS = {
+    canEdit: !!(me.access && me.access.can_decide_event),
+    canPropose: !!(me.access && me.access.is_event_submitter),
+    username: (me.user && (me.user.callsign || me.user.username)) || ''
+  };
+  canEditAtAll = ACCESS.canEdit || ACCESS.canPropose;
+  canMoveCreate = ACCESS.canEdit;
+  el('btn-mode').style.display = canEditAtAll ? '' : 'none';
+  el('req-card').hidden = !ACCESS.canEdit;
+}
+
+async function loadGalaxyMap() {
+  const res = await api('/galaxy-map');
+  return res.data && Object.keys(res.data).length ? res.data : cloneDefault();
+}
+
+function touch() {
+  persist();
+  if (dataDrawer.classList.contains('open')) fillData();
+}
+function persist() {
+  if (!canEditAtAll) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  if (canMoveCreate) {
+    setSaveStatus('сохранение…');
+    saveTimer = setTimeout(async () => {
+      try { await api('/galaxy-map', { method: 'PUT', body: JSON.stringify({ data: DATA }) }); setSaveStatus('сохранено'); }
+      catch (e) { setSaveStatus('ошибка сохранения'); }
+    }, 700);
+  } else {
+    setSaveStatus('черновик предложения — не сохранён на сервере');
+  }
+}
+async function submitProposal() {
+  if (canMoveCreate) return;
+  const note = prompt('Коротко опишите правку (необязательно):', '') || '';
+  try {
+    await api('/galaxy-map/requests', { method: 'POST', body: JSON.stringify({ data: DATA, note }) });
+    setSaveStatus('заявка отправлена на рассмотрение');
+    const fresh = await loadGalaxyMap();
+    loadData(fresh);
+    Object.keys(texCache).forEach(k => delete texCache[k]);
+    Object.keys(spriteCache).forEach(k => delete spriteCache[k]);
+    selected = null; changed(); syncFactions(); syncPanel();
+  } catch (e) {
+    setSaveStatus('ошибка отправки заявки');
+    alert(e.message);
+  }
+}
+async function syncRequests() {
+  if (!ACCESS.canEdit) return;
+  try { pendingRequests = await api('/galaxy-map/requests'); }
+  catch (e) { pendingRequests = []; }
+  el('req-list').innerHTML = pendingRequests.length
+    ? pendingRequests.map(r => '<div class="battle planned">' +
+        '<div class="n">' + esc((r.submitted_by && (r.submitted_by.callsign || r.submitted_by.username)) || '—') + '</div>' +
+        '<div class="m">' + esc(r.note || 'без описания') + '</div>' +
+        '<div class="bar-row" style="margin-top:6px">' +
+          '<button class="mini" data-reqview="' + esc(r.id) + '">просмотреть</button>' +
+          '<button class="mini" data-reqok="' + esc(r.id) + '">одобрить</button>' +
+          '<button class="mini" data-reqno="' + esc(r.id) + '">отклонить</button>' +
+        '</div></div>').join('')
+    : '<div style="color:var(--dim);font-size:12px">заявок нет</div>';
+}
+async function previewRequest(id) {
+  const r = pendingRequests.find(x => x.id === id);
+  if (!r) return;
+  alert('Заявка от ' + ((r.submitted_by && (r.submitted_by.callsign || r.submitted_by.username)) || '—') +
+    ':\n' + (r.note || '(без описания)') + '\n\nОткройте вкладку "Данные" → JSON, чтобы свериться при необходимости; предпросмотр применения заявки пока не выводит diff, только одобрить/отклонить целиком.');
+}
+async function decideRequest(id, approve) {
+  const reason = approve ? null : (prompt('Причина отклонения (необязательно):', '') || null);
+  try {
+    await api('/galaxy-map/requests/' + id + '/decide', { method: 'POST', body: JSON.stringify({ approve, rejection_reason: reason }) });
+    if (approve) {
+      const fresh = await loadGalaxyMap();
+      loadData(fresh);
+      Object.keys(texCache).forEach(k => delete texCache[k]);
+      Object.keys(spriteCache).forEach(k => delete spriteCache[k]);
+      selected = null; changed(); syncFactions(); syncPanel();
+    } else {
+      syncRequests();
+    }
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function changed() { recompute(); syncStats(); syncDetail(); touch(); }
+function rebuild() { indexData(); changed(); syncPanel(); }
+function fitView() {
+  if (!SYSTEMS.length) { cam.tx = 495; cam.ty = 285; cam.tz = W > 820 ? .95 : .55; return; }
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  SYSTEMS.forEach(s => { x0 = Math.min(x0, s.x); x1 = Math.max(x1, s.x); y0 = Math.min(y0, s.y); y1 = Math.max(y1, s.y); });
+  cam.tx = (x0 + x1) / 2; cam.ty = (y0 + y1) / 2;
+  const pad = 140;
+  const zx = W / Math.max(120, x1 - x0 + pad * 2);
+  const zy = H / Math.max(120, (y1 - y0 + pad * 2) * cam.tilt);
+  cam.tz = clamp(Math.min(zx, zy), .34, 1.6);
+}
+
+/* ---------- input ---------- */
+cv.addEventListener('pointerdown', e => {
+  if (mode !== 'map') return;
+  cv.setPointerCapture(e.pointerId);
+  moved = 0;
+  const hit = pickAt(mx(e), my(e));
+  if (editing && canMoveCreate && hit && !e.shiftKey) { dragNode = hit; selected = hit; syncPanel(); }
+  drag = { x: e.clientX, y: e.clientY };
+});
+cv.addEventListener('pointermove', e => {
+  if (mode !== 'map') { hovered = null; return; }
+  if (drag) {
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    moved += Math.abs(dx) + Math.abs(dy);
+    if (dragNode) {
+      const s = SYS[dragNode];
+      s.x += dx / cam.z; s.y += dy / (cam.z * cam.tilt);
+      s.x = Math.round(s.x); s.y = Math.round(s.y);
+      cv.style.cursor = 'grabbing';
+    } else {
+      cam.tx -= dx / cam.z; cam.ty -= dy / (cam.z * cam.tilt);
+      cam.x = cam.tx; cam.y = cam.ty;
+      cv.style.cursor = 'grabbing';
+    }
+    drag = { x: e.clientX, y: e.clientY };
+    return;
+  }
+  hovered = pickAt(mx(e), my(e));
+  cv.style.cursor = hovered ? 'pointer' : 'grab';
+});
+cv.addEventListener('pointerup', e => {
+  if (mode !== 'map') return;
+  cv.style.cursor = 'grab';
+  const wasDrag = moved > 6, wasNode = dragNode;
+  drag = null; dragNode = null;
+  if (wasNode && wasDrag) { touch(); return; }
+  if (wasDrag) return;
+  const hit = pickAt(mx(e), my(e));
+  if (editing && canMoveCreate && hit && linkFrom && linkFrom !== hit) { toggleLane(linkFrom, hit); linkFrom = null; selected = hit; syncPanel(); return; }
+  if (editing && canMoveCreate && hit && e.shiftKey) { linkFrom = linkFrom === hit ? null : hit; selected = hit; syncPanel(); return; }
+  if (hit && hit === selected && !editing) { dive(hit); return; }
+  selected = hit;
+  if (hit) focusOn(hit);
+  else linkFrom = null;
+  syncPanel();
+});
+cv.addEventListener('dblclick', e => {
+  if (mode !== 'map' || !editing || !canMoveCreate) return;
+  const w = unproj(mx(e), my(e) + PLANE_H * cam.z);
+  addSystem(w.x, w.y);
+});
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (mode !== 'map') return;
+  const before = unproj(mx(e), my(e));
+  cam.tz = clamp(cam.tz * (e.deltaY < 0 ? 1.14 : 1 / 1.14), .28, 2.6);
+  cam.z = cam.tz;
+  const after = unproj(mx(e), my(e));
+  cam.tx += before.x - after.x; cam.ty += before.y - after.y;
+  cam.x = cam.tx; cam.y = cam.ty;
+}, { passive: false });
+
+addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+  if (e.key === 'Escape') {
+    if (mode === 'planet') surface();
+    else if (linkFrom) { linkFrom = null; syncPanel(); }
+    else { selected = null; syncPanel(); }
+    return;
+  }
+  if (mode !== 'map' || !SYSTEMS.length) return;
+  const ordered = [...SYSTEMS].sort((a, b) => a.x - b.x);
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Tab') {
+    e.preventDefault();
+    const i = ordered.findIndex(s => s.id === selected);
+    const step = (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) ? -1 : 1;
+    const next = ordered[(i + step + ordered.length) % ordered.length];
+    selected = next.id; focusOn(next.id); syncPanel();
+  } else if (e.key === 'Enter' && selected) dive(selected);
+  else if (e.key === '+' || e.key === '=') cam.tz = clamp(cam.tz * 1.14, .28, 2.6);
+  else if (e.key === '-') cam.tz = clamp(cam.tz / 1.14, .28, 2.6);
+});
+
+/* ---------- loop ---------- */
+const mapcell = el('mapcell');
+let cellRect = { left: 0, top: 0 };
+const mx = e => e.clientX - cellRect.left;
+const my = e => e.clientY - cellRect.top;
+
+function resize() {
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  cellRect = mapcell.getBoundingClientRect();
+  W = Math.max(1, Math.round(cellRect.width)); H = Math.max(1, Math.round(cellRect.height));
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  lut = null; sphereCache.img = null; sphereCache.id = null;
+}
+addEventListener('resize', resize);
+addEventListener('scroll', () => { cellRect = mapcell.getBoundingClientRect(); }, true);
+function reflow() { [0, 120, 260, 420, 520].forEach(t => setTimeout(resize, t)); }
+
+function frame(ts) {
+  now = ts - t0;
+  const dt = Math.min(50, ts - (frame.last || ts)); frame.last = ts;
+  spin += RM ? 0 : dt * .00016;
+
+  if (mode === 'diving' || mode === 'rising') {
+    trans = clamp(trans + transDir * dt / (RM ? 1 : 950), 0, 1);
+    if (transDir > 0) {
+      const s = SYS[diveTarget];
+      if (s) { cam.tx = s.x; cam.ty = s.y; cam.tz = lerp(cam.tz, 2.4, .04); }
+      if (trans >= 1) { mode = 'planet'; detail.classList.add('show'); }
+    } else if (trans <= 0) {
+      mode = 'map'; diveTarget = null; syncPanel();
+      cam.tz = W > 820 ? .95 : .55;
+    }
+  }
+
+  cam.x = lerp(cam.x, cam.tx, .09);
+  cam.y = lerp(cam.y, cam.ty, .09);
+  cam.z = lerp(cam.z, cam.tz, .09);
+
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#04060b');
+  bg.addColorStop(.55, '#070b14');
+  bg.addColorStop(1, '#03050a');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const mapAlpha = 1 - smooth(.15, .85, trans);
+  drawStars(1 - trans * .35);
+  if (mapAlpha > .01) {
+    drawBackdrop(mapAlpha);
+    drawRegions(mapAlpha);
+    if (!DATA.meta.bg.on) drawNebula(mapAlpha);
+    drawGrid(mapAlpha);
+    drawLanes(mapAlpha);
+    drawRouteLabels(mapAlpha);
+    drawNodes(mapAlpha);
+  }
+  if (trans > .001 && diveTarget && SYS[diveTarget]) {
+    drawPlanetScene(SYS[diveTarget], smooth(.05, .6, trans), trans);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- boot ---------- */
+resize();
+(async function boot() {
+  try {
+    await loadAccess();
+    const initial = await loadGalaxyMap();
+    loadData(initial);
+  } catch (e) {
+    document.getElementById('authgate').hidden = false;
+    document.getElementById('authgate').querySelector('div').textContent = 'Не удалось загрузить карту: ' + e.message;
+    document.getElementById('shell').style.display = 'none';
+    return;
+  }
+  syncBackdrop();
+  cam.tz = cam.z = W > 820 ? .95 : .55;
+  SYSTEMS.slice(0, 40).forEach(s => buildTexture(s, 'lo'));
+  changed();
+  syncFactions();
+  syncStats();
+  fitView();
+  cv.style.cursor = 'grab';
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

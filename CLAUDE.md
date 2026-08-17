@@ -978,6 +978,83 @@ matter how much width you hand it, check whether the CELL CONTENT ITSELF has
 an unbreakable flex/inline-flex row forcing a large minimum width, before
 reaching for more `width`/`min-width` on the table or its container.
 
+### "Галактика" campaign map — standalone static page, not a React route
+`frontend/public/galaxy-map.html` is a large (~2600 lines) self-contained
+canvas/vanilla-JS single-page app (galactic strategy map for RP campaigns:
+systems, factions, supply lines, battles, blockades, log) that arrived as a
+finished third-party artifact, not something built incrementally in this
+repo — see решение пользователя. It's placed in `frontend/public/` so Vite
+copies it byte-for-byte into `frontend/dist/galaxy-map.html`, served by the
+existing backend `StaticFiles` mount at `/galaxy-map.html` — deliberately
+**not** a React Router route: it has its own full-page canvas UI, own theme,
+own state machine, totally unrelated to the SPA shell, so wrapping it in a
+React component would add nothing but risk. Linked from `Sidebar.jsx`'s
+"Служба" group as a plain `<a href="/galaxy-map.html" target="_blank">`, not
+`<Link>` — it needs a real page navigation (own `<script>`, own DOM), not a
+route inside `HashRouter`.
+
+**Auth**: reads `localStorage.getItem('collapsar_token')` directly (same
+key `AuthContext.jsx` uses, same origin) and sends it as `Authorization:
+Bearer` on every `/api/galaxy-map*` call itself — no token is passed through
+React at all, since the page is opened via plain navigation, not rendered by
+the SPA. Shows an `#authgate` screen if that key is empty.
+
+**Backend** (`app/models/galaxy_map.py`, `app/models/galaxy_map_request.py`,
+`app/crud/galaxy_map*.py`, `app/api/galaxy_map.py`, migration `0093`):
+- `GalaxyMap` — singleton row (id=1, same pattern as `AppSettings`) holding
+  the entire campaign JSON blob (`data: JSON`) exactly as the page's own
+  `DATA` object shape — no per-field columns, since the frontend already
+  treats the whole thing as one document (it even has its own JSON-textarea
+  export/import tab). Replacing it wholesale via `galaxy_map_crud.replace`
+  is the only write path — no partial-field PATCH.
+- Three-tier permission model reusing the existing Ивентрум ladder from
+  `AccessContext` (`app/api/deps.py`) — deliberately no new role config,
+  since it's user decision that Ивентологи "own" this feature:
+  - anyone with `access.has_access` can `GET /galaxy-map` (view-only baseline)
+  - `is_event_submitter` (any of the 5 event-role tiers) can `POST
+    /galaxy-map/requests` — a full proposed snapshot of `DATA`, not a diff
+    (same "whole document" reasoning as the map itself)
+  - `can_decide_event` (Assistant+/Curator of Ивентология, or admin) can
+    `PUT /galaxy-map` directly (moving/creating systems, or any other edit,
+    saved immediately — see `saveTimer`/debounced `persist()` in the page's
+    own JS) **and** `GET/POST .../requests/{id}/decide` on the proposal
+    queue — approving copies `request.data` wholesale into `GalaxyMap.data`
+    via the same `replace()` the direct-PUT path uses.
+- `GalaxyMapRequest` mirrors the `Event`/`AdminReport` decide-flow shape
+  (`status: pending/approved/rejected`, `submitted_by_user_id`,
+  `decided_by_user_id`/`decided_at`/`rejection_reason`) already established
+  elsewhere in this codebase — same guard-against-redeciding pattern
+  (`galaxy_map_request_crud.decide` raises `AppError` if `status != "pending"`).
+
+**Frontend two-tier editing** — the page's own `editing` boolean now gates
+two different behaviors depending on `canMoveCreate` (`= access.can_decide_event`,
+fetched once at boot via `GET /api/me`):
+- Assistant+/Curator: "Режим: редактор" — identical to the original
+  behavior (drag nodes, double-click to create, `persist()` debounce-saves
+  via `PUT /galaxy-map` after every edit).
+- plain Ивентолог (`is_event_submitter` only): "Режим: предложение правки"
+  — drag-to-move and double-click-to-create are inert (`canMoveCreate`
+  guards both `addSystem` and the `pointerdown`/`dblclick` handlers), but
+  every other control (owner/garrison/battles/blockades/log/resources/
+  escalation) still works, editing a **local-only** clone of `DATA` that
+  never touches `PUT /galaxy-map` — toggling the mode back off calls
+  `submitProposal()` (prompts for an optional note, `POST
+  .../galaxy-map/requests`), then reloads the real shared map so their own
+  screen reverts to the live version, not their unsent draft.
+- A viewer with neither flag never sees the "Режим" button at all
+  (`el('btn-mode').style.display = 'none'` in `loadAccess()`).
+Assistant+/Curator additionally get a "Заявки на правку" card in the left
+rail (`req-card`, populated by `syncRequests()`) listing pending proposals
+with одобрить/отклонить — approve triggers the same reload-from-server path
+as a direct save, so their own view picks up the merged result immediately.
+
+**Known limitation, accepted for this pass**: "просмотреть" on a pending
+request shows only the submitter + their note in an `alert()`, not an actual
+diff/preview of the proposed map — approving is still all-or-nothing sight-
+mostly-unseen beyond that note. Fine for a first version per решение
+пользователя; a real diff view would need the frontend to render two `DATA`
+snapshots side by side, not built here.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get

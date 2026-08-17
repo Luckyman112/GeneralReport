@@ -7,6 +7,8 @@ from app.models.event import Event, EventMap, EventStatus
 from app.models.event_activity_report import EventActivityReport, EventActivityReportStatus
 from app.models.event_booking import EventBooking, EventBookingStatus
 from app.models.event_message import EventMessage, EventMessageStatus
+from app.models.galaxy_map import GalaxyMap
+from app.models.galaxy_map_request import GalaxyMapRequest
 from app.models.jedi_trial import JediTrial
 from app.models.leave_request import LeaveRequest
 from app.models.notification import Notification, NotificationRead
@@ -78,4 +80,6 @@ __all__ = [
     "SquadMembership",
     "ReportRegimentDecision",
     "RegimentDecisionStatus",
+    "GalaxyMap",
+    "GalaxyMapRequest",
 ]
