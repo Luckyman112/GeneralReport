@@ -2642,30 +2642,6 @@ function frame(ts) {
 
 /* ---------- boot ---------- */
 resize();
-/* временная диагностика узкого рендера (баг-репорт) — убрать после фикса */
-(function debugSizes() {
-  try {
-    const lines = [];
-    lines.push('html.clientWidth=' + document.documentElement.clientWidth);
-    lines.push('body.clientWidth=' + document.body.clientWidth);
-    lines.push('mapcell.rect=' + JSON.stringify(mapcell.getBoundingClientRect()));
-    let fe = window.frameElement;
-    if (!fe) { lines.push('frameElement: NULL (cross-origin or not embedded)'); }
-    let node = fe, depth = 0;
-    while (node && depth < 8) {
-      const r = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
-      lines.push((node.tagName || '') + '.' + (node.className || '') + ' rect=' + (r ? Math.round(r.width) + 'x' + Math.round(r.height) : 'n/a'));
-      node = node.parentElement;
-      depth++;
-    }
-    const box = document.createElement('div');
-    box.style.cssText = 'position:fixed;top:0;left:0;z-index:99999;background:#000;color:#0f0;font:11px monospace;padding:8px;white-space:pre;max-width:96vw;overflow:auto;border:1px solid #0f0';
-    box.textContent = lines.join('\n');
-    document.body.appendChild(box);
-  } catch (e) {
-    console.error('debugSizes failed', e);
-  }
-})();
 (async function boot() {
   try {
     await loadAccess();
