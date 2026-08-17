@@ -15,11 +15,12 @@ export function GalaxyMapPage() {
     function update() {
       const node = wrapRef.current;
       if (!node) return;
-      // Сброс на статичное позиционирование перед замером — иначе второй и
-      // последующие вызовы (ресайз окна) мерили бы уже зафиксированный блок
-      // относительно viewport, а не его настоящее место в потоке.
-      node.style.position = "static";
-      const r = node.getBoundingClientRect();
+      // Меряем РОДИТЕЛЯ (.page-container), не сам блок — у самого блока
+      // getBoundingClientRect() уже учитывает padding .page-container
+      // (1.5rem/1rem), из-за которого оставался зазор слева/сверху между
+      // сайдбаром/навбаром и картой (баг-репорт). Внешний край контейнера —
+      // как раз то место, где сайдбар/навбар заканчиваются.
+      const r = (node.parentElement || node).getBoundingClientRect();
       setFixedRect({ top: r.top, left: r.left });
     }
     update();
