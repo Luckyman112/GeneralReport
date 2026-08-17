@@ -159,6 +159,8 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
 #err,#fac-msg{font-size:11.5px;color:var(--hot);min-height:15px;flex:1}
 .hint{font-size:11.5px;color:var(--dim);line-height:1.55;margin-top:9px}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.cols-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+.facility-badge{font-family:var(--mono);font-size:10px;letter-spacing:.06em;border:1px solid var(--line);padding:2px 6px;display:inline-block;margin:0 5px 5px 0;color:var(--ice)}
 
 #back{position:absolute;top:12px;left:12px;z-index:4;opacity:0;transform:translateY(-6px);
   transition:opacity .3s,transform .3s;pointer-events:none}
@@ -230,6 +232,10 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
       <h2>Эскалация</h2>
       <div class="body" id="esc-body"></div>
     </section>
+    <section class="card">
+      <h2>Стратегические объекты</h2>
+      <div class="body" id="facsum-list"></div>
+    </section>
     <section class="card" id="req-card" hidden>
       <h2><span>Заявки на правку</span></h2>
       <div class="body" id="req-list"></div>
@@ -268,8 +274,8 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
       </dl>
     </div>
 
-    <section class="drawer" id="facdrawer" aria-label="Фракции и сектора">
-      <div class="cols">
+    <section class="drawer" id="facdrawer" aria-label="Фракции, сектора и объекты планет">
+      <div class="cols-3">
         <div>
           <div class="lab">Фракции</div>
           <div id="fac-list"></div>
@@ -280,9 +286,14 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
           <div id="sec-list"></div>
           <button id="sec-add">Добавить сектор</button>
         </div>
+        <div>
+          <div class="lab">Объекты планет</div>
+          <div id="factype-list"></div>
+          <button id="factype-add">Добавить объект</button>
+        </div>
       </div>
       <div class="bar-row"><div id="fac-msg"></div></div>
-      <div class="hint">Нейтральная фракция особая: её системы не образуют фронт и не разрывают спорные трассы. Такой может быть только одна.</div>
+      <div class="hint">Нейтральная фракция особая: её системы не образуют фронт и не разрывают спорные трассы. Такой может быть только одна. Объекты планет включаются на самой системе (панель системы → "Объекты на планете") — эффект получает тот, кто ей сейчас владеет.</div>
     </section>
 
     <section class="drawer" id="mapdrawer" aria-label="Подложка, сетка, регионы и маршруты">
@@ -316,7 +327,7 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
         <button id="btn-blank">Пустая карта</button>
         <div id="err" role="status"></div>
       </div>
-      <div class="hint">CSV систем: обязательны колонки name, x, y. Остальные — id, kind, sector, own, gar, note — по желанию. Бои, журнал, ресурсы и эскалация лежат в JSON.</div>
+      <div class="hint">CSV систем: обязательны колонки name, x, y. Остальные — id, kind, sector, own, gar, note — по желанию. Бои, журнал, ресурсы, эскалация и объекты планет лежат в JSON.</div>
     </section>
   </div>
 
@@ -423,23 +434,38 @@ const DEFAULT_DATA = {
     { id: 'mid', name: 'Средние миры' },
     { id: 'outer', name: 'Внешнее кольцо' }
   ],
+  // Объекты планет — привязаны к конкретной системе, эффект получает тот, кто
+  // ей СЕЙЧАС владеет (см. факт own у системы). note — просто текст правила
+  // для отыгрыша, никакой автоматики поверх урона/HP/etc намеренно нет (см.
+  // решение пользователя) — куратор сам решает, как именно это отыгрывается.
+  facilityTypes: [
+    { id: 'weapons', name: 'Оружейный завод', note: '+урон войскам при обороне/атаке с этой системы' },
+    { id: 'armor', name: 'Бронезавод', note: '+броня/HP технике и пехоте, приписанным к системе' },
+    { id: 'propulsion', name: 'Двигательные мастерские', note: '+скорость технике и флоту с этой системы' },
+    { id: 'hangar', name: 'Ангар техобслуживания', note: 'разрешает наземную технику сверх стартового набора' },
+    { id: 'shipyard', name: 'Верфь', note: 'подкрепления флота, ремонт кораблей без отхода в тыл' },
+    { id: 'battery', name: 'Артиллерийская батарея', note: 'разрешает орбитальные/артиллерийские обстрелы с системы' },
+    { id: 'sensor', name: 'Сенсорная вышка', note: 'сканирование местности со звездолётов в соседних системах' },
+    { id: 'barracks', name: 'Казармы', note: '+пополнение личного состава' },
+    { id: 'medical', name: 'Медцентр', note: '+восстановление HP, быстрее лечение раненых' }
+  ],
   systems: [
-    { id: 'anaxes', name: 'Anaxes', x: 100, y: 330, r: 15, kind: 'ocean', sector: 'core', own: 'rep', gar: 8, note: 'Крепость-мир. Оборонный узел на входе в ядро.' },
-    { id: 'fondor', name: 'Fondor', x: 150, y: 470, r: 14, kind: 'urban', sector: 'core', own: 'rep', gar: 6, note: 'Орбитальные доки. Ремонт флота без отхода в тыл.' },
-    { id: 'abregado', name: 'Abregado-rae', x: 270, y: 410, r: 12, kind: 'terran', sector: 'core', own: 'rep', gar: 3, note: 'Перевалочный порт. Держится на торговле, не на гарнизоне.' },
-    { id: 'coruscant', name: 'Coruscant', x: 300, y: 260, r: 19, kind: 'urban', sector: 'core', own: 'rep', gar: 12, note: 'Столица. Потеря разрывает снабжение всего сектора.' },
-    { id: 'alderaan', name: 'Alderaan', x: 410, y: 150, r: 15, kind: 'terran', sector: 'core', own: 'rep', gar: 6, note: 'Демилитаризованный мир. Гарнизон условный.' },
-    { id: 'kuat', name: 'Kuat', x: 480, y: 70, r: 16, kind: 'urban', sector: 'core', own: 'rep', gar: 9, note: 'Верфи. Здесь строятся корпуса, здесь же их и теряют.' },
-    { id: 'rendili', name: 'Rendili', x: 450, y: 240, r: 14, kind: 'urban', sector: 'core', own: 'rep', gar: 5, note: 'Второй по величине судостроительный узел.' },
-    { id: 'corulag', name: 'Corulag', x: 410, y: 350, r: 13, kind: 'terran', sector: 'mid', own: 'rep', gar: 4, note: 'Академия и логистический хаб на четыре трассы.' },
-    { id: 'corellia', name: 'Corellia', x: 575, y: 195, r: 17, kind: 'terran', sector: 'mid', own: 'neu', gar: 5, note: 'Нейтралитет держит фронт разомкнутым. Пока держит.' },
-    { id: 'duro', name: 'Duro', x: 590, y: 320, r: 14, kind: 'urban', sector: 'mid', own: 'neu', gar: 2, note: 'Выжженная промзона. Четыре трассы, почти нет обороны.' },
-    { id: 'sullust', name: 'Sullust', x: 615, y: 440, r: 15, kind: 'volcanic', sector: 'mid', own: 'sep', gar: 7, note: 'Подземные заводы. Бомбардировка с орбиты почти бесполезна.' },
-    { id: 'bestine', name: 'Bestine', x: 490, y: 505, r: 12, kind: 'desert', sector: 'mid', own: 'rep', gar: 4, note: 'Тыловой склад, отрезанный от ядра при потере Corulag.' },
-    { id: 'eriadu', name: 'Eriadu', x: 740, y: 315, r: 16, kind: 'urban', sector: 'outer', own: 'sep', gar: 8, note: 'Штаб противника в секторе. Сходятся четыре трассы.' },
-    { id: 'geonosis', name: 'Geonosis', x: 820, y: 165, r: 15, kind: 'desert', sector: 'outer', own: 'sep', gar: 10, note: 'Дроидные заводы. Пополнение идёт быстрее, чем его выбивать.' },
-    { id: 'kamino', name: 'Kamino', x: 770, y: 60, r: 14, kind: 'ocean', sector: 'outer', own: 'sep', gar: 6, note: 'Клонические верфи. Стратегическая цель первого порядка.' },
-    { id: 'mustafar', name: 'Mustafar', x: 890, y: 420, r: 13, kind: 'volcanic', sector: 'outer', own: 'sep', gar: 3, note: 'Тупиковая система. Удобное место, чтобы кого-нибудь потерять.' }
+    { id: 'anaxes', name: 'Anaxes', x: 100, y: 330, r: 15, kind: 'ocean', sector: 'core', own: 'rep', gar: 8, note: 'Крепость-мир. Оборонный узел на входе в ядро.', facilities: ['battery', 'barracks'] },
+    { id: 'fondor', name: 'Fondor', x: 150, y: 470, r: 14, kind: 'urban', sector: 'core', own: 'rep', gar: 6, note: 'Орбитальные доки. Ремонт флота без отхода в тыл.', facilities: ['shipyard'] },
+    { id: 'abregado', name: 'Abregado-rae', x: 270, y: 410, r: 12, kind: 'terran', sector: 'core', own: 'rep', gar: 3, note: 'Перевалочный порт. Держится на торговле, не на гарнизоне.', facilities: [] },
+    { id: 'coruscant', name: 'Coruscant', x: 300, y: 260, r: 19, kind: 'urban', sector: 'core', own: 'rep', gar: 12, note: 'Столица. Потеря разрывает снабжение всего сектора.', facilities: ['weapons', 'medical', 'sensor'] },
+    { id: 'alderaan', name: 'Alderaan', x: 410, y: 150, r: 15, kind: 'terran', sector: 'core', own: 'rep', gar: 6, note: 'Демилитаризованный мир. Гарнизон условный.', facilities: [] },
+    { id: 'kuat', name: 'Kuat', x: 480, y: 70, r: 16, kind: 'urban', sector: 'core', own: 'rep', gar: 9, note: 'Верфи. Здесь строятся корпуса, здесь же их и теряют.', facilities: ['shipyard', 'armor'] },
+    { id: 'rendili', name: 'Rendili', x: 450, y: 240, r: 14, kind: 'urban', sector: 'core', own: 'rep', gar: 5, note: 'Второй по величине судостроительный узел.', facilities: ['shipyard'] },
+    { id: 'corulag', name: 'Corulag', x: 410, y: 350, r: 13, kind: 'terran', sector: 'mid', own: 'rep', gar: 4, note: 'Академия и логистический хаб на четыре трассы.', facilities: ['barracks', 'hangar'] },
+    { id: 'corellia', name: 'Corellia', x: 575, y: 195, r: 17, kind: 'terran', sector: 'mid', own: 'neu', gar: 5, note: 'Нейтралитет держит фронт разомкнутым. Пока держит.', facilities: [] },
+    { id: 'duro', name: 'Duro', x: 590, y: 320, r: 14, kind: 'urban', sector: 'mid', own: 'neu', gar: 2, note: 'Выжженная промзона. Четыре трассы, почти нет обороны.', facilities: [] },
+    { id: 'sullust', name: 'Sullust', x: 615, y: 440, r: 15, kind: 'volcanic', sector: 'mid', own: 'sep', gar: 7, note: 'Подземные заводы. Бомбардировка с орбиты почти бесполезна.', facilities: ['weapons', 'armor'] },
+    { id: 'bestine', name: 'Bestine', x: 490, y: 505, r: 12, kind: 'desert', sector: 'mid', own: 'rep', gar: 4, note: 'Тыловой склад, отрезанный от ядра при потере Corulag.', facilities: [] },
+    { id: 'eriadu', name: 'Eriadu', x: 740, y: 315, r: 16, kind: 'urban', sector: 'outer', own: 'sep', gar: 8, note: 'Штаб противника в секторе. Сходятся четыре трассы.', facilities: ['battery', 'sensor'] },
+    { id: 'geonosis', name: 'Geonosis', x: 820, y: 165, r: 15, kind: 'desert', sector: 'outer', own: 'sep', gar: 10, note: 'Дроидные заводы. Пополнение идёт быстрее, чем его выбивать.', facilities: ['weapons', 'hangar', 'barracks'] },
+    { id: 'kamino', name: 'Kamino', x: 770, y: 60, r: 14, kind: 'ocean', sector: 'outer', own: 'sep', gar: 6, note: 'Клонические верфи. Стратегическая цель первого порядка.', facilities: ['shipyard', 'medical'] },
+    { id: 'mustafar', name: 'Mustafar', x: 890, y: 420, r: 13, kind: 'volcanic', sector: 'outer', own: 'sep', gar: 3, note: 'Тупиковая система. Удобное место, чтобы кого-нибудь потерять.', facilities: [] }
   ],
   lanes: [
     ['anaxes', 'fondor'], ['anaxes', 'coruscant'], ['fondor', 'abregado'], ['abregado', 'coruscant'],
@@ -465,7 +491,7 @@ const DEFAULT_DATA = {
 };
 
 let DATA = null;
-let FACTION = {}, SECTOR = {}, SYSTEMS = [], LANES = [], SYS = {}, ADJ = {}, BATTLE = {}, ROUTE = {}, BLOCK = {};
+let FACTION = {}, SECTOR = {}, FACTYPE = {}, SYSTEMS = [], LANES = [], SYS = {}, ADJ = {}, BATTLE = {}, ROUTE = {}, BLOCK = {};
 const laneKey = (a, b) => a < b ? a + '|' + b : b + '|' + a;
 const isBlocked = (a, b) => !!BLOCK[laneKey(a, b)];
 function daysSince(dm) {
@@ -517,12 +543,17 @@ function indexData() {
   });
   SECTOR = {};
   DATA.sectors.forEach(s => SECTOR[s.id] = s);
+  FACTYPE = {};
+  (DATA.facilityTypes || []).forEach(f => FACTYPE[f.id] = f);
   SYSTEMS = DATA.systems;
   SYS = {};
   SYSTEMS.forEach(s => {
     s.r = s.r || 14;
     s.gar = Number.isFinite(s.gar) ? s.gar : 0;
     if (!FACTION[s.own]) s.own = neutralId();
+    // Объекты планеты (Оружейный завод и т.д. — см. DATA.facilityTypes) —
+    // чистим ссылки на удалённые типы, тот же паттерн, что и у lanes/blockades.
+    s.facilities = Array.isArray(s.facilities) ? s.facilities.filter(id => FACTYPE[id]) : [];
     SYS[s.id] = s;
   });
   LANES = DATA.lanes.filter(([a, b]) => SYS[a] && SYS[b] && a !== b);
@@ -600,7 +631,8 @@ function loadData(raw) {
     },
     factions: Array.isArray(d.factions) && d.factions.length ? d.factions : DEFAULT_DATA.factions.map(f => ({ ...f })),
     sectors: Array.isArray(d.sectors) ? d.sectors : [],
-    systems: Array.isArray(d.systems) ? d.systems.map(s => ({ ...s })) : [],
+    facilityTypes: Array.isArray(d.facilityTypes) ? d.facilityTypes.map(f => ({ ...f })) : DEFAULT_DATA.facilityTypes.map(f => ({ ...f })),
+    systems: Array.isArray(d.systems) ? d.systems.map(s => ({ ...s, facilities: Array.isArray(s.facilities) ? s.facilities.slice() : [] })) : [],
     lanes: Array.isArray(d.lanes) ? d.lanes.map(l => [l[0], l[1]]) : [],
     regions: Array.isArray(d.regions) ? d.regions.map(r => ({ ...r })) : [],
     routes: Array.isArray(d.routes) ? d.routes.map(r => ({ ...r, path: (r.path || []).slice() })) : [],
@@ -1593,6 +1625,7 @@ function syncPanel() {
       '<button data-act="gar" data-d="-1" aria-label="Убрать полк">−</button>' +
       '<div class="val mono">' + s.gar + '</div>' +
       '<button data-act="gar" data-d="1" aria-label="Добавить полк">+</button></div></div>' +
+    '<div class="field"><div class="lab">Объекты на планете</div>' + facilityBlock(s) + '</div>' +
     (editing ? '<div class="field"><div class="lab">Внешний вид</div>' + palBlock(s) + '</div>' : '') +
     (editing ? '<div class="field"><div class="lab">Описание</div><textarea id="f-note" rows="3" aria-label="Описание системы">' + esc(s.note || '') + '</textarea></div>' : '') +
     supBlock +
@@ -1611,6 +1644,14 @@ function syncPanel() {
     el('f-kind').addEventListener('change', e => { s.kind = e.target.value; invalidate(s.id); touch(); });
     el('f-sector').addEventListener('change', e => { s.sector = e.target.value; touch(); });
     el('f-note').addEventListener('input', e => { s.note = e.target.value; touch(); });
+    panel.querySelectorAll('[data-facility]').forEach(cb => cb.addEventListener('change', e => {
+      const fid = e.target.dataset.facility;
+      s.facilities = s.facilities || [];
+      const i = s.facilities.indexOf(fid);
+      if (e.target.checked) { if (i < 0) s.facilities.push(fid); }
+      else if (i >= 0) s.facilities.splice(i, 1);
+      touch();
+    }));
   }
 }
 
@@ -1645,6 +1686,27 @@ panel.addEventListener('click', e => {
   }
 });
 
+
+/* ---------- объекты планеты (Оружейный завод и т.д.) ---------- */
+/* Эффект получает фракция, которая ВЛАДЕЕТ системой сейчас (см. s.own) —
+ * никакой отдельной "привязки объекта к фракции" нет, поэтому смена
+ * владельца автоматически переносит все бонусы системы новому хозяину. note
+ * у типа объекта — просто текст правила для отыгрыша, без автоматики поверх
+ * урона/HP/etc (решение пользователя). */
+function facilityBlock(s) {
+  if (editing) {
+    if (!DATA.facilityTypes.length) {
+      return '<div class="hint" style="margin:0">Объекты пока не заведены — добавьте их в «Фракции и сектора».</div>';
+    }
+    return DATA.facilityTypes.map(f =>
+      '<label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-facility="' + esc(f.id) + '"' +
+        ((s.facilities || []).includes(f.id) ? ' checked' : '') + '> ' + esc(f.name) + '</label>'
+    ).join('');
+  }
+  const list = (s.facilities || []).map(id => FACTYPE[id]).filter(Boolean);
+  if (!list.length) return '<div class="hint" style="margin:0">нет объектов</div>';
+  return list.map(f => '<span class="facility-badge" title="' + esc(f.note || '') + '">' + esc(f.name) + '</span>').join('');
+}
 
 /* ---------- palette from a reference image ---------- */
 const PAL_ROLES = [['sea', 'Вода / низины'], ['land', 'Суша'], ['high', 'Вершины'], ['atmo', 'Атмосфера']];
@@ -1764,6 +1826,13 @@ function syncFactions() {
       '<span class="count mono">' + SYSTEMS.filter(x => x.sector === s.id).length + '</span>' +
       '<button class="mini" data-secdel="' + esc(s.id) + '" aria-label="Удалить сектор">×</button>' +
     '</div>').join('') || '<div style="color:var(--dim);font-size:12px">секторов пока нет</div>';
+  el('factype-list').innerHTML = DATA.facilityTypes.map((f, i) =>
+    '<div class="row-edit" style="margin-bottom:9px">' +
+      '<input value="' + esc(f.name) + '" data-factype="' + i + '" data-k="name" aria-label="Название объекта">' +
+      '<input value="' + esc(f.note || '') + '" data-factype="' + i + '" data-k="note" placeholder="эффект (текст для отыгрыша)" aria-label="Эффект" style="margin-top:4px">' +
+      '<div class="editrow" style="margin-top:4px"><span class="count mono">' + SYSTEMS.filter(x => (x.facilities || []).includes(f.id)).length + ' систем</span>' +
+      '<button class="mini" data-factypedel="' + i + '" aria-label="Удалить объект">убрать ×</button></div>' +
+    '</div>').join('') || '<div style="color:var(--dim);font-size:12px">объектов пока нет</div>';
 }
 facDrawer.addEventListener('input', e => {
   const t = e.target;
@@ -1779,6 +1848,11 @@ facDrawer.addEventListener('input', e => {
   } else if (t.dataset.sec) {
     const s = DATA.sectors.find(x => x.id === t.dataset.sec);
     if (s) { s.name = t.value; touch(); syncPanel(); }
+  } else if (t.dataset.factype !== undefined) {
+    // id объекта не меняется при переименовании (как и у фракций/секторов) —
+    // на нём завязаны ссылки в system.facilities
+    const f = DATA.facilityTypes[+t.dataset.factype];
+    if (f) { f[t.dataset.k] = t.value; touch(); syncPanel(); }
   }
 });
 facDrawer.addEventListener('click', e => {
@@ -1806,6 +1880,18 @@ facDrawer.addEventListener('click', e => {
   } else if (b.id === 'sec-add') {
     const name = 'Новый сектор';
     DATA.sectors.push({ id: slug(name, v => DATA.sectors.some(s => s.id === v)), name });
+    rebuild(); syncFactions();
+  } else if (b.dataset.factypedel !== undefined) {
+    const f = DATA.facilityTypes[+b.dataset.factypedel];
+    if (!f) return;
+    const used = SYSTEMS.filter(s => (s.facilities || []).includes(f.id)).length;
+    if (used && !confirm('Объект стоит на ' + used + ' ' + plural(used, 'системе', 'системах', 'системах') + '. Удалить?')) return;
+    DATA.facilityTypes.splice(+b.dataset.factypedel, 1);
+    SYSTEMS.forEach(s => { s.facilities = (s.facilities || []).filter(id => id !== f.id); });
+    rebuild(); syncFactions();
+  } else if (b.id === 'factype-add') {
+    const name = 'Новый объект';
+    DATA.facilityTypes.push({ id: slug(name, v => DATA.facilityTypes.some(f => f.id === v)), name, note: '' });
     rebuild(); syncFactions();
   }
 });
@@ -1923,7 +2009,7 @@ el('btn-example').addEventListener('click', () => {
 });
 el('btn-blank').addEventListener('click', () => {
   if (!confirm('Начать пустую карту?')) return;
-  loadData({ meta: { name: 'Кампания' }, factions: cloneDefault().factions, sectors: [], systems: [], lanes: [] });
+  loadData({ meta: { name: 'Кампания' }, factions: cloneDefault().factions, sectors: [], facilityTypes: [], systems: [], lanes: [] });
   selected = null; changed(); syncFactions(); syncPanel(); fillData();
   el('err').textContent = 'Пустая карта. Включи редактор и добавь первую систему.';
 });
@@ -2298,7 +2384,26 @@ function syncLog() {
       (e0.tag ? '<span class="tag" style="color:' + col + '">' + esc(e0.tag) + '</span>' : '') + esc(e0.text) + '</div></div>';
   }).join('');
 }
-function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncBattles(); syncBlocks(); syncLog(); syncRequests(); }
+/* Сводка "у кого сколько объектов": считает по факту владения системой
+ * (см. facilityBlock — тот же принцип, эффект переходит вместе с системой),
+ * а не по какой-то отдельной привязке объекта к фракции. */
+function syncFacSummary() {
+  const nonNeutral = DATA.factions.filter(f => !f.neutral);
+  const rows = DATA.facilityTypes.map(ft => {
+    const counts = nonNeutral
+      .map(f => ({ f, n: SYSTEMS.filter(s => s.own === f.id && (s.facilities || []).includes(ft.id)).length }))
+      .filter(c => c.n > 0);
+    if (!counts.length) return '';
+    return '<div class="kv" style="align-items:flex-start;gap:6px">' +
+      '<span style="flex:1 1 auto">' + esc(ft.name) + '</span>' +
+      '<span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">' +
+        counts.map(c => '<span class="v" style="color:' + esc(c.f.color) + '">' + c.n + ' · ' + esc(c.f.name) + '</span>').join('') +
+      '</span></div>';
+  }).filter(Boolean);
+  el('facsum-list').innerHTML = rows.join('') ||
+    '<div style="color:var(--dim);font-size:12px">пока никто не контролирует объекты</div>';
+}
+function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncFacSummary(); syncBattles(); syncBlocks(); syncLog(); syncRequests(); }
 
 el('rail-r').addEventListener('click', e => {
   const b = e.target.closest('button');
