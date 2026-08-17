@@ -453,6 +453,7 @@ const DEFAULT_DATA = {
     eyebrow: 'Оперативная сводка',
     main: 'rep',
     esc: { level: 1, max: 4, note: 'Позиционная фаза. Орбитальные бомбардировки запрещены.' },
+    fx: { flashMs: 1600 },
     grid: { size: 120, ox: 0, oy: 0, show: true },
     supply: { base: 60, perLane: 40, major: 25, perRegiment: 100, fromSupply: .5 },
     center: { x: 300, y: 260 },
@@ -672,6 +673,10 @@ function loadData(raw) {
         max: Number.isFinite(dm.esc && dm.esc.max) ? dm.esc.max : 4,
         note: (dm.esc && dm.esc.note) || ''
       },
+      // Длительность вспышек-анимаций (смена владельца/бой) — настраивается
+      // Асик+/Куратором в "Подложка и маршруты" (см. syncMapDrawer), запрос
+      // пользователя: "время скок анимация будет пусть будет настраеваемо".
+      fx: { flashMs: clamp(Number.isFinite(dm.fx && dm.fx.flashMs) ? dm.fx.flashMs : 1600, 200, 6000) },
       supply: Object.assign({}, SUPPLY_DEFAULT, dm.supply || {}),
       grid: {
         size: (dm.grid && dm.grid.size) || 120,
@@ -956,6 +961,16 @@ let selected = null, hovered = null, mode = 'map', trans = 0, transDir = 0, dive
 let editing = false, linkFrom = null, dragNode = null;
 let spin = 0, t0 = performance.now(), now = 0;
 let drag = null, moved = 0;
+
+/* ---------- вспышки-анимации (смена владельца/бой) — длительность
+ * настраивается Асик+/Куратором, DATA.meta.fx.flashMs ---------- */
+let flashes = [];
+function addFlash(sysId, kind) {
+  if (!sysId || !SYS[sysId] || RM) return;
+  const dur = (DATA.meta.fx && DATA.meta.fx.flashMs) || 1600;
+  flashes.push({ sys: sysId, kind, start: now, dur });
+  if (flashes.length > 40) flashes.shift();
+}
 
 /* ---------- projection: tilted galactic plane ---------- */
 const PLANE_H = 26;                       // node stand height in plane units
@@ -1327,9 +1342,14 @@ function drawLanes(alpha) {
     // накопительно проседало на все следующие.
     const dimmed = flt && !laneMatchesFilter(ia, ib, st);
     const a1 = dimmed ? alpha * .12 : alpha;
-    ctx.globalAlpha = a1 * (near ? .95 : st.hot ? .8 : .55);
+    // Пульсация цвета/яркости заблокированной трассы вместо статичного
+    // пунктира (запрос пользователя: "пульсация цвета трассы при блокаде") —
+    // фаза завязана на id пары систем, чтобы разные блокады не мигали
+    // синхронно.
+    const blockPulse = st.blocked && !RM ? (.6 + .4 * Math.sin(now * .0026 + (ia.length + ib.length) * 7)) : 1;
+    ctx.globalAlpha = a1 * (near ? .95 : st.hot ? .8 : .55) * blockPulse;
     ctx.strokeStyle = st.col;
-    ctx.lineWidth = st.w * (near ? 1.7 : 1);
+    ctx.lineWidth = st.w * (near ? 1.7 : 1) * (st.blocked ? blockPulse * .3 + .85 : 1);
     if (st.hot && !RM) ctx.setLineDash([9, 7]), ctx.lineDashOffset = -(now * .04) % 16;
     else if (st.blocked) ctx.setLineDash([3, 6]);
     else ctx.setLineDash([]);
@@ -1430,6 +1450,35 @@ function drawNodes(alpha) {
     const sp = sprite(s, px);
     ctx.globalAlpha = nodeA;
     ctx.drawImage(sp, top.x - rad, top.y - rad, rad * 2, rad * 2);
+
+    // Дымка над спорными системами — отрезанные от снабжения (strat.cut) или
+    // с хотя бы одной спорной трассой (см. laneStyle().hot). Мягкое дрейфующее
+    // пятно поверх планеты, а не отдельная иконка (запрос пользователя:
+    // "лёгкая дымка над спорными системами").
+    if (!RM && (strat.cut.has(s.id) || ADJ[s.id].some(n => laneStyle(s.id, n).hot))) {
+      const hazeR = rad * (2.6 + .35 * Math.sin(now * .0007 + s.x));
+      const hx = top.x + Math.sin(now * .0004 + s.y) * rad * .3;
+      const hy = top.y + Math.cos(now * .00035 + s.x) * rad * .22;
+      const hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, hazeR);
+      hg.addColorStop(0, 'rgba(240,164,49,.22)');
+      hg.addColorStop(1, 'rgba(240,164,49,0)');
+      ctx.globalAlpha = nodeA * .8;
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(hx, hy, hazeR, 0, 6.2832); ctx.fill();
+    }
+
+    // Вспышка-кольцо при смене владельца/начале-завершении боя (см. addFlash) —
+    // расширяется и гаснет за DATA.meta.fx.flashMs (настраивается Асик+).
+    const fl = flashes.find(f => f.sys === s.id);
+    if (fl) {
+      const p = clamp((now - fl.start) / fl.dur, 0, 1);
+      const ringR = rad + 6 + p * 44;
+      const kcol = fl.kind === 'loss' ? '#e2564b' : fl.kind === 'battle' ? HOT : fac.col;
+      ctx.globalAlpha = nodeA * (1 - p) * .85;
+      ctx.strokeStyle = kcol;
+      ctx.lineWidth = 2.6 * (1 - p * .5);
+      ctx.beginPath(); ctx.arc(top.x, top.y, ringR, 0, 6.2832); ctx.stroke();
+    }
 
     ctx.globalAlpha = nodeA * (isSel ? .95 : isHov ? .7 : .4);
     ctx.strokeStyle = fac.col; ctx.lineWidth = isSel ? 1.8 : 1;
@@ -1849,6 +1898,7 @@ panel.addEventListener('click', e => {
       const kind = to === main ? 'gain' : from === main ? 'loss' : 'info';
       logAdd(kind, to === main ? 'Планета взята' : from === main ? 'Планета потеряна' : 'Смена контроля',
         s.name + ': ' + facOf(from).name + ' → ' + facOf(to).name + '.', s.id);
+      addFlash(s.id, kind);
       changed();
     }
   }
@@ -1915,6 +1965,7 @@ function recomputeOwnerFromZones(s) {
     const kind = best === main ? 'gain' : from === main ? 'loss' : 'info';
     logAdd(kind, best === main ? 'Планета взята' : from === main ? 'Планета потеряна' : 'Смена контроля',
       s.name + ' (зоны, ' + bestCount + ' из ' + s.zones + '): ' + facOf(from).name + ' → ' + facOf(best).name + '.', s.id);
+    addFlash(s.id, kind);
   }
 }
 function shiftZone(s, fromFac, toFac) {
@@ -2296,7 +2347,11 @@ function syncMapDrawer() {
     '<div class="editgrid" style="margin-top:6px">' +
       '<label>Центр X<input type="number" id="g-cx" value="' + m.center.x + '" step="10"></label>' +
       '<label>Центр Y<input type="number" id="g-cy" value="' + m.center.y + '" step="10"></label></div>' +
-    '<div class="hint">Центр — точка, от которой считаются кольца регионов.</div>';
+    '<div class="hint">Центр — точка, от которой считаются кольца регионов.</div>' +
+    '<div class="lab" style="margin-top:16px">Анимации</div>' +
+    '<label>Длительность вспышки при смене владельца/бое, мс' +
+      '<input type="number" id="fx-flash" value="' + m.fx.flashMs + '" step="100" min="200" max="6000"></label>' +
+    '<div class="hint">Кольцо-вспышка на планете при захвате/потере и при начале/завершении боя.</div>';
 
   el('reg-body').innerHTML = DATA.regions.map((r, i) =>
     '<div class="editrow"><input type="color" data-reg="' + i + '" data-k="color" value="' + esc(r.color) + '" aria-label="Цвет региона">' +
@@ -2399,6 +2454,7 @@ mapDrawer.addEventListener('input', e => {
   else if (t.id === 'g-oy') { m.grid.oy = num(); syncPanel(); touch(); }
   else if (t.id === 'g-cx') { m.center.x = num(); syncPanel(); touch(); }
   else if (t.id === 'g-cy') { m.center.y = num(); syncPanel(); touch(); }
+  else if (t.id === 'fx-flash') { m.fx.flashMs = clamp(num() || 1600, 200, 6000); touch(); }
   else if (t.dataset.reg !== undefined) {
     const r = DATA.regions[+t.dataset.reg];
     if (!r) return;
@@ -2748,6 +2804,7 @@ el('rail-r').addEventListener('click', e => {
         att: (foes[1] || foes[0] || {}).id, def: (foes[0] || {}).id,
         status: 'active', when: ''
       });
+      addFlash(sysId, 'battle');
       indexData(); syncBattles(); touch();
       return;
     }
@@ -2790,6 +2847,9 @@ el('rail-r').addEventListener('change', e => {
       // см. resolveBattleZones (запрос пользователя: распределение зон
       // может меняться автоматически от исхода боя).
       if (t.dataset.k === 'status' && t.value === 'done') resolveBattleZones(b);
+      // Вспышка-кольцо на планете при начале/завершении боя (см. addFlash) —
+      // тот же приём, что и для смены владельца, тем же событием "бой".
+      if (t.dataset.k === 'status' && (t.value === 'done' || LIVE_STAGES[t.value])) addFlash(b.sys, 'battle');
       indexData(); syncBattles(); syncPanel(); touch();
     }
   } else if (t.dataset.blk !== undefined) {
@@ -3171,6 +3231,7 @@ function frame(ts) {
   now = ts - t0;
   const dt = Math.min(50, ts - (frame.last || ts)); frame.last = ts;
   spin += RM ? 0 : dt * .00016;
+  if (flashes.length) flashes = flashes.filter(f => now - f.start < f.dur);
 
   if (mode === 'diving' || mode === 'rising') {
     trans = clamp(trans + transDir * dt / (RM ? 1 : 950), 0, 1);

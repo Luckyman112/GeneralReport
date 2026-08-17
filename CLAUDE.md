@@ -1234,6 +1234,29 @@ first of several planned improvement batches (запрос пользовате�
   acceptable softness for a small overview widget, not worth the resize-observer
   wiring the main canvas has for this.
 
+**Galaxy Map UX batch 3** (atmosphere/animation, no backend changes):
+- Haze over contested systems — a soft drifting radial-gradient blob drawn
+  over the planet sprite (not a separate icon) whenever
+  `strat.cut.has(s.id)` (cut off from supply) or any adjacent lane is
+  `.hot` (disputed) per `laneStyle()`. Drawn inside `drawNodes()`'s per-system
+  loop, after the sprite `drawImage` so it visually sits on top.
+- Blocked-lane pulse — `drawLanes()` computes `blockPulse` (a sine wave keyed
+  off `ia.length + ib.length` so different blockades don't pulse in sync)
+  and multiplies both `globalAlpha` and `lineWidth` by it when `st.blocked`,
+  replacing the previous static dash pattern with a breathing intensity.
+- Ownership-change / battle flash — `flashes` array (`{sys, kind, start,
+  dur}`), `addFlash(sysId, kind)` pushes an entry, `frame()` purges expired
+  ones every tick (`now - f.start < f.dur`), `drawNodes()` renders an
+  expanding fading ring per matching system (`kind: 'gain'|'loss'|'battle'`
+  picks the ring color — faction color / `--danger` red / `HOT` orange).
+  Trigger sites: the manual owner-button click, `recomputeOwnerFromZones`
+  (zone-based auto-flip), starting a new battle (`bat-add`), and a battle's
+  status changing to an active stage or `done`. Duration is
+  **`DATA.meta.fx.flashMs`** (default 1600, clamped 200-6000), editable in
+  "Подложка и маршруты" → "Анимации" — that drawer is already gated to
+  `ACCESS.canEdit` (Assistant+/Curator only), so no separate permission
+  check was needed to satisfy "настраиваемо Асик+".
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
