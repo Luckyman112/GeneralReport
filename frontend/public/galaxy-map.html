@@ -388,7 +388,7 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
       <div class="body" id="cv-list"></div>
     </section>
     <section class="card">
-      <h2><span>Сводка сектора</span><button class="add" id="log-add" hidden>+ запись</button></h2>
+      <h2><span>Сводка сектора</span><button class="mini" id="log-export" style="border:1px solid var(--line);padding:2px 7px" title="Скачать весь журнал текстом">⬇ .txt</button><button class="add" id="log-add" hidden>+ запись</button></h2>
       <div class="body">
         <div class="editgrid">
           <select id="log-flt-kind" aria-label="Фильтр журнала по типу"></select>
@@ -674,7 +674,22 @@ function logAdd(kind, tag, text, sys) {
   // только для фильтра "по планете" в syncLog(); записи без привязки (ручные
   // через "+ запись") просто не попадают под этот фильтр.
   DATA.log.unshift({ d: today(), kind, tag, text, sys: sys || '' });
-  if (DATA.log.length > 200) DATA.log.length = 200;
+  // Кап поднят с 200 до 500 — старые записи раньше просто исчезали без
+  // возможности их посмотреть (запрос пользователя); полноценный архив
+  // потребовал бы отдельного хранилища на бэке, здесь — компромисс: реже
+  // теряем историю + кнопка "Скачать журнал" (см. exportLog) как страховка
+  // перед тем, как самые старые записи всё же уйдут за кап.
+  if (DATA.log.length > 500) DATA.log.length = 500;
+}
+function exportLog() {
+  const lines = DATA.log.slice().reverse().map(e =>
+    e.d + ' [' + (LOG_KINDS[e.kind] ? LOG_KINDS[e.kind].label : e.kind) + ']' +
+    (e.tag ? ' ' + e.tag + ':' : '') + ' ' + (e.text || ''));
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'galaxy-log.txt';
+  document.body.appendChild(a); a.click(); a.remove();
 }
 function neutralId() {
   const n = DATA.factions.find(f => f.neutral);
@@ -1309,33 +1324,36 @@ function laneStyle(a, b) {
  * фракции — нейтральный клин линкора (запрос пользователя: "модели
  * Венатора, манифеста КНС и т.д." — для произвольных фракций, которых
  * заранее не знаем, конкретной модели взять неоткуда, поэтому дефолт). */
+/* Геометрия силуэтов кэшируется как Path2D один раз при загрузке скрипта —
+ * раньше каждый вызов заново гонял beginPath/moveTo/lineTo, а силуэт рисуется
+ * на каждый кадр на каждой заблокированной трассе и в орбитальной сцене.
+ * Path2D неизменяем, поворот/масштаб/перенос по-прежнему через
+ * ctx.translate/rotate перед ctx.fill(path) — картинка та же. */
+const SHIP_PATHS = (() => {
+  const rep = new Path2D();
+  rep.moveTo(13, 0);
+  rep.lineTo(5, -2.6); rep.lineTo(5, -1.1); rep.lineTo(-9, -4.2);
+  rep.lineTo(-12, -2.4); rep.lineTo(-12, 2.4); rep.lineTo(-9, 4.2);
+  rep.lineTo(5, 1.1); rep.lineTo(5, 2.6);
+  rep.closePath();
+  const sepHull = new Path2D();
+  sepHull.moveTo(12, 0); sepHull.lineTo(2, -6); sepHull.lineTo(-9, -3);
+  sepHull.lineTo(-9, 3); sepHull.lineTo(2, 6);
+  sepHull.closePath();
+  const sepPods = new Path2D();
+  sepPods.ellipse(1, -4.6, 2.4, 1.3, 0, 0, 6.2832);
+  sepPods.ellipse(1, 4.6, 2.4, 1.3, 0, 0, 6.2832);
+  const other = new Path2D();
+  other.moveTo(11, 0); other.lineTo(-2, -6); other.lineTo(-7, -3);
+  other.lineTo(-7, 3); other.lineTo(-2, 6);
+  other.closePath();
+  return { rep, sepHull, sepPods, other };
+})();
 function shipSilhouette(factionId, col) {
   ctx.fillStyle = col;
-  if (factionId === 'rep') {
-    ctx.beginPath();
-    ctx.moveTo(13, 0);
-    ctx.lineTo(5, -2.6); ctx.lineTo(5, -1.1); ctx.lineTo(-9, -4.2);
-    ctx.lineTo(-12, -2.4); ctx.lineTo(-12, 2.4); ctx.lineTo(-9, 4.2);
-    ctx.lineTo(5, 1.1); ctx.lineTo(5, 2.6);
-    ctx.closePath();
-    ctx.fill();
-  } else if (factionId === 'sep') {
-    ctx.beginPath();
-    ctx.moveTo(12, 0); ctx.lineTo(2, -6); ctx.lineTo(-9, -3);
-    ctx.lineTo(-9, 3); ctx.lineTo(2, 6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(1, -4.6, 2.4, 1.3, 0, 0, 6.2832);
-    ctx.ellipse(1, 4.6, 2.4, 1.3, 0, 0, 6.2832);
-    ctx.fill();
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(11, 0); ctx.lineTo(-2, -6); ctx.lineTo(-7, -3);
-    ctx.lineTo(-7, 3); ctx.lineTo(-2, 6);
-    ctx.closePath();
-    ctx.fill();
-  }
+  if (factionId === 'rep') ctx.fill(SHIP_PATHS.rep);
+  else if (factionId === 'sep') { ctx.fill(SHIP_PATHS.sepHull); ctx.fill(SHIP_PATHS.sepPods); }
+  else ctx.fill(SHIP_PATHS.other);
 }
 
 /* Силуэт корабля на блокированной трассе (вместо крестика) — нос смотрит
@@ -3117,6 +3135,7 @@ el('rail-r').addEventListener('click', e => {
   const card = e.target.closest('[data-goto]');
   if (card && SYS[card.dataset.goto]) { selected = card.dataset.goto; focusOn(selected); syncPanel(); }
 });
+el('log-export').addEventListener('click', exportLog);
 el('log-flt-kind').addEventListener('change', e => { logFilter.kind = e.target.value; syncLog(); });
 el('log-flt-sys').addEventListener('change', e => { logFilter.sys = e.target.value; syncLog(); });
 el('rail-r').addEventListener('keydown', e => {

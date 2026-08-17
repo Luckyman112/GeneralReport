@@ -1324,6 +1324,32 @@ garrison hint):
   `s.gar` itself or any validation — same "no automation on top of curator
   judgment" rule as the facility catalog itself (see facility notes above).
 
+**Galaxy Map UX batch 6** (tech debt/performance, final batch of this
+round — canvas layering and a persist() conflict-resolution mechanism were
+in the original brainstorm but never got an explicit go-ahead from the user
+like every other item in this round did, so deliberately **not** built;
+flagged here as a legitimate follow-up if ever requested):
+- `SHIP_PATHS` — `shipSilhouette()` used to rebuild its
+  `beginPath/moveTo/lineTo/closePath` geometry from scratch on every call
+  (every blocked lane, every frame, plus the planet orbital scene) — now
+  built once as cached `Path2D` objects at script load, `ctx.fill(path)`
+  per call. Pure perf, zero visual/behavioral change.
+- `DATA.log` cap raised 200 → 500, plus a "⬇ .txt" export button
+  (`exportLog()`) next to the log filters — mitigates, doesn't fully solve,
+  "old entries just vanish" (баг-репорт-style complaint): a genuine
+  archive would need separate backend storage, out of scope for this pass;
+  raising the cap + giving curators an escape-hatch export before the cap
+  bites was the pragmatic middle ground.
+- `GalaxyMapUpdate.data`/`GalaxyMapRequestCreate.data` (`app/schemas/galaxy_map.py`)
+  gained a light `field_validator` (`_validate_map_data`) checking that
+  known list-shaped top-level keys (`systems`, `factions`, `lanes`, etc.)
+  are actually lists and `meta` is an object, when present. Deliberately
+  **not** a full schema for the whole document — `GalaxyMap.data` stays
+  freeform JSON by design (see the Galaxy Map section above) — this only
+  guards the shared singleton document against a structurally-wrong
+  top-level payload sent straight to the API (bypassing the UI) crashing
+  the renderer for every viewer.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
