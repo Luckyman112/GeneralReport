@@ -1209,6 +1209,31 @@ first of several planned improvement batches (запрос пользовате�
   `body.classList.contains('proposing')` (Ивентолог's local-only draft that
   hasn't gone through `submitProposal()` yet).
 
+**Galaxy Map UX batch 2** (visual polish, no backend changes):
+- Planet dossier (`#detail`) stat block rewritten from a bare `<dl>` to
+  `.stats`/`.stat`/`.stat.wide` card tiles (same `.lab`/`.v` visual language
+  as the system panel's `.field`/`.lab`) — purely a markup/CSS change,
+  `syncDetail()` still targets the same element ids (`#d-own` etc.), just
+  wrapped differently, so no JS logic changed.
+- Faction theme (`applyFactionTheme()`, called from `syncCtrl()` on every
+  `changed()`) sets `--fac-tint`/`--fac-tint-rgb` CSS custom properties from
+  `facOf(DATA.meta.main).color` — used only for a thin gradient underline on
+  `#top` and a soft `inset box-shadow` glow on `#mapcell`. Deliberately does
+  **not** touch `--hot`/`--danger` — those are semantic (urgency/danger),
+  not faction identity, and repurposing them would make warnings read as
+  "faction-colored" instead of "pay attention".
+- `#minimap` — small always-square-ish overview canvas (`mmCv`/`mmCtx`,
+  separate from the main `cv`/`ctx`), shown only above
+  `MINIMAP_ZOOM_THRESHOLD` (`cam.z > 1.15`, i.e. genuinely zoomed in) via
+  `drawMinimap()` called from `frame()` when `mode === 'map'`. Uses **raw
+  system x/y**, not the main view's tilted `proj()` — simpler and more
+  legible as a top-down overview. The viewport rectangle it draws is
+  `unproj(0,0)`/`unproj(W,H)` (already undoes `cam.tilt`), so it lines up
+  correctly with the same raw x/y space the system dots are plotted in.
+  Fixed HTML canvas `width`/`height` attributes (170×120, no DPR scaling) —
+  acceptable softness for a small overview widget, not worth the resize-observer
+  wiring the main canvas has for this.
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get
