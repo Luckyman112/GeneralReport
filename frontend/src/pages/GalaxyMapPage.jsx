@@ -13,6 +13,13 @@ export function GalaxyMapPage() {
       src="/galaxy-map.html"
       title="Галактика"
       className="galaxy-map-frame"
+      style={{
+        display: "block",
+        width: "calc(100% + 2rem)",
+        height: "calc(100vh - 6.5rem)",
+        margin: "-1.5rem -1rem",
+        border: "none",
+      }}
     />
   );
 }
