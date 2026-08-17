@@ -32,6 +32,17 @@ class EventRead(BaseModel):
     messages: list[EventMessageRead] = Field(default_factory=list)
 
 
+class EventPlanetBadge(BaseModel):
+    """Минимальный публичный срез одобренного ивента для бейджа "запланирован
+    ивент" на Галактике — видно всем с доступом к сайту (не только
+    Ивентрум-ролям), поэтому отдаём только название планеты/заголовок/дату
+    брифинга, а не полный payload (локация, план и т.д.)."""
+
+    planet_name: str
+    title: str
+    briefing_start: str | None = None
+
+
 class EventCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     payload: dict[str, Any] = Field(default_factory=dict)

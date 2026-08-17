@@ -36,6 +36,7 @@ from app.schemas.event import (
     EventMapRead,
     EventMapUpdate,
     EventMemberDetail,
+    EventPlanetBadge,
     EventRead,
     EventRejectRequest,
     EventRosterEntry,
@@ -92,6 +93,28 @@ async def list_events(
     else:
         raise ForbiddenError("Ивентрум доступен только Ивентологам, Ассистентам и Куратору ивентологии")
     return await _events_to_read(db, rows)
+
+
+@router.get("/planet-badges", response_model=list[EventPlanetBadge])
+async def list_planet_badges(
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> list[EventPlanetBadge]:
+    # Намеренно доступно любому с доступом к сайту (не только Ивентрум-ролям)
+    # — тонкий мостик с "Галактикой" (см. CLAUDE.md), которая тоже видна всем
+    # зарегистрированным. Отдаём только planet_name/title/briefing_start, не
+    # весь payload.
+    if not access.has_access:
+        raise ForbiddenError("Нет доступа")
+    rows = await event_crud.list_approved_with_planet(db)
+    return [
+        EventPlanetBadge(
+            planet_name=str(row.payload.get("planet_name") or "").strip(),
+            title=row.title,
+            briefing_start=row.payload.get("briefing_start"),
+        )
+        for row in rows
+    ]
 
 
 @router.post("", response_model=EventRead, status_code=201)

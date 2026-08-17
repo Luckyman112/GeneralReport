@@ -1293,6 +1293,37 @@ first of several planned improvement batches (запрос пользовате�
   already-blocked lanes — deliberately requires *both* ends in the sector
   (not just one) so it can't accidentally wall off a neighboring sector too.
 
+**Galaxy Map UX batch 5** (Ивентрум integration + battle report export +
+garrison hint):
+- `GET /event-room/planet-badges` (new, `app/api/event_room.py`,
+  `event_crud.list_approved_with_planet`, schema `EventPlanetBadge`) —
+  deliberately gated only to `access.has_access` (not the usual Ивентрум
+  role check every other `/event-room/*` route uses), since the Galaxy Map
+  itself is visible to every registered user and the badge is meant to be a
+  "тонкий мостик" everyone sees, not an Ивентрум-only view. Returns only
+  `planet_name`/`title`/`briefing_start` — never the full `Event.payload`
+  (location, plot, etc. stay Ивентрум-only). Frontend
+  (`loadPlanetBadges()`/`planetBadges`/`badgesFor()`) matches
+  `payload.planet_name` against `System.name` via case-insensitive trim
+  compare (`normPlanetName`) — both are freeform human-typed text in two
+  unrelated tools, so this is best-effort, not a guaranteed link; polled
+  every 2 minutes plus once at boot. Rendered as a small pulsing badge on
+  the map node (`drawNodes`, top-right of the planet, blue `#8fb8d8` to stay
+  visually distinct from the battle/flash rings), plus a line in the system
+  panel and the planet dossier (`#d-event-wrap`).
+- Battle report export (`renderBattleReportCanvas`/`copyBattleReport`,
+  "📋 Скопировать отчёт" button on every battle card, edit and view mode) —
+  draws a styled off-DOM canvas card (planet, campaign name, attacker vs.
+  defender colors, progress bar, wrapped result text) and writes it to the
+  clipboard as a PNG via `navigator.clipboard.write([new ClipboardItem(...)])`;
+  falls back to a plain file download (`<a download>`) if the Clipboard API
+  or `ClipboardItem` isn't available, rather than failing silently.
+- `garrisonHint(s)` — a pure text suggestion ("Рекомендуемый гарнизон: N")
+  under the garrison +/− control in the system panel, `+3` each for
+  `hangar`/`barracks` facilities present. Explicitly **not** wired into
+  `s.gar` itself or any validation — same "no automation on top of curator
+  judgment" rule as the facility catalog itself (see facility notes above).
+
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full
 backend support but no frontend form anywhere — violations currently only get

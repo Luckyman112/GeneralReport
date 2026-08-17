@@ -26,6 +26,18 @@ async def list_all(db: AsyncSession, *, submitted_by_user_id: int | None = None)
     return list(result.scalars().all())
 
 
+async def list_approved_with_planet(db: AsyncSession) -> list[Event]:
+    """Одобренные ивенты с непустым payload.planet_name — для публичного
+    бейджа "запланирован ивент" на Галактике (см. app/api/event_room.py's
+    /planet-badges). Фильтр по payload делаем в Python, не в SQL — payload
+    остаётся свободной JSON-структурой без гарантированного индекса на
+    вложенный ключ, а таблица Event маленькая (не N+1-чувствительно)."""
+    query = select(Event).where(Event.status == EventStatus.APPROVED).order_by(Event.created_at.desc())
+    result = await db.execute(query)
+    rows = result.scalars().all()
+    return [row for row in rows if str((row.payload or {}).get("planet_name") or "").strip()]
+
+
 async def get_by_id(db: AsyncSession, event_id: int) -> Event | None:
     # populate_existing=True обязателен: без него db.get() при уже загруженном
     # в сессию объекте вернёт его из identity map, проигнорировав selectinload
