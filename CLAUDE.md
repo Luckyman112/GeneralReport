@@ -1025,12 +1025,16 @@ the SPA. Shows an `#authgate` screen if that key is empty.
 - Three-tier permission model reusing the existing Ивентрум ladder from
   `AccessContext` (`app/api/deps.py`) — deliberately no new role config,
   since it's user decision that Ивентологи "own" this feature:
-  - anyone with `access.has_access` can `GET /galaxy-map` (view-only baseline)
+  - any logged-in user can `GET /galaxy-map`, no regiment membership needed
+    (per the user's decision, the map is for everyone)
   - `is_event_submitter` (any of the 5 event-role tiers) can `POST
     /galaxy-map/requests` — a full proposed snapshot of `DATA`, not a diff
     (same "whole document" reasoning as the map itself)
-  - `can_decide_event` (Assistant+/Curator of Ивентология, or admin) can
-    `PUT /galaxy-map` directly (moving/creating systems, or any other edit,
+  - `can_edit_galaxy_map` (event Assistant, event Curator, or founder, which
+    includes the local password-login admin) grants editing. It is deliberately
+    not `can_decide_event`, which also admits every `is_admin`; the map page
+    reads this flag from `/me` to decide whether to show edit controls. An
+    editor can `PUT /galaxy-map` directly (moving/creating systems, or any other edit,
     saved immediately — see `saveTimer`/debounced `persist()` in the page's
     own JS) **and** `GET/POST .../requests/{id}/decide` on the proposal
     queue — approving copies `request.data` wholesale into `GalaxyMap.data`

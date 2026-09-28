@@ -3246,7 +3246,7 @@ function setSaveStatus(text) { const s = el('save-status'); if (s) s.textContent
 async function loadAccess() {
   const me = await api('/me');
   ACCESS = {
-    canEdit: !!(me.access && me.access.can_decide_event),
+    canEdit: !!(me.access && me.access.can_edit_galaxy_map),
     canPropose: !!(me.access && me.access.is_event_submitter),
     username: (me.user && (me.user.callsign || me.user.username)) || ''
   };

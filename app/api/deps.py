@@ -190,6 +190,13 @@ class AccessContext:
         return self.is_admin or self.is_event_assistant or self.is_event_curator
 
     @property
+    def can_edit_galaxy_map(self) -> bool:
+        """Редактировать \"Галактику\" и решать по заявкам на её правку — только
+        Ассистент/Куратор ивентологии и основатель (включает локального админа).
+        Не can_decide_event: тот пускает любого is_admin (решение пользователя)."""
+        return self.is_event_assistant or self.is_event_curator or self.is_founder
+
+    @property
     def can_access_event_room(self) -> bool:
         return self.is_event_submitter or self.can_decide_event
 

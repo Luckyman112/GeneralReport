@@ -53,6 +53,7 @@ class AccessInfo(BaseModel):
     is_event_assistant: bool = False
     is_event_curator: bool = False
     can_decide_event: bool = False
+    can_edit_galaxy_map: bool = False
     can_access_event_room: bool = False
     # Администрация — независимая от РП-формирований должность (см.
     # app/api/deps.py::AccessContext.admin_staff_rank_code)

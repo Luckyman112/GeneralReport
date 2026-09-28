@@ -1,10 +1,9 @@
-"""Общая карта кампании ("Галактика") — весь JSON целиком видит любой
-зарегистрированный пользователь; напрямую редактировать (двигать/добавлять
-системы, менять любые данные и сохранять сразу) может только Ассистент+/
-Куратор Ивентологии (AccessContext.can_decide_event); Ивентолог любой другой
-ступени (AccessContext.is_event_submitter) не может сохранить правку сразу —
-только предложить (galaxy_map_request_crud), а решает по заявке снова
-Ассистент+/Куратор."""
+"""Общая карта кампании ("Галактика") — смотреть может любой вошедший
+пользователь, без привязки к формированию; напрямую редактировать и решать по
+заявкам на правку — только Ассистент/Куратор ивентологии и основатель
+(AccessContext.can_edit_galaxy_map, включает локального админа). Ивентолог
+любой другой ступени (is_event_submitter) может только предложить правку
+(galaxy_map_request_crud), решает по ней кто-то из редакторов."""
 import logging
 
 from fastapi import APIRouter, Depends
@@ -35,8 +34,6 @@ async def get_galaxy_map(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> GalaxyMapRead:
-    if not access.has_access:
-        raise ForbiddenError("У вас нет доступа ни к одному формированию")
     row = await galaxy_map_crud.get(db)
     return GalaxyMapRead.model_validate(row)
 
@@ -50,8 +47,8 @@ async def update_galaxy_map(
     """Прямое сохранение — двигать/добавлять системы и вообще сохранять любые
     правки сразу (без рассмотрения) может только Ассистент+/Куратор
     Ивентологии."""
-    if not access.can_decide_event:
-        raise ForbiddenError("Редактировать карту напрямую может только Ассистент+/Куратор Ивентологии")
+    if not access.can_edit_galaxy_map:
+        raise ForbiddenError("Редактировать карту может только Ассистент/Куратор ивентологии или основатель")
     row = await galaxy_map_crud.replace(db, data=payload.data, updated_by_user_id=access.user.id)
     logger.info("%s сохранил карту кампании напрямую", access.user.username)
     await audit_log_crud.log(
@@ -73,8 +70,8 @@ async def list_galaxy_map_requests(
     (Ассистент+/Куратор), обычный Ивентолог узнаёт об исходе своей заявки не
     отсюда (заявки без этого эндпоинта не перечисляются нигде — тонкий срез,
     достаточный для текущей задачи)."""
-    if not access.can_decide_event:
-        raise ForbiddenError("Доступно только Ассистенту+/Куратору Ивентологии")
+    if not access.can_edit_galaxy_map:
+        raise ForbiddenError("Доступно только Ассистенту/Куратору ивентологии или основателю")
     rows = await galaxy_map_request_crud.list_pending(db)
     return [GalaxyMapRequestRead.model_validate(r) for r in rows]
 
@@ -108,8 +105,8 @@ async def decide_galaxy_map_request(
     db: AsyncSession = Depends(get_db),
     access: AccessContext = Depends(get_access_context),
 ) -> GalaxyMapRequestDetail:
-    if not access.can_decide_event:
-        raise ForbiddenError("Доступно только Ассистенту+/Куратору Ивентологии")
+    if not access.can_edit_galaxy_map:
+        raise ForbiddenError("Доступно только Ассистенту/Куратору ивентологии или основателю")
     request = await galaxy_map_request_crud.get_by_id(db, request_id)
     if request is None:
         raise NotFoundError("Заявка не найдена")

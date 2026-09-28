@@ -61,6 +61,7 @@ async def get_me(
             is_event_assistant=access.is_event_assistant,
             is_event_curator=access.is_event_curator,
             can_decide_event=access.can_decide_event,
+            can_edit_galaxy_map=access.can_edit_galaxy_map,
             can_access_event_room=access.can_access_event_room,
             admin_staff_rank_code=access.admin_staff_rank_code,
             admin_staff_tier=access.admin_staff_tier,
