@@ -1372,6 +1372,16 @@ flagged here as a legitimate follow-up if ever requested):
   The review of an already-decided request passes its own
   `tenure_started_at`..`decided_at` window explicitly, because the rank has changed
   since then.
+- `Rank.specializations_required` (migration 0095): how many granted
+  specializations (`UserSpecialization` rows) are needed to be promoted TO this
+  rank. It counts actual grants, not training reports: a training report is
+  filed in the instructor's regiment category, and grants can happen without one.
+- Tenure semantics: the value on rank X is the days spent on the PREVIOUS rank
+  before X is reachable (`effective_tenure_days(next_rank)`), not days spent in X.
+- The RCT..SLT ladder (PV1/PV2 split, tenure, category requirements in all
+  regiments) was loaded from the charter by `scripts/apply_charter_promotions.py`
+  (dry run by default, `--apply` to write, safe to re-run). The КМБ auto-promotion
+  targets "the rank after RCT", not the code `PVT`, which was renamed to `PV1`.
 - Any active RP reprimand (verbal or strict) blocks promotion, per the charter
   ("Боец не может быть повышен в случае наличия выговора"). Non-RP `AdminReprimand`
   does not block RP promotion.
