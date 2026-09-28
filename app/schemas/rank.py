@@ -12,6 +12,8 @@ class RankRead(BaseModel):
     # Своё требование по дням выслуги для перехода на это конкретное звание — если
     # задано, перекрывает требование состава (RankTierRead.tenure_days_required)
     tenure_days_required: int | None = None
+    # Сколько выданных специализаций нужно для перехода на это звание
+    specializations_required: int | None = None
     # Джедайский ранг только: true исключает авто-переход СЮДА (сейчас только
     # Гранд-Мастер — только вручную, admin/high_command)
     jedi_manual_only: bool = False

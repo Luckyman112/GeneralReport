@@ -748,12 +748,14 @@ async def _apply_approval_side_effects(db: AsyncSession, updated, category, acto
         updated = await report_crud.set_points(db, updated, points=per_spec * len(granted_names))
 
     # "Курс молодого бойца" — вместо выдачи специализации напрямую меняет
-    # звание цели на PVT, тем же паттерном, что и promotion_crud.decide (см.
-    # решение пользователя: должен стать PVT одним действием, без отдельного
-    # решения командира по PromotionRequest)
+    # звание цели на первое звание после RCT (сейчас PV1), тем же паттерном,
+    # что и promotion_crud.decide (см. решение пользователя: одним действием,
+    # без отдельного решения командира по PromotionRequest). Берём "следующее
+    # после RCT", а не код звания — код переименовывали (PVT -> PV1 по уставу).
     if category is not None and category.is_recruit_promotion and updated.target_discord_id is not None:
         trainee = await user_crud.get_by_discord_id(db, updated.target_discord_id)
-        pvt_rank = await rank_crud.get_by_code(db, "PVT")
+        rct_rank = await rank_crud.get_by_code(db, "RCT")
+        pvt_rank = await rank_crud.get_next_rank(db, rct_rank.id) if rct_rank is not None else None
         if trainee is not None and pvt_rank is not None:
             trainee.rank_id = pvt_rank.id
             trainee.rank_assigned_at = datetime.now(timezone.utc)
@@ -774,10 +776,10 @@ async def _apply_approval_side_effects(db: AsyncSession, updated, category, acto
                 created_by=actor_user_id,
             )
             logger.info(
-                "Рапорт КМБ %s одобрен — %s повышен до PVT", updated.id, updated.target_discord_id
+                "Рапорт КМБ %s одобрен — %s повышен до %s", updated.id, updated.target_discord_id, pvt_rank.code
             )
         elif pvt_rank is None:
-            logger.warning("Рапорт КМБ %s одобрен, но звание PVT не настроено", updated.id)
+            logger.warning("Рапорт КМБ %s одобрен, но звание после RCT не настроено", updated.id)
 
     # "Наставничество" — одобрение отмечает СЛЕДУЮЩЕЕ по порядку испытание
     # падавана сданным; автор рапорта = наставник, получает зачёт в jedi_trials

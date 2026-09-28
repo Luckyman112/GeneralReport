@@ -48,6 +48,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   const [tierDraft, setTierDraft] = useState({});
   const [tierLimitsDraft, setTierLimitsDraft] = useState({});
   const [rankTenureDraft, setRankTenureDraft] = useState({});
+  const [rankSpecDraft, setRankSpecDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   // Защита от гонки: если формирование переключили в <select>, пока летели старые
@@ -100,6 +101,9 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
     const rankTenure = Object.fromEntries(
       tiersData.flatMap((t) => t.ranks).map((r) => [r.id, r.tenure_days_required ?? ""])
     );
+    const rankSpec = Object.fromEntries(
+      tiersData.flatMap((t) => t.ranks).map((r) => [r.id, r.specializations_required ?? ""])
+    );
     const tierLimits = Object.fromEntries(
       tiersData.map((t) => [
         t.id,
@@ -111,8 +115,9 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
     setCmdDraft(cmd);
     setTierDraft(tier);
     setRankTenureDraft(rankTenure);
+    setRankSpecDraft(rankSpec);
     setTierLimitsDraft(tierLimits);
-    setBaseline({ admin, cmd, tier, rankTenure, tierLimits });
+    setBaseline({ admin, cmd, tier, rankTenure, rankSpec, tierLimits });
   }
 
   // В режиме "Все формирования" баллы/требования по категориям берём с первого
@@ -175,6 +180,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
       JSON.stringify(cmdDraft) !== JSON.stringify(baseline.cmd) ||
       JSON.stringify(tierDraft) !== JSON.stringify(baseline.tier) ||
       JSON.stringify(rankTenureDraft) !== JSON.stringify(baseline.rankTenure) ||
+      JSON.stringify(rankSpecDraft) !== JSON.stringify(baseline.rankSpec) ||
       JSON.stringify(tierLimitsDraft) !== JSON.stringify(baseline.tierLimits) ||
       JSON.stringify(categoryPointsDraft) !== JSON.stringify(categoryPointsBaseline));
 
@@ -184,6 +190,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
     setCmdDraft(baseline.cmd);
     setTierDraft(baseline.tier);
     setRankTenureDraft(baseline.rankTenure);
+    setRankSpecDraft(baseline.rankSpec);
     setTierLimitsDraft(baseline.tierLimits);
     setCategoryPointsDraft(categoryPointsBaseline);
     setError(null);
@@ -215,6 +222,10 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
         for (const [rankId, value] of Object.entries(rankTenureDraft)) {
           if (value === baseline.rankTenure[rankId]) continue;
           await api.updateRankTenure(token, rankId, value === "" ? null : Number(value));
+        }
+        for (const [rankId, value] of Object.entries(rankSpecDraft)) {
+          if (value === baseline.rankSpec[rankId]) continue;
+          await api.updateRankSpecializationsRequired(token, rankId, value === "" ? null : Number(value));
         }
         for (const [tierId, limits] of Object.entries(tierLimitsDraft)) {
           if (JSON.stringify(limits) === JSON.stringify(baseline.tierLimits[tierId])) continue;
@@ -417,12 +428,26 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
                     {canEditDays && (
                       <span className="points-inline">
                         · своя выслуга:
-                        <InfoHint text="Переопределяет для конкретного звания, сколько дней нужно провести в нём — если оставить пустым, действует общее значение состава, указанное выше." />
+                        <InfoHint text="Сколько дней нужно провести на ПРЕДЫДУЩЕМ звании, чтобы получить это. Если пусто — действует общее значение состава, указанное выше." />
                         <input
                           type="number"
                           value={rankTenureDraft[rank.id] ?? ""}
                           onChange={(e) => setRankTenureDraft((prev) => ({ ...prev, [rank.id]: e.target.value }))}
                           placeholder="как у состава"
+                        />
+                      </span>
+                    )}
+                    {canEditDays && (
+                      <span className="points-inline">
+                        · специализаций:
+                        <InfoHint text="Сколько выданных специализаций нужно иметь, чтобы получить это звание. Пусто — не требуется." />
+                        <input
+                          type="number"
+                          min={0}
+                          value={rankSpecDraft[rank.id] ?? ""}
+                          onChange={(e) => setRankSpecDraft((prev) => ({ ...prev, [rank.id]: e.target.value }))}
+                          placeholder="0"
+                          style={{ width: "4rem" }}
                         />
                       </span>
                     )}

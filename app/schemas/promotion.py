@@ -46,6 +46,10 @@ class TenureUpdate(BaseModel):
     tenure_days_required: int | None = None
 
 
+class SpecializationsRequiredUpdate(BaseModel):
+    specializations_required: int | None = None
+
+
 class PromotionRequestRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -86,6 +90,9 @@ class PromotionStatusRead(BaseModel):
     # бы одного падавана, и это условие ещё не выполнено — см.
     # jedi_trial_crud.has_trained_a_padawan
     jedi_needs_trained_padawan: bool = False
+    # Выданные специализации против требования звания (Rank.specializations_required)
+    specializations_current: int = 0
+    specializations_required: int = 0
     category_requirements: list[CategoryRequirementStatus] = []
 
 

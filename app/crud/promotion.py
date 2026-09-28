@@ -30,6 +30,7 @@ from app.models.promotion import (
 from app.models.regiment import Regiment
 from app.models.report import Report, ReportStatus
 from app.models.report_category import ReportCategory
+from app.models.specialization import UserSpecialization
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -274,6 +275,9 @@ async def check_and_create_promotion_request(
         if days_in_rank < days_required:
             return None
 
+    if await count_user_specializations(db, user_id=user.id) < (next_rank.specializations_required or 0):
+        return None
+
     points_required = await get_points_required(db, regiment_id=regiment.id, rank_id=next_rank.id)
     points_current = await sum_approved_points(db, user_id=user.id, since=user.rank_assigned_at)
     if points_current < points_required:
@@ -357,6 +361,14 @@ async def get_category_requirements(db: AsyncSession, regiment_id: int) -> list[
 
 async def get_category_requirement_by_id(db: AsyncSession, requirement_id: int) -> PromotionCategoryRequirement | None:
     return await db.get(PromotionCategoryRequirement, requirement_id)
+
+
+async def count_user_specializations(db: AsyncSession, *, user_id: int) -> int:
+    """Выданные бойцу специализации (для Rank.specializations_required) —
+    считаем по факту выдачи, а не по рапортам обучения: рапорт пишется в
+    категорию формирования инструктора, а выдача могла пройти и без рапорта."""
+    result = await db.execute(select(func.count(UserSpecialization.id)).where(UserSpecialization.user_id == user_id))
+    return int(result.scalar_one())
 
 
 async def count_approved_reports_in_category(

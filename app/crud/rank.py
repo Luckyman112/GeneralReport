@@ -44,6 +44,15 @@ async def update_rank_tenure(db: AsyncSession, rank: Rank, *, tenure_days_requir
     return rank
 
 
+async def update_rank_specializations_required(
+    db: AsyncSession, rank: Rank, *, specializations_required: int | None
+) -> Rank:
+    rank.specializations_required = specializations_required
+    await db.commit()
+    await db.refresh(rank)
+    return rank
+
+
 def effective_tenure_days(rank: Rank) -> int | None:
     """Своё требование по звания важнее общего требования состава — если задано,
     перекрывает tier.tenure_days_required именно для этого звания (rank.tier

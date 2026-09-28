@@ -219,6 +219,13 @@ function PromotionStatus() {
           {status.days_required != null && (
             <ProgressBar current={status.days_in_rank ?? 0} required={status.days_required} label="Дней в звании" />
           )}
+          {status.specializations_required > 0 && (
+            <ProgressBar
+              current={status.specializations_current}
+              required={status.specializations_required}
+              label="Специализаций"
+            />
+          )}
 
           {status.category_requirements?.length > 0 && (
             <ul className="requirement-checklist">

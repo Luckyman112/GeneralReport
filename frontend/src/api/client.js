@@ -553,6 +553,12 @@ export const api = {
   getMemberPromotionStatus: (token, regimentId, discordId) =>
     request(`/api/regiments/${regimentId}/members/${discordId}/promotion-status`, { token }),
 
+  updateRankSpecializationsRequired: (token, rankId, specializationsRequired) =>
+    request(`/api/ranks/${rankId}/specializations-required`, {
+      method: "PATCH",
+      token,
+      body: { specializations_required: specializationsRequired },
+    }),
   updateRankTenure: (token, rankId, tenureDaysRequired) =>
     request(`/api/ranks/${rankId}`, {
       method: "PATCH",

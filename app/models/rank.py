@@ -56,6 +56,10 @@ class Rank(Base):
     # Своё требование по дням выслуги для перехода именно на это звание — если
     # задано, перекрывает tier.tenure_days_required для этого конкретного звания
     tenure_days_required: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Сколько выданных специализаций нужно иметь для перехода НА это звание
+    # (устав: "PV2-PFC: получение одной специализации подразделения").
+    # None/0 — не требуется. Общее на весь сервер, как и выслуга.
+    specializations_required: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     tier: Mapped["RankTier"] = relationship(back_populates="ranks")
 

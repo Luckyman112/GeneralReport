@@ -920,6 +920,8 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
               Баллы: {promotionStatus.points_current} / {promotionStatus.points_required}
               {promotionStatus.days_required != null &&
                 ` · Дней в звании: ${promotionStatus.days_in_rank ?? 0} / ${promotionStatus.days_required}`}
+              {promotionStatus.specializations_required > 0 &&
+                ` · Специализаций: ${promotionStatus.specializations_current} / ${promotionStatus.specializations_required}`}
             </p>
             {promotionStatus.category_requirements?.length > 0 && (
               <ul className="requirement-checklist">

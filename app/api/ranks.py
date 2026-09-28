@@ -9,7 +9,7 @@ from app.crud import audit_log as audit_log_crud
 from app.crud import rank as rank_crud
 from app.database import get_db
 from app.exceptions import ForbiddenError, NotFoundError
-from app.schemas.promotion import TenureUpdate
+from app.schemas.promotion import SpecializationsRequiredUpdate, TenureUpdate
 from app.schemas.rank import RankRead, RankTierLimitsUpdate, RankTierRead
 
 router = APIRouter(prefix="/ranks", tags=["ranks"])
@@ -102,5 +102,33 @@ async def update_rank_tenure(
         actor_is_admin=access.is_admin,
         action="settings_rank_tenure_update",
         details=f"Выслуга звания «{rank.code} — {rank.name}»: {payload.tenure_days_required}",
+    )
+    return RankRead.model_validate(updated)
+
+
+@router.patch("/{rank_id}/specializations-required", response_model=RankRead)
+async def update_rank_specializations_required(
+    rank_id: int,
+    payload: SpecializationsRequiredUpdate,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> RankRead:
+    """Сколько выданных специализаций нужно для перехода на это звание — тот же
+    круг прав, что и выслуга (высшее командование/администратор)."""
+    if not (access.is_admin or access.is_high_command):
+        raise ForbiddenError("Изменять требования к повышению может только высшее командование или администратор")
+
+    rank = await rank_crud.get_by_id(db, rank_id)
+    if rank is None:
+        raise NotFoundError("Звание не найдено")
+
+    value = payload.specializations_required or None
+    updated = await rank_crud.update_rank_specializations_required(db, rank, specializations_required=value)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="settings_rank_specializations_update",
+        details=f"Специализаций для звания «{rank.code} — {rank.name}»: {value}",
     )
     return RankRead.model_validate(updated)
