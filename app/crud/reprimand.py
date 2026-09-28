@@ -23,10 +23,10 @@ async def list_active_for_user(db: AsyncSession, *, user_id: int) -> list[Reprim
 
 
 async def has_active_reprimand(db: AsyncSession, *, user_id: int) -> bool:
-    """Только строгие выговоры блокируют повышение — устные сами по себе ничего
-    не ограничивают."""
+    """Любой неснятый выговор (и устный, и строгий) блокирует повышение — устав:
+    "Боец не может быть повышен в случае наличия выговора"."""
     active = await list_active_for_user(db, user_id=user_id)
-    return any(r.severity == "strict" for r in active)
+    return bool(active)
 
 
 async def count_active_verbal(db: AsyncSession, *, user_id: int, regiment_id: int) -> int:

@@ -1,6 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+# См. PromotionCategoryRequirement.count_mode
+CountMode = Literal["author", "participant", "any"]
 
 from app.schemas.rank import RankRead
 from app.schemas.report import ReportRead
@@ -64,6 +68,7 @@ class CategoryRequirementStatus(BaseModel):
     satisfied: bool
     # Не None, если админ вручную переопределил результат для этого бойца
     overridden: bool = False
+    count_mode: CountMode = "author"
 
 
 class PromotionStatusRead(BaseModel):
@@ -94,12 +99,14 @@ class CategoryRequirementRead(BaseModel):
     count_required: int
     is_mandatory: bool
     mandatory_group_id: int | None
+    count_mode: CountMode = "author"
 
 
 class LocalCategoryRequirementCreate(BaseModel):
     rank_id: int
     category_id: int
     count_required: int = 1
+    count_mode: CountMode = "author"
 
 
 class MandatoryCategoryRequirementCreate(BaseModel):
@@ -110,6 +117,7 @@ class MandatoryCategoryRequirementCreate(BaseModel):
     count_required: int = 1
     category_min_rank_id: int | None = None
     category_commander_only: bool = False
+    count_mode: CountMode = "author"
 
 
 class MandatoryCategoryRequirementUpdate(BaseModel):
@@ -120,6 +128,7 @@ class MandatoryCategoryRequirementUpdate(BaseModel):
     count_required: int = 1
     category_min_rank_id: int | None = None
     category_commander_only: bool = False
+    count_mode: CountMode = "author"
 
 
 class RequirementOverrideUpdate(BaseModel):

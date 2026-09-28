@@ -18,6 +18,7 @@ import { steamProfileUrl } from "../utils/steam";
 import { discordProfileUrl } from "../utils/discord";
 import { DISCIPLINE_CATEGORIES } from "../utils/specialization";
 import { JEDI_COUNCIL_SEATS } from "../utils/regimentRoles";
+import { countModeLabel } from "../utils/countMode";
 
 
 function profileSnapshot(member) {
@@ -127,7 +128,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
   }, [periodFilteredReports]);
   const memberReprimands = reprimands.filter((r) => r.target.discord_id === member.discord_id);
   const activeReprimands = memberReprimands.filter((r) => !r.revoked_at);
-  const hasActiveReprimand = memberReprimands.some((r) => !r.revoked_at && r.severity !== "verbal");
+  const hasActiveReprimand = memberReprimands.some((r) => !r.revoked_at);
   const memberLeaveRequests = leaveRequests.filter((r) => r.user.discord_id === member.discord_id);
 
   const LEAVE_STATUS_LABELS = { pending: "ожидает решения", approved: "одобрена", rejected: "отклонена" };
@@ -929,7 +930,8 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
                   >
                     <span className="requirement-check">{req.satisfied && "✓"}</span>
                     <span className="requirement-label">
-                      {req.category_name} ({req.count_current} / {req.count_required})
+                      {req.category_name}
+                      {req.count_mode && req.count_mode !== "author" && ` — ${countModeLabel(req.count_mode)}`} ({req.count_current} / {req.count_required})
                       {req.is_mandatory && <span className="tag-mandatory">обязательное</span>}
                     </span>
                   </li>
@@ -937,7 +939,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
               </ul>
             )}
             {promotionStatus.has_active_reprimand && (
-              <p className="error-text">Есть непогашенный строгий выговор — повышение недоступно.</p>
+              <p className="error-text">Есть непогашенный выговор — повышение недоступно.</p>
             )}
             {promotionStatus.jedi_needs_trained_padawan && (
               <p className="error-text">
@@ -948,7 +950,7 @@ export function MemberDetailModal({ member, regimentId, canEdit, onClose, onSave
         )}
 
         <h4>
-          Выговоры {hasActiveReprimand && <span className="member-inactive-badge">есть непогашенный (строгий)</span>}
+          Выговоры {hasActiveReprimand && <span className="member-inactive-badge">есть непогашенный</span>}
         </h4>
         {activeReprimands.length === 0 ? (
           <p className="hint-text">Активных выговоров нет.</p>

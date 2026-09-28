@@ -11,6 +11,7 @@ import { TrendChart } from "../components/TrendChart";
 import { useLiveEvents } from "../hooks/useLiveEvents";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullName } from "../utils/formatName";
+import { countModeLabel } from "../utils/countMode";
 
 // Системное имя категории "Понижение" — те же авто-заводимые системные записи,
 // что и "Повышение" (см. DEMOTION_CATEGORY_NAME в app/crud/regiment.py), не
@@ -228,7 +229,8 @@ function PromotionStatus() {
                 >
                   <span className="requirement-check">{req.satisfied && "✓"}</span>
                   <span className="requirement-label">
-                    {req.category_name} ({req.count_current} / {req.count_required})
+                    {req.category_name}
+                      {req.count_mode && req.count_mode !== "author" && ` — ${countModeLabel(req.count_mode)}`} ({req.count_current} / {req.count_required})
                     {req.is_mandatory && <span className="tag-mandatory">обязательное</span>}
                     {req.overridden && <span className="hint-text"> · переопределено вручную</span>}
                   </span>
@@ -239,7 +241,7 @@ function PromotionStatus() {
 
           {status.has_active_reprimand && (
             <p className="error-text">
-              У вас есть непогашенный (строгий) выговор — повышение недоступно, пока он не будет снят.
+              У вас есть непогашенный выговор — повышение недоступно, пока он не будет снят.
             </p>
           )}
           {status.pending_request_id != null && (

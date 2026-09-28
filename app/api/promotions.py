@@ -258,7 +258,12 @@ async def get_promotion_review(
     else:
         reports = []
     category_statuses = await promotion_crud.get_category_requirement_statuses(
-        db, regiment_id=request.regiment_id, rank_id=request.to_rank_id, user_id=request.user_id
+        db,
+        regiment_id=request.regiment_id,
+        rank_id=request.to_rank_id,
+        user_id=request.user_id,
+        since=period_start,
+        until=period_end,
     )
 
     return PromotionReviewRead(
@@ -281,6 +286,7 @@ async def get_promotion_review(
                 is_mandatory=s.is_mandatory,
                 satisfied=s.satisfied,
                 overridden=s.overridden,
+                count_mode=s.count_mode,
             )
             for s in category_statuses
         ],
@@ -409,6 +415,7 @@ async def _compute_promotion_status(
                 is_mandatory=status.is_mandatory,
                 satisfied=status.satisfied,
                 overridden=status.overridden,
+                count_mode=status.count_mode,
             )
             for status in category_statuses
         ],
@@ -456,15 +463,7 @@ async def get_category_requirements(
         raise ForbiddenError("Нет доступа к этому формированию")
     rows = await promotion_crud.get_category_requirements(db, regiment_id)
     return [
-        CategoryRequirementRead(
-            id=r.id,
-            regiment_id=r.regiment_id,
-            rank_id=r.rank_id,
-            category_id=r.category_id,
-            count_required=r.count_required,
-            is_mandatory=r.is_mandatory,
-            mandatory_group_id=r.mandatory_group_id,
-        )
+        CategoryRequirementRead.model_validate(r)
         for r in rows
     ]
 
@@ -495,16 +494,9 @@ async def create_local_category_requirement(
         rank_id=payload.rank_id,
         category_id=payload.category_id,
         count_required=payload.count_required,
+        count_mode=payload.count_mode,
     )
-    return CategoryRequirementRead(
-        id=requirement.id,
-        regiment_id=requirement.regiment_id,
-        rank_id=requirement.rank_id,
-        category_id=requirement.category_id,
-        count_required=requirement.count_required,
-        is_mandatory=requirement.is_mandatory,
-        mandatory_group_id=requirement.mandatory_group_id,
-    )
+    return CategoryRequirementRead.model_validate(requirement)
 
 
 @router.post(
@@ -528,6 +520,7 @@ async def create_mandatory_category_requirement(
         category_name=payload.category_name,
         category_fields=payload.category_fields,
         count_required=payload.count_required,
+        count_mode=payload.count_mode,
         category_min_rank_id=payload.category_min_rank_id,
         category_commander_only=payload.category_commander_only,
     )
@@ -539,15 +532,7 @@ async def create_mandatory_category_requirement(
         details=f"Завёл обязательное требование «{payload.category_name}» ({payload.count_required}) для звания {payload.rank_id} во всех формированиях",
     )
     return [
-        CategoryRequirementRead(
-            id=r.id,
-            regiment_id=r.regiment_id,
-            rank_id=r.rank_id,
-            category_id=r.category_id,
-            count_required=r.count_required,
-            is_mandatory=r.is_mandatory,
-            mandatory_group_id=r.mandatory_group_id,
-        )
+        CategoryRequirementRead.model_validate(r)
         for r in rows
     ]
 
@@ -573,6 +558,7 @@ async def update_mandatory_category_requirement(
         category_name=payload.category_name,
         category_fields=payload.category_fields,
         count_required=payload.count_required,
+        count_mode=payload.count_mode,
         category_min_rank_id=payload.category_min_rank_id,
         category_commander_only=payload.category_commander_only,
     )
@@ -586,15 +572,7 @@ async def update_mandatory_category_requirement(
         details=f"Изменил обязательное требование «{payload.category_name}» ({payload.count_required}) для звания {payload.rank_id}",
     )
     return [
-        CategoryRequirementRead(
-            id=r.id,
-            regiment_id=r.regiment_id,
-            rank_id=r.rank_id,
-            category_id=r.category_id,
-            count_required=r.count_required,
-            is_mandatory=r.is_mandatory,
-            mandatory_group_id=r.mandatory_group_id,
-        )
+        CategoryRequirementRead.model_validate(r)
         for r in rows
     ]
 

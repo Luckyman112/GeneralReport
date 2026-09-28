@@ -26,6 +26,7 @@ from app.api.health import router as health_router
 from app.api.leave_requests import router as leave_requests_router
 from app.api.maintenance import router as maintenance_router
 from app.api.me import router as me_router
+from app.api.metrics import router as metrics_router
 from app.api.module_access import router as module_access_router
 from app.api.notifications import router as notifications_router
 from app.api.promotions import router as promotions_router
@@ -82,6 +83,7 @@ app.add_middleware(
 register_exception_handlers(app)
 
 app.include_router(auth_router)
+app.include_router(metrics_router)
 app.include_router(reports_router, prefix="/api")
 app.include_router(regiments_router, prefix="/api")
 app.include_router(me_router, prefix="/api")

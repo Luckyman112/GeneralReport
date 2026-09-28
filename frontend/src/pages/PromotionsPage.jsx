@@ -9,6 +9,7 @@ import { SaveBar } from "../components/SaveBar";
 import { useToast } from "../components/ToastContext";
 import { InfoHint } from "../components/Tooltip";
 import { formatFullName } from "../utils/formatName";
+import { COUNT_MODE_OPTIONS, countModeLabel } from "../utils/countMode";
 
 const ALL_REGIMENTS = "__all__";
 
@@ -58,6 +59,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
   const [localRankId, setLocalRankId] = useState("");
   const [localCategoryId, setLocalCategoryId] = useState("");
   const [localCount, setLocalCount] = useState(1);
+  const [localCountMode, setLocalCountMode] = useState("author");
 
   const ranks = useMemo(() => tiers.flatMap((t) => t.ranks), [tiers]);
   const startingRank = useMemo(() => {
@@ -266,6 +268,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
         rankId: Number(localRankId),
         categoryId: Number(localCategoryId),
         countRequired: Number(localCount) || 1,
+        countMode: localCountMode,
       });
       setLocalRankId("");
       setLocalCategoryId("");
@@ -289,6 +292,7 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
       categoryName: category?.name || "",
       fields: category?.fields || [],
       countRequired: req.count_required,
+      countMode: req.count_mode,
       minRankId: category?.min_rank?.id ?? "",
       commanderOnly: category?.commander_only ?? false,
     });
@@ -428,7 +432,8 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
                     <ul className="category-list category-list-nested">
                       {rankRequirements.map((req) => (
                         <li key={req.id}>
-                          {categories[req.category_id]?.name || `#${req.category_id}`} — нужно {req.count_required}
+                          {categories[req.category_id]?.name || `#${req.category_id}`} — нужно {req.count_required}{" "}
+                          <span className="hint-text">({countModeLabel(req.count_mode)})</span>
                           {req.is_mandatory && (
                             <span className="hint-text"> (обязательно, для всех формирований)</span>
                           )}
@@ -480,6 +485,13 @@ function RequirementsTable({ regimentId, allRegiments, canEditPoints, canEditDay
             onChange={(e) => setLocalCount(e.target.value)}
             style={{ width: "5rem" }}
           />
+          <select value={localCountMode} onChange={(e) => setLocalCountMode(e.target.value)}>
+            {COUNT_MODE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
           <button type="submit">Добавить своё требование по категории</button>
         </form>
       )}

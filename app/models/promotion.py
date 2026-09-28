@@ -62,8 +62,15 @@ class PromotionCategoryRequirement(Base):
     # Заполнено только у is_mandatory=True — чтобы при удалении одним действием
     # снять клонированное требование во всех формированиях разом
     mandatory_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Как засчитывать рапорт: "author" — боец сам провёл (подал рапорт),
+    # "participant" — указан участником в чужом рапорте, "any" — любое из двух.
+    # Устав различает "участие в тренировке" и "проведение тренировки".
+    count_mode: Mapped[str] = mapped_column(String(16), default="author", server_default="author")
 
     category: Mapped["ReportCategory"] = relationship()
+
+
+COUNT_MODES = ("author", "participant", "any")
 
 
 class PromotionRequirementOverride(Base):

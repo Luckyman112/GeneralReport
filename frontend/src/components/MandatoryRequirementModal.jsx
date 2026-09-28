@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { InfoHint } from "./Tooltip";
+import { COUNT_MODE_OPTIONS } from "../utils/countMode";
 
 const FIELD_TYPE_LABELS = {
   text: "Текст",
@@ -12,7 +13,7 @@ const FIELD_TYPE_LABELS = {
 /** Создание/редактирование обязательного требования по повышению — действует
  * сразу для ВСЕХ формирований (см. app/crud/promotion.py::create_mandatory_category_requirement/
  * update_mandatory_category_requirement). initial=null — создание нового;
- * initial={groupId, rankId, categoryName, fields, countRequired, minRankId, commanderOnly} —
+ * initial={groupId, rankId, categoryName, fields, countRequired, countMode, minRankId, commanderOnly} —
  * редактирование существующего (по mandatory_group_id). */
 export function MandatoryRequirementModal({ ranks, existingCategoryNames, initial, onClose, onSaved }) {
   const { token } = useAuth();
@@ -23,6 +24,7 @@ export function MandatoryRequirementModal({ ranks, existingCategoryNames, initia
   const [fieldDraft, setFieldDraft] = useState("");
   const [fieldDraftType, setFieldDraftType] = useState("text");
   const [countRequired, setCountRequired] = useState(initial?.countRequired ?? 1);
+  const [countMode, setCountMode] = useState(initial?.countMode ?? "author");
   const [minRankId, setMinRankId] = useState(initial?.minRankId ?? "");
   const [commanderOnly, setCommanderOnly] = useState(initial?.commanderOnly ?? false);
   const [saving, setSaving] = useState(false);
@@ -50,6 +52,7 @@ export function MandatoryRequirementModal({ ranks, existingCategoryNames, initia
         categoryName: categoryName.trim(),
         categoryFields: fieldsList,
         countRequired: Number(countRequired) || 1,
+        countMode,
         categoryMinRankId: minRankId === "" ? null : Number(minRankId),
         categoryCommanderOnly: commanderOnly,
       };
@@ -156,6 +159,18 @@ export function MandatoryRequirementModal({ ranks, existingCategoryNames, initia
               onChange={(e) => setCountRequired(e.target.value)}
               style={{ width: "5rem" }}
             />
+          </label>
+
+          <label>
+            Засчитывать рапорт, если боец
+            <InfoHint text="«Провёл сам» — боец подал рапорт. «Участвовал» — указан участником в чужом рапорте (например, участие в тренировке). Считаются только рапорты с момента получения текущего звания." />
+            <select value={countMode} onChange={(e) => setCountMode(e.target.value)}>
+              {COUNT_MODE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label>

@@ -562,15 +562,15 @@ export const api = {
 
   getCategoryRequirements: (token, regimentId) =>
     request(`/api/regiments/${regimentId}/promotion-category-requirements`, { token }),
-  createLocalCategoryRequirement: (token, regimentId, { rankId, categoryId, countRequired }) =>
+  createLocalCategoryRequirement: (token, regimentId, { rankId, categoryId, countRequired, countMode }) =>
     request(`/api/regiments/${regimentId}/promotion-category-requirements`, {
       method: "POST",
       token,
-      body: { rank_id: rankId, category_id: categoryId, count_required: countRequired },
+      body: { rank_id: rankId, category_id: categoryId, count_required: countRequired, count_mode: countMode || "author" },
     }),
   createMandatoryCategoryRequirement: (
     token,
-    { rankId, categoryName, categoryFields, countRequired, categoryMinRankId, categoryCommanderOnly }
+    { rankId, categoryName, categoryFields, countRequired, categoryMinRankId, categoryCommanderOnly, countMode }
   ) =>
     request("/api/promotion-category-requirements/mandatory", {
       method: "POST",
@@ -582,12 +582,13 @@ export const api = {
         count_required: countRequired,
         category_min_rank_id: categoryMinRankId || null,
         category_commander_only: !!categoryCommanderOnly,
+        count_mode: countMode || "author",
       },
     }),
   updateMandatoryCategoryRequirement: (
     token,
     groupId,
-    { rankId, categoryName, categoryFields, countRequired, categoryMinRankId, categoryCommanderOnly }
+    { rankId, categoryName, categoryFields, countRequired, categoryMinRankId, categoryCommanderOnly, countMode }
   ) =>
     request(`/api/promotion-category-requirements/mandatory/${groupId}`, {
       method: "PATCH",
@@ -599,6 +600,7 @@ export const api = {
         count_required: countRequired,
         category_min_rank_id: categoryMinRankId || null,
         category_commander_only: !!categoryCommanderOnly,
+        count_mode: countMode || "author",
       },
     }),
   deleteCategoryRequirement: (token, requirementId) =>

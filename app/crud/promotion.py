@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime, timezone
 
+from sqlalchemy import cast, func, or_, select
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -358,12 +359,37 @@ async def get_category_requirement_by_id(db: AsyncSession, requirement_id: int) 
     return await db.get(PromotionCategoryRequirement, requirement_id)
 
 
-async def count_approved_reports_in_category(db: AsyncSession, *, user_id: int, category_id: int) -> int:
-    result = await db.execute(
-        select(func.count(Report.id)).where(
-            Report.user_id == user_id, Report.category_id == category_id, Report.status == ReportStatus.APPROVED
-        )
+async def count_approved_reports_in_category(
+    db: AsyncSession,
+    *,
+    user: User,
+    category_id: int,
+    count_mode: str = "author",
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> int:
+    """Участие берётся из Report.participant_discord_ids, а не из
+    ReportParticipant — те строки заводятся только для категорий с баллами за
+    участие, для остальных участие бы просто не засчитывалось."""
+    as_author = Report.user_id == user.id
+    as_participant = cast(Report.participant_discord_ids, JSONB).contains([user.discord_id]) & (
+        Report.user_id != user.id
     )
+    if count_mode == "participant":
+        who = as_participant
+    elif count_mode == "any":
+        who = or_(as_author, as_participant)
+    else:
+        who = as_author
+
+    query = select(func.count(Report.id)).where(
+        who, Report.category_id == category_id, Report.status == ReportStatus.APPROVED
+    )
+    if since is not None:
+        query = query.where(Report.created_at >= since)
+    if until is not None:
+        query = query.where(Report.created_at <= until)
+    result = await db.execute(query)
     return int(result.scalar_one())
 
 
@@ -410,6 +436,7 @@ class CategoryRequirementStatusData:
         is_mandatory: bool,
         satisfied: bool,
         overridden: bool,
+        count_mode: str = "author",
     ) -> None:
         self.requirement_id = requirement_id
         self.category_id = category_id
@@ -419,18 +446,42 @@ class CategoryRequirementStatusData:
         self.is_mandatory = is_mandatory
         self.satisfied = satisfied
         self.overridden = overridden
+        self.count_mode = count_mode
+
+
+_UNSET = object()
 
 
 async def get_category_requirement_statuses(
-    db: AsyncSession, *, regiment_id: int, rank_id: int, user_id: int
+    db: AsyncSession,
+    *,
+    regiment_id: int,
+    rank_id: int,
+    user_id: int,
+    since=_UNSET,
+    until: datetime | None = None,
 ) -> list[CategoryRequirementStatusData]:
+    """since по умолчанию — начало текущего звания бойца: по уставу требования
+    выполняются заново на каждом звании, рапорты с прошлых званий не
+    засчитываются (так же, как баллы в sum_approved_points). Для обзора уже
+    решённой заявки окно передаётся явно — звание к тому времени сменилось."""
+    user = await db.get(User, user_id)
+    if user is None:
+        return []
+    if since is _UNSET:
+        since = user.rank_assigned_at
     requirements = await get_category_requirements(db, regiment_id)
     relevant = [r for r in requirements if r.rank_id == rank_id]
     statuses: list[CategoryRequirementStatusData] = []
     for requirement in relevant:
         override = await get_override(db, user_id=user_id, requirement_id=requirement.id)
         count_current = await count_approved_reports_in_category(
-            db, user_id=user_id, category_id=requirement.category_id
+            db,
+            user=user,
+            category_id=requirement.category_id,
+            count_mode=requirement.count_mode,
+            since=since,
+            until=until,
         )
         real_satisfied = count_current >= requirement.count_required
         satisfied = override.satisfied if override is not None else real_satisfied
@@ -444,13 +495,20 @@ async def get_category_requirement_statuses(
                 is_mandatory=requirement.is_mandatory,
                 satisfied=satisfied,
                 overridden=override is not None,
+                count_mode=requirement.count_mode,
             )
         )
     return statuses
 
 
 async def create_local_category_requirement(
-    db: AsyncSession, *, regiment_id: int, rank_id: int, category_id: int, count_required: int
+    db: AsyncSession,
+    *,
+    regiment_id: int,
+    rank_id: int,
+    category_id: int,
+    count_required: int,
+    count_mode: str = "author",
 ) -> PromotionCategoryRequirement:
     requirement = PromotionCategoryRequirement(
         regiment_id=regiment_id,
@@ -458,6 +516,7 @@ async def create_local_category_requirement(
         category_id=category_id,
         count_required=count_required,
         is_mandatory=False,
+        count_mode=count_mode,
     )
     db.add(requirement)
     await db.commit()
@@ -474,6 +533,7 @@ async def create_mandatory_category_requirement(
     count_required: int,
     category_min_rank_id: int | None = None,
     category_commander_only: bool = False,
+    count_mode: str = "author",
 ) -> list[PromotionCategoryRequirement]:
     """Обязательное требование — категория с этим именем гарантированно заводится
     (или переиспользуется, если уже есть) в КАЖДОМ формировании, и для каждого из них
@@ -499,6 +559,7 @@ async def create_mandatory_category_requirement(
             count_required=count_required,
             is_mandatory=True,
             mandatory_group_id=group_id,
+            count_mode=count_mode,
         )
         db.add(requirement)
         created.append(requirement)
@@ -527,6 +588,7 @@ async def update_mandatory_category_requirement(
     count_required: int,
     category_min_rank_id: int | None = None,
     category_commander_only: bool = False,
+    count_mode: str = "author",
 ) -> list[PromotionCategoryRequirement]:
     # updates all rows sharing this mandatory_group_id
     rows = await get_mandatory_group(db, group_id)
@@ -579,6 +641,7 @@ async def update_mandatory_category_requirement(
             count_required=count_required,
             is_mandatory=True,
             mandatory_group_id=group_id,
+            count_mode=count_mode,
         )
         db.add(new_row)
         rows.append(new_row)
@@ -586,6 +649,7 @@ async def update_mandatory_category_requirement(
     for row in rows:
         row.rank_id = rank_id
         row.count_required = count_required
+        row.count_mode = count_mode
 
     await db.commit()
     for row in rows:

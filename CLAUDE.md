@@ -56,9 +56,18 @@ No lint script, no test suite on the frontend either. Verify UI changes by build
 where feasible, exercising the flow against a running backend.
 
 Local Postgres for dev is a plain `docker run` container (not part of the prod
-docker-compose file, which doesn't expose a host port for it) — matches `DATABASE_URL`
-in `.env` (default `localhost:5433`). If it doesn't exist yet, create it and restore
-from `backups/*.sql` if you need realistic data, then `alembic upgrade head`.
+docker-compose file) — matches `DATABASE_URL` in `.env` (default `localhost:5433`).
+If it doesn't exist yet, create it and restore from `backups/*.sql` if you need
+realistic data, then `alembic upgrade head`.
+
+Monitoring (Zabbix, on the prod host): `GET /metrics` (`app/api/metrics.py`, no
+`/api` prefix) returns counters/queue ages as JSON. It rejects any request carrying
+Cloudflare's `cf-connecting-ip` header with 404, so it's only reachable locally, not
+through the tunnel. The prod compose file publishes Postgres on `127.0.0.1:5432`
+(host loopback only) for the Zabbix agent. **Don't edit code directly on the
+server**: the deploy job runs `git reset --hard origin/master`, which silently
+reverts any uncommitted change in `/opt/collapsar`. These Zabbix changes were
+first made that way and had to be moved into the repo.
 
 ## Architecture
 
@@ -1349,6 +1358,23 @@ flagged here as a legitimate follow-up if ever requested):
   guards the shared singleton document against a structurally-wrong
   top-level payload sent straight to the API (bypassing the UI) crashing
   the renderer for every viewer.
+
+### Promotion requirements follow the charter (устав)
+- `PromotionCategoryRequirement.count_mode` (migration 0094): `author` = the soldier
+  filed the report themselves ("провёл"), `participant` = listed in someone else's
+  report's `participant_discord_ids` ("участвовал"), `any` = either. Participation is
+  read from `Report.participant_discord_ids`, **not** from `ReportParticipant`: those
+  rows only exist for categories with `participant_points`, so counting them would
+  miss participation everywhere else.
+- Category requirements count only reports created since `user.rank_assigned_at`
+  (same window as points in `sum_approved_points`). The charter resets requirements
+  at every rank, so reports from the previous rank don't count toward the next one.
+  The review of an already-decided request passes its own
+  `tenure_started_at`..`decided_at` window explicitly, because the rank has changed
+  since then.
+- Any active RP reprimand (verbal or strict) blocks promotion, per the charter
+  ("Боец не может быть повышен в случае наличия выговора"). Non-RP `AdminReprimand`
+  does not block RP promotion.
 
 ### Known incomplete feature
 `POST /api/violations` (`create_violation` in `app/api/violations.py`) has full

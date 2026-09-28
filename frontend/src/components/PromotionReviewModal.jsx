@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "./StatusBadge";
 import { formatMskDate } from "../utils/formatDate";
 import { formatFullNameAtRank } from "../utils/formatName";
+import { countModeLabel } from "../utils/countMode";
 
 /** Обзор для командира: рапорты бойца за текущее звание (с даты назначения до
  * сейчас) + выполненные требования по категориям для следующего звания. Открывается
@@ -75,7 +76,8 @@ export function PromotionReviewModal({ requestId, onClose }) {
                     >
                       <span className="requirement-check">{req.satisfied && "✓"}</span>
                       <span className="requirement-label">
-                        {req.category_name} ({req.count_current} / {req.count_required})
+                        {req.category_name}
+                      {req.count_mode && req.count_mode !== "author" && ` — ${countModeLabel(req.count_mode)}`} ({req.count_current} / {req.count_required})
                         {req.is_mandatory && <span className="tag-mandatory">обязательное</span>}
                       </span>
                     </li>
