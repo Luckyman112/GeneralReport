@@ -1363,6 +1363,37 @@ flagged here as a legitimate follow-up if ever requested):
   top-level payload sent straight to the API (bypassing the UI) crashing
   the renderer for every viewer.
 
+**Galaxy Map 3D** (`frontend/src/galaxy3d/`, Three.js) — a separate Vite entry
+(`galaxy3d` in `vite.config.ts`) built to the stable, unhashed path
+`dist/galaxy3d/galaxy3d.js`. The static page loads it lazily with
+`import('/galaxy3d/galaxy3d.js')` and reads `window.Galaxy3D`
+(`PlanetView`, `BattleView`, `shipSprites`, `armyOf`). Without WebGL the page keeps
+its old 2D drawing.
+- Planet view: when the dive animation finishes (`mode = 'planet'`), `show3DPlanet`
+  overlays `#g3d` above the 2D canvas. The 2D sphere stops drawing about 700 ms
+  later, so the swap doesn't flash. `refresh3D()` (called from `syncDetail`)
+  rebuilds the scene only when the system, live battle, blockades or faction
+  colors actually changed. Zones render as longitude sectors in the owner's color.
+- Battle view: "⚔ Смотреть бой" on any live battle (dossier and right rail) opens a
+  full-screen looping diorama of infantry, vehicles and aircraft. Unit counts come
+  from `battle.forces.{att,def}.{inf,veh,air}` when set (edit-mode number grid
+  under each battle), otherwise they are derived from `prog`. `#detail` is
+  `pointer-events:none` by design, so any clickable thing added to the dossier
+  needs `pointer-events:auto` (see `#detail .bat3d`).
+- `faction.army` (`rep`/`sep`, select in the factions drawer) picks the model set.
+  The default is clones for `id === 'rep'` and droids for everyone else
+  (`catalog.ts::armyOf`). Lane blockades on the 2D map use sprites rendered from
+  the same capital-ship models.
+- Assets live in `frontend/public/models/` (GLB compressed with meshopt, planet
+  maps as 1024×512 WebP). Raw downloads go to the git-ignored `models-inbox/`.
+  Optimize with glTF-Transform before adding. Gotchas already hit: the cloud maps
+  are white and store density in **alpha**; palette colors (`sys.pal`, 0–255) are
+  sRGB and must go through `setRGB(..., SRGBColorSpace)`. Getting either wrong
+  covers every planet in a milky veil. Several source maps (`terran-a`, `urban-a`)
+  have a dashed black border at the poles, so the battle ground crops the middle
+  band. The Sketchfab clone-trooper GLB was unusable (broken skin), so clones are
+  procedural (`trooper.ts`).
+
 ### Promotion requirements follow the charter (устав)
 - `PromotionCategoryRequirement.count_mode` (migration 0094): `author` = the soldier
   filed the report themselves ("провёл"), `participant` = listed in someone else's

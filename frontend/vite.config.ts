@@ -8,6 +8,16 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: "/",
+  build: {
+    rollupOptions: {
+      // 3D «Галактики» — отдельная точка входа со стабильным именем: её грузит
+      // статическая galaxy-map.html, у которой нет доступа к хэшам сборки.
+      input: { main: "index.html", galaxy3d: "src/galaxy3d/entry.ts" },
+      output: {
+        entryFileNames: (chunk) => (chunk.name === "galaxy3d" ? "galaxy3d/galaxy3d.js" : "assets/[name]-[hash].js"),
+      },
+    },
+  },
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },

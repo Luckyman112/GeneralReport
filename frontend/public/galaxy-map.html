@@ -226,6 +226,38 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
 @media (prefers-reduced-motion:reduce){
   #shell,#panel,.drawer,#back,#detail,aside.rail{transition:none}
 }
+/* ---------- 3D (Three.js, frontend/src/galaxy3d) ---------- */
+#g3d{position:absolute;inset:0;z-index:2;opacity:0;pointer-events:none;transition:opacity .6s}
+#g3d.show{opacity:1;pointer-events:auto}
+#g3d .g3d-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+.g3d-legend{position:absolute;left:16px;bottom:16px;font:12px/1.7 var(--mono);letter-spacing:.06em;color:var(--ice);
+  background:rgba(5,7,12,.66);border:1px solid var(--line);padding:8px 11px;max-width:340px;pointer-events:none}
+.g3d-legend b{color:var(--ink);font-weight:500;text-transform:uppercase;letter-spacing:.16em;font-size:10.5px;margin-right:6px}
+#g3d-battle{position:fixed;inset:0;z-index:60;background:#05070c;display:none}
+#g3d-battle.show{display:block}
+#g3d-battle .g3d-battle-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+.g3d-battle-hud{position:absolute;inset:0;pointer-events:none;padding:16px 18px;display:flex;flex-direction:column;gap:10px;font-family:var(--sans)}
+.g3d-battle-hud .g3d-top{display:flex;justify-content:space-between;align-items:flex-start}
+.g3d-eyebrow{font:500 11px var(--mono);letter-spacing:.32em;text-transform:uppercase;color:var(--hot)}
+.g3d-close{pointer-events:auto;width:40px;height:40px;border:1px solid var(--line2);background:rgba(5,7,12,.7);color:var(--ink);font-size:22px;cursor:pointer}
+.g3d-close:hover{border-color:var(--hot);color:var(--hot)}
+.g3d-sides{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.g3d-side{display:flex;flex-direction:column;gap:2px;background:rgba(5,7,12,.62);border:1px solid var(--line);padding:8px 12px}
+.g3d-side b{font-size:18px;font-weight:600}
+.g3d-side span{font:12px var(--mono);color:var(--ice);letter-spacing:.04em}
+.g3d-side.def{text-align:right}
+.g3d-bar{display:flex;height:8px;border:1px solid var(--line2);background:rgba(5,7,12,.6)}
+.g3d-bar i{display:block;height:100%;opacity:.85}
+.g3d-bar-labels{display:flex;justify-content:space-between;font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:-6px}
+.g3d-hint{margin-top:auto;font:11px var(--mono);letter-spacing:.1em;color:var(--dim);text-align:center}
+.bat3d{border:1px solid var(--hot)!important;color:var(--hot)!important;padding:5px 10px!important;margin-top:8px;align-self:flex-start;
+  font:500 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;background:rgba(240,164,49,.08)}
+.bat3d:hover{background:rgba(240,164,49,.18)}
+/* досье планеты сквозное для мыши (под ним крутится 3D-шар) — кнопке клики нужны */
+#detail .bat3d{pointer-events:auto}
+.forcegrid{display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:4px 6px;align-items:center;margin-top:4px}
+.forcegrid span{font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.forcegrid input{width:100%;min-width:0}
 </style>
 </head>
 <body>
@@ -233,6 +265,7 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
   <div>Нужен вход в COLLAPSAR, чтобы открыть карту.</div>
   <a href="/">На главную</a>
 </div>
+<div id="g3d-battle" role="dialog" aria-label="Сражение"></div>
 <div id="shell">
   <header id="top">
     <div>
@@ -275,6 +308,7 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
     <canvas id="minimap" width="170" height="120" aria-hidden="true"></canvas>
     <div id="legend"></div>
     <button id="back">← К карте галактики</button>
+    <div id="g3d"></div>
     <div id="tools">
       <button id="btn-mode" aria-pressed="false">Режим: обзор</button>
       <button id="btn-add">Добавить систему</button>
@@ -1367,7 +1401,9 @@ function drawBlockadeShip(p, q, mx, my, factionId, col, alpha) {
   ctx.translate(x, y);
   ctx.rotate(ang);
   ctx.globalAlpha = alpha * .95;
-  shipSilhouette(factionId, col);
+  const spr = SHIP_SPRITES && G3D ? SHIP_SPRITES[G3D.armyOf(facOf(factionId).raw || { id: factionId })] : null;
+  if (spr) ctx.drawImage(spr, -17, -17, 34, 34);
+  else shipSilhouette(factionId, col);
   ctx.globalAlpha = alpha * .55;
   ctx.beginPath(); ctx.arc(-9, 0, 2.4, 0, 6.2832); ctx.fill();
   ctx.restore();
@@ -2194,6 +2230,9 @@ function syncFactions() {
       '<input type="color" value="' + esc(f.color) + '" data-fac="' + esc(f.id) + '" data-k="color" aria-label="Цвет фракции">' +
       '<input value="' + esc(f.name) + '" data-fac="' + esc(f.id) + '" data-k="name" aria-label="Название фракции">' +
       '<label class="neu-flag"><input type="checkbox" data-fac="' + esc(f.id) + '" data-k="neutral"' + (f.neutral ? ' checked' : '') + '> нейтральная</label>' +
+      '<select data-fac="' + esc(f.id) + '" data-k="army" aria-label="Войска в 3D" title="Какими моделями фракция воюет в 3D">' +
+        [['', 'войска: авто'], ['rep', 'войска: клоны'], ['sep', 'войска: дроиды']].map(([v, l]) => '<option value="' + v + '"' + ((f.army || '') === v ? ' selected' : '') + '>' + l + '</option>').join('') +
+      '</select>' +
       '<button class="mini" data-facdel="' + esc(f.id) + '" aria-label="Удалить фракцию">×</button>' +
     '</div>').join('');
   el('sec-list').innerHTML = DATA.sectors.map(s =>
@@ -2219,6 +2258,8 @@ facDrawer.addEventListener('input', e => {
       f.neutral = t.checked;
       if (t.checked) DATA.factions.forEach(o => { if (o !== f) o.neutral = false; });
       syncFactions();
+    } else if (t.dataset.k === 'army') {
+      if (t.value) f.army = t.value; else delete f.army;
     } else f[t.dataset.k] = t.value;
     indexData(); changed();
   } else if (t.dataset.sec) {
@@ -2632,6 +2673,7 @@ function dive(id) {
 }
 function surface() {
   if (mode !== 'planet') return;
+  hide3DPlanet();
   mode = 'rising'; transDir = -1;
   detail.classList.remove('show');
   document.body.classList.remove('in-planet');
@@ -2670,9 +2712,11 @@ function syncDetail() {
           '<div class="n"><b style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</b> против ' +
           '<b style="color:' + esc(facOf(b.def).color) + '">' + esc(facOf(b.def).name) + '</b></div>' +
           battleProgress(b) +
+          (LIVE_STAGES[b.status] ? '<button class="mini bat3d" data-bat3d="' + DATA.battles.indexOf(b) + '">⚔ Смотреть бой</button>' : '') +
         '</div>';
       }).join('')
     : '';
+  refresh3D();
 }
 el('back').addEventListener('click', surface);
 
@@ -2863,12 +2907,22 @@ function syncBattles() {
       battleProgress(b) +
       '<input value="' + esc(b.when || '') + '" data-bat="' + i + '" data-k="when" placeholder="примечание" style="margin-top:6px">' +
       '<input value="' + esc(b.result || '') + '" data-bat="' + i + '" data-k="result" placeholder="итог (например: планета захвачена)" style="margin-top:6px">' +
+      '<div class="lab" style="margin-top:8px">Силы в 3D-бою (пусто — по перевесу)</div>' +
+      '<div class="forcegrid"><span></span><span>пехота</span><span>техника</span><span>авиация</span>' +
+        [['att', 'атака'], ['def', 'оборона']].map(([sd, lab]) => '<span>' + lab + '</span>' +
+          ['inf', 'veh', 'air'].map(k => {
+            const v = b.forces && b.forces[sd] && Number.isFinite(b.forces[sd][k]) ? b.forces[sd][k] : '';
+            return '<input type="number" min="0" max="999" data-bat="' + i + '" data-k="forces.' + sd + '.' + k + '" value="' + v + '" aria-label="' + lab + ' ' + k + '">';
+          }).join('')).join('') +
+      '</div>' +
+      (LIVE_STAGES[b.status] ? '<button class="mini bat3d" data-bat3d="' + i + '">⚔ Смотреть бой</button>' : '') +
       '<button class="mini" data-batreport="' + i + '" style="border:1px solid var(--line);padding:4px 8px;margin-top:6px">📋 Скопировать отчёт</button></div>';
     return '<div class="battle' + live + '" data-goto="' + esc(b.sys) + '" role="button" tabindex="0">' +
       '<div class="n">' + esc(s.name) + '</div><div class="m">' +
       '<span style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</span> против ' +
       '<span style="color:' + esc(facOf(b.def).color) + '">' + esc(facOf(b.def).name) + '</span></div>' +
       battleProgress(b) +
+      (LIVE_STAGES[b.status] ? '<button class="mini bat3d" data-bat3d="' + i + '">⚔ Смотреть бой</button>' : '') +
       '<button class="mini" data-batreport="' + i + '" style="border:1px solid var(--line);padding:3px 7px;margin-top:6px;align-self:flex-start">📋 Скопировать отчёт</button></div>';
   }).join('');
 }
@@ -3142,10 +3196,22 @@ el('rail-r').addEventListener('keydown', e => {
   const card = e.target.closest('[data-goto]');
   if (card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); card.click(); }
 });
+// Ручное число юнитов в 3D-бою: forces.{att|def}.{inf|veh|air}; пусто — считается из перевеса
+function setBattleForce(b, t) {
+  const [, sd, k] = t.dataset.k.split('.');
+  b.forces = b.forces || {};
+  b.forces[sd] = b.forces[sd] || {};
+  const n = parseInt(t.value, 10);
+  if (Number.isFinite(n) && n >= 0) b.forces[sd][k] = Math.min(999, n); else delete b.forces[sd][k];
+  if (!Object.keys(b.forces[sd]).length) delete b.forces[sd];
+  if (!Object.keys(b.forces).length) delete b.forces;
+  touch();
+}
 el('rail-r').addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.bat !== undefined) {
     const b = DATA.battles[+t.dataset.bat];
+    if (b && t.dataset.k.startsWith('forces.')) { setBattleForce(b, t); return; }
     if (b) {
       b[t.dataset.k] = t.value;
       // Автосдвиг зоны при завершении боя — по текущему перевесу (prog),
@@ -3174,6 +3240,7 @@ el('rail-r').addEventListener('input', e => {
   if (t.dataset.bat !== undefined) {
     const b = DATA.battles[+t.dataset.bat];
     if (!b) return;
+    if (t.dataset.k.startsWith('forces.')) { setBattleForce(b, t); return; }
     if (t.dataset.k === 'prog') { b.prog = parseInt(t.value, 10); syncBattles(); syncPanel(); }
     else b[t.dataset.k] = t.value;
     touch();
@@ -3456,6 +3523,7 @@ cv.addEventListener('wheel', e => {
 }, { passive: false });
 
 addEventListener('keydown', e => {
+  if (battleView) return; // 3D-бой поверх карты сам ловит Esc, карту под ним не трогаем
   const tag = e.target.tagName;
   if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') {
     if (e.key === 'Escape') e.target.blur();
@@ -3570,7 +3638,7 @@ function frame(ts) {
     if (transDir > 0) {
       const s = SYS[diveTarget];
       if (s) { cam.tx = s.x; cam.ty = s.y; cam.tz = lerp(cam.tz, 2.4, .04); }
-      if (trans >= 1) { mode = 'planet'; detail.classList.add('show'); }
+      if (trans >= 1) { mode = 'planet'; detail.classList.add('show'); show3DPlanet(diveTarget); }
     } else if (trans <= 0) {
       mode = 'map'; diveTarget = null; syncPanel();
       cam.tz = W > 820 ? .95 : .55;
@@ -3601,10 +3669,87 @@ function frame(ts) {
     drawNodes(mapAlpha);
   }
   if (mode === 'map') drawMinimap(); else el('minimap').classList.remove('show');
-  if (trans > .001 && diveTarget && SYS[diveTarget]) {
+  // 2D-шар рисуем, пока 3D-сцена не проявилась (плавная подмена без провала)
+  if (trans > .001 && diveTarget && SYS[diveTarget] && !(planet3dOn && mode === 'planet' && now - planet3dSince > 700)) {
     drawPlanetScene(SYS[diveTarget], smooth(.05, .6, trans), trans);
   }
   requestAnimationFrame(frame);
+}
+
+/* ---------- 3D: планета, бой, корабли блокад (исходники: frontend/src/galaxy3d) ----------
+ * Модуль грузится по требованию; без WebGL всё остаётся на 2D-холсте. */
+let G3D = null, g3dLoading = null, planetView = null, battleView = null;
+let planet3dOn = false, planet3dSince = 0, g3dKey = '', SHIP_SPRITES = null;
+function webglOk() {
+  try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; }
+}
+function load3D() {
+  if (!g3dLoading) {
+    g3dLoading = webglOk()
+      ? import('/galaxy3d/galaxy3d.js').then(() => (G3D = window.Galaxy3D || null)).catch(e => { console.warn('3D недоступно:', e); return null; })
+      : Promise.resolve(null);
+  }
+  return g3dLoading;
+}
+function payloadFor(id) {
+  const lay = sphereLayout();
+  return {
+    sys: SYS[id],
+    factions: DATA.factions,
+    battle: DATA.battles.find(b => b.sys === id && LIVE_STAGES[b.status]) || null,
+    blockades: DATA.blockades.filter(b => b.a === id || b.b === id),
+    layout: { x: lay.x, y: lay.y, r: lay.disp }
+  };
+}
+function payloadKey(p) { return JSON.stringify([p.sys, p.battle, p.blockades, p.factions.map(f => [f.id, f.color, f.army])]); }
+async function show3DPlanet(id) {
+  const G = await load3D();
+  if (!G || mode !== 'planet' || diveTarget !== id) return;
+  try {
+    if (!planetView) planetView = new G.PlanetView(el('g3d'));
+    const p = payloadFor(id);
+    g3dKey = payloadKey(p);
+    await planetView.show(p);
+  } catch (e) { console.warn('3D-планета:', e); return; }
+  if (mode !== 'planet' || diveTarget !== id) return;
+  el('g3d').classList.add('show');
+  planet3dOn = true; planet3dSince = now;
+}
+function hide3DPlanet() {
+  planet3dOn = false;
+  el('g3d').classList.remove('show');
+  if (planetView) planetView.hide();
+}
+function refresh3D() {
+  if (!planet3dOn || !diveTarget || !planetView || !SYS[diveTarget]) return;
+  const p = payloadFor(diveTarget), key = payloadKey(p);
+  if (key !== g3dKey) { g3dKey = key; planetView.show(p); }
+}
+async function openBattle3D(b) {
+  const G = await load3D();
+  if (!G) { alert('3D-сцена недоступна: браузер не поддерживает WebGL.'); return; }
+  closeBattle3D();
+  const host = el('g3d-battle');
+  host.classList.add('show');
+  battleView = new G.BattleView(host, { battle: b, sys: SYS[b.sys], factions: DATA.factions }, closeBattle3D);
+}
+function closeBattle3D() {
+  if (battleView) { const v = battleView; battleView = null; v.dispose(); }
+  el('g3d-battle').classList.remove('show');
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest && e.target.closest('[data-bat3d]');
+  if (!t) return;
+  e.stopPropagation(); e.preventDefault();
+  const b = DATA.battles[+t.dataset.bat3d];
+  if (b) openBattle3D(b);
+}, true);
+window.addEventListener('resize', () => {
+  if (planetView && planet3dOn) { const l = sphereLayout(); planetView.setLayout({ x: l.x, y: l.y, r: l.disp }); }
+});
+// корабли блокад на 2D-карте — снимки 3D-моделей вместо плоских силуэтов
+function loadShipSprites() {
+  load3D().then(G => (G ? G.shipSprites(112) : null)).then(sp => { if (sp) SHIP_SPRITES = sp; }).catch(() => {});
 }
 
 /* ---------- boot ---------- */
@@ -3622,6 +3767,7 @@ resize();
     return;
   }
   syncBackdrop();
+  loadShipSprites();
   cam.tz = cam.z = W > 820 ? .95 : .55;
   SYSTEMS.slice(0, 40).forEach(s => buildTexture(s, 'lo'));
   changed();

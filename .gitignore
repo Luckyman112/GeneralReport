@@ -12,3 +12,6 @@ tools/
 uploads/
 backups/
 .claude/
+
+# сырые 3D-модели до обработки (тяжёлые, в git не кладём)
+models-inbox/
