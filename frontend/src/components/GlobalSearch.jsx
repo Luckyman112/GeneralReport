@@ -10,7 +10,7 @@ const MAX_RESULTS = 12;
 
 /** Быстрый поиск бойца по всему сайту (ИДН/позывной/ник) — по клику сразу
  * переходит в "Рапорты" с открытой карточкой этого бойца в нужном формировании. */
-export function GlobalSearch() {
+export function GlobalSearch({ variant = "icon" }) {
   const { token, regiments } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -46,6 +46,20 @@ export function GlobalSearch() {
       .finally(() => setLoading(false));
   }
 
+  // Ctrl/⌘+K открывает поиск с любой страницы
+  useEffect(() => {
+    function onKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        handleOpen();
+      }
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [membersByRegiment, regiments, token]);
+
   const q = query.trim().toLowerCase();
   const results = useMemo(() => {
     if (!membersByRegiment || q.length < MIN_QUERY_LENGTH) return [];
@@ -66,9 +80,17 @@ export function GlobalSearch() {
 
   return (
     <div className="global-search-wrap" ref={wrapRef}>
-      <button type="button" className="ghost global-search-button" title="Найти бойца" onClick={handleOpen}>
-        <SearchIcon />
-      </button>
+      {variant === "bar" ? (
+        <button type="button" className="global-search-bar" onClick={handleOpen}>
+          <SearchIcon />
+          <span className="global-search-bar-placeholder">Боец, ИДН или позывной…</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+      ) : (
+        <button type="button" className="ghost global-search-button" title="Найти бойца" onClick={handleOpen}>
+          <SearchIcon />
+        </button>
+      )}
 
       {open && (
         <div className="global-search-flyout">

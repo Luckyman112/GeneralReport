@@ -1,0 +1,92 @@
+/* Порядок слоёв: старые стили (legacy) ниже утилит Tailwind, иначе
+ * неслоёный styles.css перебивал бы любые классы новых компонентов.
+ * Preflight Tailwind не подключаем, пока живут старые страницы (этап 6). */
+@layer theme, base, legacy, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "../styles.css" layer(legacy);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --color-void: #05070c;
+  --color-hull: #080c15;
+  --color-panel: #0b1220;
+  --color-panel-2: #101a2c;
+  --color-ink: #e8e2d2;
+  --color-ice: #8fb8d8;
+  --color-muted: #7a8ea5;
+  --color-amber: #f0a431;
+  --color-amber-hover: #f5b552;
+  --color-alarm: #e2564b;
+  --color-ok: #5fbf8f;
+  --color-republic: #4a90d9;
+  --color-line: rgb(143 184 216 / 0.18);
+  --color-line-strong: rgb(143 184 216 / 0.4);
+  --color-tint: var(--tint);
+
+  --font-sans: "Tektur", system-ui, "Segoe UI", sans-serif;
+  --font-display: "Tektur", system-ui, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+
+  --ease-holo: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --animate-holo-scan: holo-scan 400ms var(--ease-holo) both;
+
+  @keyframes holo-scan {
+    from {
+      opacity: 0;
+      clip-path: inset(0 0 100% 0);
+    }
+    to {
+      opacity: 1;
+      clip-path: inset(0 0 0 0);
+    }
+  }
+}
+
+@layer components {
+  /* Надзаголовок: IBM Plex Mono 500 · 11 · трекинг 32% */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+  }
+
+  /* Панель с уголками-скобами */
+  .holo-panel {
+    position: relative;
+    background: var(--color-panel);
+    border: 1px solid var(--color-line);
+  }
+  .holo-panel::before,
+  .holo-panel::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    border-color: var(--color-amber);
+  }
+  .holo-panel::before {
+    top: -1px;
+    left: -1px;
+    border-top: 2px solid;
+    border-left: 2px solid;
+  }
+  .holo-panel::after {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 2px solid;
+    border-right: 2px solid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

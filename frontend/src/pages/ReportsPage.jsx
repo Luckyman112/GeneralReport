@@ -230,6 +230,15 @@ export function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // «+ Рапорт» в топбаре ведёт сюда с ?new=1 — в том числе когда страница уже открыта
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setShowForm(true);
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   function canManage(report) {
     // promotion/demotion mirror records aren't managed here
     if (categoriesById[report.category_id]?.is_promotion || categoriesById[report.category_id]?.is_demotion) return false;

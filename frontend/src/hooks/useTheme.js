@@ -8,14 +8,9 @@ const STORAGE_KEY = "collapsar-theme";
 // instance last toggled.
 const listeners = new Set();
 
-function systemPrefersDark() {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
+// «Голотактика» — только тёмная тема (см. редизайн); переключатель убран.
 function getInitialTheme() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved === "dark" || saved === "light") return saved;
-  return systemPrefersDark() ? "dark" : "light";
+  return "dark";
 }
 
 /** Ручной переключатель темы поверх системной настройки — выбор запоминается

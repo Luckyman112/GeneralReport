@@ -1484,6 +1484,35 @@ Discord's dev portal must not include a `#`). Built to `frontend/dist` and serve
 same-origin by the backend in prod, so `frontend/src/api/client.js` uses relative URLs
 with no base path.
 
+**Redesign "Holotactics" ("Голотактика"), migrated in stages.** Stage 0 is done:
+React 19, Vite 8 (Node 22 in the Docker build stage), TypeScript, Tailwind v4,
+TanStack Query, lucide-react. Old `.jsx` pages keep working; new code goes in `.tsx`
+under `src/app/` (shell, routes, nav) and `src/shared/` (api, lib, ui).
+- **Styles.** `src/app/theme.css` is the single entry point. It declares
+  `@layer theme, base, legacy, components, utilities` and imports the old
+  `styles.css` into `legacy`, so Tailwind utilities always win over old rules.
+  Tailwind preflight is deliberately off until the old pages are gone (stage 6).
+  Design tokens (`--color-void/hull/panel/ink/ice/amber/alarm/ok/republic/line`)
+  live in `@theme`. The old CSS variables (`--bg`, `--accent`…) are remapped to the
+  same palette, so un-migrated pages already look right.
+- **Rules of the language:** dark theme only (the light theme was removed); square
+  corners (pixel `border-radius` zeroed everywhere, circles via `%` kept); amber
+  means "needs action" — one amber primary button per screen, nothing else amber;
+  Tektur for UI text (Chakra Petch from the mockup has no Cyrillic); IBM Plex Mono
+  for eyebrows, codes, dates, statuses; corner brackets via `.holo-panel`.
+- **Typed API.** `npm run gen:api` regenerates `src/shared/api/schema.d.ts` from
+  `src/shared/api/openapi.json`. Dump that JSON from the backend with
+  `python -c "import json; from app.main import app; ..."` after any schema change.
+  `src/shared/api/client.ts` (openapi-fetch) sends the same JWT/view-as headers as
+  the old `api/client.js`. `useSession()` (`src/shared/lib/session.ts`) is a typed
+  view over the JS `AuthContext`. Keep TypeScript at 5.9: openapi-typescript 7
+  breaks on TS 7.
+- **Navigation is data.** `src/app/nav.ts` lists groups and items. Visibility rules
+  live in `src/shared/lib/access.ts` (`can.*`), not inline in components. The shell
+  is `src/app/shell/AppSidebar.tsx` + `Topbar.tsx`; the old `Sidebar.jsx` and
+  `Navbar.jsx` are deleted. The topbar "+ Рапорт" opens `/reports?new=1`, which
+  ReportsPage turns into an open form. Ctrl/⌘+K opens the global search.
+
 ### Windows dev environment (this repo is developed on Windows/PowerShell)
 `curl` with a Cyrillic JSON body inline (`-d '{"name":"Пост"}'`) mangles the encoding in
 Git Bash — write the body to a file and use `--data-binary "@file"` instead. Background

@@ -1,16 +1,17 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { AppSidebar } from "./app/shell/AppSidebar";
+import { Topbar } from "./app/shell/Topbar";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { BootScreen } from "./components/BootScreen";
 import { InactiveBlock } from "./components/InactiveBlock";
 import { MaintenanceBanner, MaintenanceBlock, useMaintenanceStatus } from "./components/MaintenanceGate";
-import { Navbar } from "./components/Navbar";
 import { PageLoading } from "./components/PageLoading";
 import { PromotionBanner } from "./components/PromotionBanner";
 import { RegistrationGate } from "./components/RegistrationGate";
 import { RoleConflictGate } from "./components/RoleConflictGate";
-import { Sidebar } from "./components/Sidebar";
 import { TransferFrozenGate } from "./components/TransferFrozenGate";
 import { ToastProvider } from "./components/ToastContext";
 import { ViewAsBar } from "./components/ViewAsBar";
@@ -121,11 +122,11 @@ function Layout({ children }) {
 
   return (
     <div className="app-shell">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="app-content">
         {access?.is_admin && <MaintenanceBanner status={maintenanceStatus} />}
         <PromotionBanner />
-        <Navbar onBurgerClick={() => setSidebarOpen((v) => !v)} sidebarOpen={sidebarOpen} />
+        <Topbar onBurgerClick={() => setSidebarOpen((v) => !v)} sidebarOpen={sidebarOpen} />
         <ViewAsBar />
         <main className="page-container">
           {isBlockedByMaintenance ? (
@@ -332,8 +333,13 @@ function AppRoutes() {
   );
 }
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: true, retry: 1 } },
+});
+
 export default function App() {
   return (
+    <QueryClientProvider client={queryClient}>
     <ToastProvider>
       <AuthProvider>
         <HashRouter>
@@ -341,5 +347,6 @@ export default function App() {
         </HashRouter>
       </AuthProvider>
     </ToastProvider>
+    </QueryClientProvider>
   );
 }
