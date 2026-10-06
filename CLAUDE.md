@@ -1412,6 +1412,32 @@ its old 2D drawing.
   band. The Sketchfab clone-trooper GLB was unusable (broken skin), so clones are
   procedural (`trooper.ts`).
 
+**Galaxy Map 3D, round 2** — diplomacy, orbit, 3D nodes:
+- `DATA.diplomacy` maps a faction pair to `enemy`/`neutral`/`ally`, keyed `"a|b"`
+  with the ids sorted (`relKey`). No entry means the old behavior: two non-neutral
+  factions are enemies. `hostile()` replaced every inline
+  "both non-neutral and different" check, so a lane between allies is no longer
+  drawn as disputed. The matrix lives in the left rail and is editable only in
+  edit mode. The key is a plain object, so `_DICT_KEYS` in
+  `app/schemas/galaxy_map.py` had to learn about it.
+- `System.orbit` says who is above the planet: unset means "auto" (fleet battle
+  while a ground battle is live), `""` empty, a faction id (its fleet stands there,
+  `fleet` ships), or `"battle"` (`orbitAtt`/`orbitDef`, `fleetAtt`/`fleetDef`).
+  Ships hold a wedge formation and do not orbit the planet.
+- Clicking the planet in the 3D view opens the ground battle when one is live
+  (`PlanetView.onPlanetClick`, a raycast against the unit sphere), otherwise it
+  shows a short toast.
+- Ship size is a fraction of the planet radius (`LEN` in `planetView.ts`), and the
+  camera pulls in to `ZOOM` after the dive, so a Venator reads as a speck against
+  the planet rather than a landmark.
+- Map nodes are real 3D planets (`mapSprites.ts`): one hidden WebGL canvas renders
+  a few planets per frame into plain canvases that the 2D map draws. Falls back to
+  the old flat sprites until a planet's texture loads, and without WebGL.
+- Clones are still procedural (`trooper.ts`) but built from welded primitives:
+  one geometry per material per moving part via `mergeGeometries`, so a full
+  battlefield stays at a sane draw-call count. If a usable clone GLB ever shows up,
+  drop it in `catalog.ts` as `ARMIES.rep.infantry` and the rig code falls away.
+
 ### Promotion requirements follow the charter (устав)
 - `PromotionCategoryRequirement.count_mode` (migration 0094): `author` = the soldier
   filed the report themselves ("провёл"), `participant` = listed in someone else's

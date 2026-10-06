@@ -157,6 +157,8 @@ export class Planet {
   private surface: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private clouds: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial> | null = null;
   private spin: THREE.Group;
+  /** Основная текстура загружена — до этого шар рисуется пустым. */
+  ready = false;
 
   constructor(private sys: SystemData) {
     this.spin = new THREE.Group();
@@ -200,6 +202,7 @@ export class Planet {
         uniforms.map.value = t;
         // пользовательская картинка — уже в своих цветах, не перекрашиваем
         if (customSrc) uniforms.uRecolor.value = false;
+        this.ready = true;
       });
 
     const cloudAmt = pal?.cloud ?? (kind === "desert" ? 0.25 : kind === "urban" ? 0.3 : 0.55);

@@ -1,32 +1,81 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { instantiate, loadModel } from "./assets";
-import { ARMIES, MODELS, armyOf, hashStr, type ModelKey } from "./catalog";
+import { ARMIES, MODELS, armyOf, hashStr, type ArmyRoster, type ModelKey } from "./catalog";
 import { Planet, SUN_DIR, zoneLayout } from "./planet";
 import { LIVE_STAGES, type FactionData, type PlanetPayload } from "./types";
 
-interface Orbiter {
-  obj: THREE.Object3D;
-  radius: number;
-  speed: number;
-  phase: number;
-  tilt: THREE.Quaternion;
-  bob: number;
-}
+/** Длины кораблей в радиусах планеты. Не реальный масштаб (там корабль был бы
+ * невидимой точкой), но так, чтобы планета оставалась главной: линкор — около
+ * десятой доли радиуса, истребитель едва различим. */
+const LEN = { capital: 0.1, escort: 0.056, fighter: 0.014 };
+/** Насколько планета крупнее диска 2D-карты после «приближения». */
+const ZOOM = 1.3;
 
 interface Bolt {
   line: THREE.Line;
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  t: number;
+  dur: number;
+  flash: boolean;
+}
+
+interface Flash {
+  sprite: THREE.Sprite;
   life: number;
+  max: number;
+  size: number;
+}
+
+interface Fighter {
+  obj: THREE.Object3D;
+  side: 0 | 1;
+  center: THREE.Vector3;
+  rx: number;
+  ry: number;
+  rz: number;
+  speed: number;
+  phase: number;
+  tilt: THREE.Quaternion;
 }
 
 const tmp = new THREE.Vector3();
 const tmp2 = new THREE.Vector3();
 
-/** Корабль заданной длины (в радиусах планеты). */
+/** Строй клином: ведущий впереди, остальные уступом назад и в стороны. */
+const WEDGE: [number, number, number][] = [
+  [0, 0, 0],
+  [1, 0.5, -0.8],
+  [1, -0.4, 0.8],
+  [2, 0.7, -1.6],
+  [2, -0.6, 1.6],
+  [2, 0.1, 0],
+  [3, 0.6, -0.8],
+  [3, -0.5, 0.8],
+  [4, 0.2, -1.6],
+  [4, -0.1, 1.6],
+];
+
+let flashTex: THREE.Texture | null = null;
+function flashTexture(): THREE.Texture {
+  if (flashTex) return flashTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d")!;
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, "rgba(255,255,240,1)");
+  grad.addColorStop(0.25, "rgba(255,200,120,.85)");
+  grad.addColorStop(1, "rgba(255,120,40,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  flashTex = new THREE.CanvasTexture(c);
+  return flashTex;
+}
+
 async function ship(key: ModelKey, length: number): Promise<THREE.Object3D | null> {
   try {
-    const proto = await loadModel(key);
-    const o = instantiate(proto);
+    const o = instantiate(await loadModel(key));
     o.scale.setScalar(length / MODELS[key].size);
     return o;
   } catch {
@@ -34,29 +83,37 @@ async function ship(key: ModelKey, length: number): Promise<THREE.Object3D | nul
   }
 }
 
-/** Сцена у планеты: сама планета с секторами, патруль владельца, флоты боя и блокад. */
+/** Сцена у планеты: планета с секторами захвата, флот владельца орбиты, бой
+ * флотов, блокады трасс. Клик по планете — `onPlanetClick` (наземный бой). */
 export class PlanetView {
+  onPlanetClick: (() => void) | null = null;
+
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(28, 1, 0.01, 100);
   private controls: OrbitControls;
   private planet: Planet | null = null;
   private fleet = new THREE.Group();
-  private orbiters: Orbiter[] = [];
-  private shooters: { a: THREE.Object3D; b: THREE.Object3D; color: number }[] = [];
+  private fx = new THREE.Group();
+  private bobbers: { obj: THREE.Object3D; base: THREE.Vector3; phase: number }[] = [];
+  private fighters: Fighter[] = [];
+  private gunners: [THREE.Object3D[], THREE.Object3D[]] = [[], []];
+  private boltColor: [number, number] = [0x4fb0ff, 0xff4a3a];
   private bolts: Bolt[] = [];
+  private flashes: Flash[] = [];
   private legend: HTMLDivElement;
   private raf = 0;
   private clock = new THREE.Timer();
   private layout = { x: 0, y: 0, r: 200 };
+  private zoom = 1;
   private token = 0;
   private visible = false;
+  private down: { x: number; y: number } | null = null;
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
     const c = this.renderer.domElement;
     c.className = "g3d-canvas";
     host.appendChild(c);
@@ -69,8 +126,8 @@ export class PlanetView {
     const sun = new THREE.DirectionalLight(0xfff2e0, 2.6);
     sun.position.copy(SUN_DIR).multiplyScalar(10);
     this.scene.add(sun);
-    this.scene.add(this.fleet);
-    // подсветка со стороны камеры — тёмные корабли (КНС) иначе сливаются с космосом
+    this.scene.add(this.fleet, this.fx);
+    // подсветка со стороны камеры — тёмные корабли КНС иначе сливаются с космосом
     const fill = new THREE.DirectionalLight(0xcfe0ff, 1.2);
     fill.position.set(0, 0.3, 1);
     this.camera.add(fill);
@@ -78,28 +135,50 @@ export class PlanetView {
 
     this.controls = new OrbitControls(this.camera, c);
     this.controls.enablePan = false;
+    // расстояние до планеты задаёт приближение (applyCamera), колесо не трогаем
+    this.controls.enableZoom = false;
     this.controls.enableDamping = true;
-    this.controls.minDistance = 2.2;
-    this.controls.maxDistance = 9;
-    this.controls.rotateSpeed = 0.5;
+    this.controls.rotateSpeed = 0.45;
 
+    c.addEventListener("pointerdown", this.onDown);
+    c.addEventListener("pointerup", this.onUp);
     window.addEventListener("resize", this.resize);
     document.addEventListener("visibilitychange", this.onVisibility);
   }
+
+  private onDown = (e: PointerEvent) => {
+    this.down = { x: e.clientX, y: e.clientY };
+  };
+
+  /** Клик без перетаскивания по диску планеты. */
+  private onUp = (e: PointerEvent) => {
+    const d = this.down;
+    this.down = null;
+    if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 || !this.onPlanetClick) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    if (ray.ray.intersectsSphere(new THREE.Sphere(new THREE.Vector3(), 1))) this.onPlanetClick();
+  };
 
   private resize = () => {
     const w = this.host.clientWidth || 1;
     const h = this.host.clientHeight || 1;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
-    // центр планеты — в точке, где карта рисовала диск
-    this.camera.setViewOffset(w, h, w / 2 - this.layout.x, h / 2 - this.layout.y, w, h);
-    // дистанция так, чтобы радиус диска на экране совпал с layout.r
-    const fov = THREE.MathUtils.degToRad(this.camera.fov);
-    const dist = h / 2 / (this.layout.r * Math.tan(fov / 2));
-    this.camera.position.setLength(dist);
-    this.camera.updateProjectionMatrix();
+    this.applyCamera();
   };
+
+  /** Центр планеты — там, где карта рисовала диск; радиус — диск × приближение. */
+  private applyCamera() {
+    const w = this.host.clientWidth || 1;
+    const h = this.host.clientHeight || 1;
+    this.camera.setViewOffset(w, h, w / 2 - this.layout.x, h / 2 - this.layout.y, w, h);
+    const fov = THREE.MathUtils.degToRad(this.camera.fov);
+    this.camera.position.setLength(h / 2 / (this.layout.r * this.zoom * Math.tan(fov / 2)));
+    this.camera.updateProjectionMatrix();
+  }
 
   private onVisibility = () => {
     if (document.hidden) cancelAnimationFrame(this.raf);
@@ -115,94 +194,119 @@ export class PlanetView {
     const token = ++this.token;
     this.clear();
     this.layout = p.layout;
-    this.camera.position.set(0, 0.35, 5);
+    this.zoom = 1;
+    this.camera.position.set(0, 0.32, 5);
     this.resize();
 
-    const colorOf = (fid: string) => p.factions.find((f) => f.id === fid)?.color || "#7a8ea5";
     const fac = (fid: string): FactionData => p.factions.find((f) => f.id === fid) || { id: fid, name: fid, color: "#7a8ea5" };
-
-    this.planet = new Planet(p.sys);
+    const colorOf = (fid: string) => fac(fid).color;
+    const roster = (fid: string): ArmyRoster => ARMIES[armyOf(fac(fid))];
+    const tag = (fid: string) => `<span style="color:${colorOf(fid)}">${fac(fid).name}</span>`;
+    const sys = p.sys;
     const live = p.battle && LIVE_STAGES.has(p.battle.status) ? p.battle : null;
-    this.planet.setZones(zoneLayout(p.sys, colorOf, live ? [live.att, live.def] : []));
+
+    this.planet = new Planet(sys);
+    this.planet.setZones(zoneLayout(sys, colorOf, live ? [live.att, live.def] : []));
     this.scene.add(this.planet.group);
-
-    const chips: string[] = [];
-    const ring = (_radius: number, incl: number, node: number) =>
-      new THREE.Quaternion().setFromEuler(new THREE.Euler(incl, node, 0, "YXZ"));
-
-    // патруль владельца — когда нет боя
-    if (!live && p.sys.own) {
-      const army = ARMIES[armyOf(fac(p.sys.own))];
-      const s = await ship(army.capital, 0.24);
-      if (token !== this.token) return;
-      if (s) this.addOrbiter(s, 1.55, 0.18, 0.4, ring(1.55, 0.35, 0.2));
-    }
-
-    // бой: два флота на встречных орбитах + истребители и перестрелка
-    if (live) {
-      const sides = [
-        { fid: live.att, radius: 1.5, speed: 0.16, incl: 0.32, node: 0.1, phase: 0 },
-        { fid: live.def, radius: 1.72, speed: -0.12, incl: 0.4, node: 0.6, phase: Math.PI * 0.85 },
-      ];
-      const caps: THREE.Object3D[][] = [[], []];
-      for (const [i, side] of sides.entries()) {
-        const army = ARMIES[armyOf(fac(side.fid))];
-        const q = ring(side.radius, side.incl, side.node);
-        const list = [
-          { key: army.capital, len: 0.26, n: 2 },
-          { key: army.escort, len: 0.15, n: 1 },
-          { key: army.fighter, len: 0.035, n: 5 },
-        ];
-        for (const item of list) {
-          for (let k = 0; k < item.n; k++) {
-            const s = await ship(item.key, item.len);
-            if (token !== this.token) return;
-            if (!s) continue;
-            const isFighter = item.key === army.fighter;
-            const r = side.radius + (isFighter ? 0.12 + k * 0.04 : k * 0.05);
-            const spread = isFighter ? 0.06 + k * 0.05 : 0.22 * k;
-            this.addOrbiter(s, r, side.speed * (isFighter ? 2.4 : 1), side.phase + spread, q, isFighter ? 0.03 : 0.006);
-            if (!isFighter) caps[i].push(s);
-          }
-        }
-        chips.push(`<span style="color:${colorOf(side.fid)}">${fac(side.fid).name}</span>`);
-      }
-      for (const a of caps[0]) for (const b of caps[1]) {
-        this.shooters.push({ a, b, color: ARMIES[armyOf(fac(live.att))].bolt });
-        this.shooters.push({ a: b, b: a, color: ARMIES[armyOf(fac(live.def))].bolt });
-      }
-      this.setLegend(`<b>Бой на орбите</b> ${chips.join(" против ")}`);
-    }
-
-    // блокады трасс через эту систему — флот стоит строем на подходе к соседу
-    for (const bl of p.blockades) {
-      const army = ARMIES[armyOf(fac(bl.fac))];
-      const count = Math.min(5, Math.max(1, Math.round(bl.str || 1)));
-      const other = bl.a === p.sys.id ? bl.b : bl.a;
-      // строй ставим на видимой полусфере (между планетой и камерой, слева или справа)
-      const h = hashStr(other);
-      const sideSign = h % 2 ? 1 : -1;
-      const dir = new THREE.Vector3(sideSign * (0.75 + ((h >> 3) % 20) / 100), 0.18 * (((h >> 8) % 3) - 1), 0.62).normalize();
-      for (let k = 0; k < count; k++) {
-        const s = await ship(k === 0 ? army.capital : army.escort, k === 0 ? 0.28 : 0.17);
-        if (token !== this.token) return;
-        if (!s) continue;
-        const side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
-        const pos = dir.clone().multiplyScalar(1.55 + 0.06 * (k % 2)).addScaledVector(side, (k - (count - 1) / 2) * 0.24);
-        pos.y += (k % 2 ? 0.06 : -0.04);
-        s.position.copy(pos);
-        s.lookAt(pos.clone().addScaledVector(side, 1));
-        s.userData.bob = { base: pos.y, phase: k };
-        this.fleet.add(s);
-      }
-      this.setLegend(
-        (this.legend.innerHTML ? this.legend.innerHTML + "<br>" : "") +
-          `<b>Блокада</b> <span style="color:${colorOf(bl.fac)}">${fac(bl.fac).name}</span> · ${count} кор.`,
-      );
-    }
-
     this.visible = true;
     this.loop();
+
+    const lines: string[] = [];
+    // орбита: явная настройка системы; без неё бой на орбите идёт, пока идёт бой за планету
+    const orbit = sys.orbit ?? (live ? "battle" : "");
+    if (orbit === "battle") {
+      const att = sys.orbitAtt || live?.att || "";
+      const def = sys.orbitDef || live?.def || sys.own;
+      if (att && def && att !== def) {
+        const nA = Math.max(1, Math.min(8, sys.fleetAtt ?? 3));
+        const nD = Math.max(1, Math.min(8, sys.fleetDef ?? 3));
+        this.boltColor = [roster(att).bolt, roster(def).bolt];
+        const fA = await this.formation(roster(att), nA, new THREE.Vector3(0.42, 0.22, 1.5), -1, token, 0);
+        const fD = await this.formation(roster(def), nD, new THREE.Vector3(-0.42, 0.12, 1.42), 1, token, 1);
+        if (!fA || !fD) return;
+        await this.dogfight(roster(att), roster(def), Math.min(8, 2 + nA), Math.min(8, 2 + nD), token);
+        if (token !== this.token) return;
+        lines.push(`<b>Орбита</b> бой: ${tag(att)} против ${tag(def)}`);
+      }
+    } else if (orbit && orbit !== "battle") {
+      const n = Math.max(0, Math.min(10, sys.fleet ?? 0));
+      if (n > 0) {
+        if (!(await this.formation(roster(orbit), n, new THREE.Vector3(0.62, 0.34, 1.42), -1, token, 0))) return;
+        lines.push(`<b>Орбита</b> ${tag(orbit)} · флот ${n} кор.`);
+      } else lines.push(`<b>Орбита</b> под контролем ${tag(orbit)}, флота нет`);
+    }
+
+    // блокады трасс через систему — флот стоит строем на подходе к соседу
+    for (const bl of p.blockades) {
+      const other = bl.a === sys.id ? bl.b : bl.a;
+      const h = hashStr(other);
+      const sign: 1 | -1 = h % 2 ? 1 : -1;
+      const tip = new THREE.Vector3(sign * (1.25 + ((h >> 3) % 20) / 100), 0.5 * (((h >> 8) % 3) - 1) * 0.4, 0.95);
+      const n = Math.min(6, Math.max(1, Math.round(bl.str || 1)));
+      if (!(await this.formation(roster(bl.fac), n, tip, sign === 1 ? -1 : 1, token, null))) return;
+      lines.push(`<b>Блокада</b> ${tag(bl.fac)} · ${n} кор.`);
+    }
+
+    if (sys.zones) {
+      const held = Object.entries(sys.zoneHolders || {}).filter(([, k]) => k > 0);
+      lines.push(`<b>Поверхность</b> ${held.map(([fid, k]) => `${tag(fid)} ${k}/${sys.zones}`).join(" · ")}`);
+    } else if (sys.own) lines.push(`<b>Поверхность</b> ${tag(sys.own)}`);
+    if (live) lines.push(`<b>Наземный бой</b> ${tag(live.att)} против ${tag(live.def)} — нажмите на планету`);
+    this.setLegend(lines.join("<br>"));
+  }
+
+  /** Флот строем: ведущий в `tip`, нос по ±X. side — к какой стороне боя относится (для залпов). */
+  private async formation(
+    army: ArmyRoster,
+    n: number,
+    tip: THREE.Vector3,
+    facing: 1 | -1,
+    token: number,
+    side: 0 | 1 | null,
+  ): Promise<boolean> {
+    const spacing = 0.15;
+    for (let k = 0; k < n; k++) {
+      const capital = k === 0 || k % 3 === 1;
+      const s = await ship(capital ? army.capital : army.escort, capital ? LEN.capital : LEN.escort);
+      if (token !== this.token) return false;
+      if (!s) continue;
+      const [row, dy, dz] = WEDGE[k % WEDGE.length];
+      const pos = tip.clone().add(new THREE.Vector3(-facing * row * spacing, dy * 0.05, dz * spacing * 0.55));
+      s.position.copy(pos);
+      s.lookAt(pos.clone().add(new THREE.Vector3(facing, 0, 0.12)));
+      this.fleet.add(s);
+      this.bobbers.push({ obj: s, base: pos, phase: k * 1.7 + tip.x });
+      if (side !== null) this.gunners[side].push(s);
+    }
+    return true;
+  }
+
+  /** Истребители кружат над полем боя между флотами. */
+  private async dogfight(a: ArmyRoster, b: ArmyRoster, nA: number, nB: number, token: number) {
+    const mid = new THREE.Vector3(0, 0.2, 1.5);
+    for (const [side, army, n] of [
+      [0, a, nA],
+      [1, b, nB],
+    ] as const) {
+      for (let k = 0; k < n; k++) {
+        const s = await ship(army.fighter, LEN.fighter);
+        if (token !== this.token) return;
+        if (!s) continue;
+        this.fleet.add(s);
+        const r = () => Math.random() * 2 - 1;
+        this.fighters.push({
+          obj: s,
+          side,
+          center: mid.clone().add(new THREE.Vector3(r() * 0.3, r() * 0.14, r() * 0.18)),
+          rx: 0.1 + Math.random() * 0.18,
+          ry: 0.04 + Math.random() * 0.08,
+          rz: 0.06 + Math.random() * 0.12,
+          speed: (0.9 + Math.random() * 0.8) * (Math.random() < 0.5 ? -1 : 1),
+          phase: Math.random() * Math.PI * 2,
+          tilt: new THREE.Quaternion().setFromEuler(new THREE.Euler(r() * 0.5, r() * Math.PI, r() * 0.4)),
+        });
+      }
+    }
   }
 
   private setLegend(html: string) {
@@ -210,13 +314,26 @@ export class PlanetView {
     this.legend.hidden = !html;
   }
 
-  private addOrbiter(obj: THREE.Object3D, radius: number, speed: number, phase: number, tilt: THREE.Quaternion, bob = 0.01) {
-    this.fleet.add(obj);
-    this.orbiters.push({ obj, radius, speed, phase, tilt, bob });
-  }
-
   setZoneOverlay(on: boolean) {
     this.planet?.setZoneOverlay(on);
+  }
+
+  private fire(from: THREE.Vector3, to: THREE.Vector3, color: number, dur: number, flash: boolean) {
+    const g = new THREE.BufferGeometry().setFromPoints([from.clone(), from.clone()]);
+    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color, transparent: true, blending: THREE.AdditiveBlending }));
+    this.fx.add(line);
+    // попадание с небольшим разбросом, а не точно в центр корабля
+    const jitter = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.05);
+    this.bolts.push({ line, from: from.clone(), to: to.clone().add(jitter), t: 0, dur, flash });
+  }
+
+  private boom(at: THREE.Vector3, size: number) {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: flashTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    sprite.position.copy(at);
+    this.fx.add(sprite);
+    this.flashes.push({ sprite, life: 0.45, max: 0.45, size });
   }
 
   private loop = () => {
@@ -226,39 +343,66 @@ export class PlanetView {
     const t = this.clock.getElapsed();
     this.planet?.update(dt, t);
 
-    for (const o of this.orbiters) {
-      const a = o.phase + t * o.speed;
-      tmp.set(Math.cos(a) * o.radius, Math.sin(t * 0.7 + o.phase) * o.bob, Math.sin(a) * o.radius).applyQuaternion(o.tilt);
-      const da = Math.sign(o.speed) * 0.02;
-      tmp2.set(Math.cos(a + da) * o.radius, 0, Math.sin(a + da) * o.radius).applyQuaternion(o.tilt);
-      o.obj.position.copy(tmp);
-      o.obj.lookAt(tmp2);
-    }
-    for (const s of this.fleet.children) {
-      const bob = s.userData.bob;
-      if (bob) s.position.y = bob.base + Math.sin(t * 0.6 + bob.phase) * 0.01;
+    // плавное «приближение» после погружения
+    if (Math.abs(ZOOM - this.zoom) > 0.001) {
+      this.zoom += (ZOOM - this.zoom) * Math.min(1, dt * 2.2);
+      this.applyCamera();
     }
 
-    // залпы между флотами
-    if (this.shooters.length && Math.random() < dt * 6) {
-      const sh = this.shooters[Math.floor(Math.random() * this.shooters.length)];
-      const g = new THREE.BufferGeometry().setFromPoints([sh.a.position.clone(), sh.b.position.clone()]);
-      const line = new THREE.Line(
-        g,
-        new THREE.LineBasicMaterial({ color: sh.color, transparent: true, blending: THREE.AdditiveBlending }),
-      );
-      this.scene.add(line);
-      this.bolts.push({ line, life: 0.35 });
+    for (const b of this.bobbers) {
+      b.obj.position.set(b.base.x + Math.sin(t * 0.21 + b.phase) * 0.006, b.base.y + Math.sin(t * 0.5 + b.phase) * 0.008, b.base.z);
     }
+    for (const f of this.fighters) {
+      const a = f.phase + t * f.speed;
+      tmp.set(Math.cos(a) * f.rx, Math.sin(a * 2) * f.ry, Math.sin(a) * f.rz).applyQuaternion(f.tilt).add(f.center);
+      const a2 = a + Math.sign(f.speed) * 0.05;
+      tmp2.set(Math.cos(a2) * f.rx, Math.sin(a2 * 2) * f.ry, Math.sin(a2) * f.rz).applyQuaternion(f.tilt).add(f.center);
+      f.obj.position.copy(tmp);
+      f.obj.lookAt(tmp2);
+    }
+
+    // залпы линкоров и стрельба истребителей
+    const [g0, g1] = this.gunners;
+    if (g0.length && g1.length && Math.random() < dt * 5) {
+      const side = Math.random() < 0.5 ? 0 : 1;
+      const src = (side ? g1 : g0)[Math.floor(Math.random() * (side ? g1 : g0).length)];
+      const dst = (side ? g0 : g1)[Math.floor(Math.random() * (side ? g0 : g1).length)];
+      this.fire(src.position, dst.position, this.boltColor[side], 0.45, Math.random() < 0.45);
+    }
+    if (this.fighters.length > 1 && Math.random() < dt * 4) {
+      const f = this.fighters[Math.floor(Math.random() * this.fighters.length)];
+      const foes = this.fighters.filter((x) => x.side !== f.side);
+      const foe = foes[Math.floor(Math.random() * foes.length)];
+      if (foe) this.fire(f.obj.position, foe.obj.position, this.boltColor[f.side], 0.22, false);
+    }
+
     for (const b of this.bolts) {
-      b.life -= dt;
-      (b.line.material as THREE.LineBasicMaterial).opacity = Math.max(0, b.life / 0.35);
+      b.t += dt / b.dur;
+      const head = tmp.copy(b.from).lerp(b.to, Math.min(1, b.t));
+      const tail = tmp2.copy(b.from).lerp(b.to, Math.max(0, b.t - 0.18));
+      const pos = b.line.geometry.attributes.position as THREE.BufferAttribute;
+      pos.setXYZ(0, tail.x, tail.y, tail.z);
+      pos.setXYZ(1, head.x, head.y, head.z);
+      pos.needsUpdate = true;
+      if (b.t >= 1 && b.flash) this.boom(b.to, 0.05 + Math.random() * 0.04);
     }
     this.bolts = this.bolts.filter((b) => {
-      if (b.life > 0) return true;
-      this.scene.remove(b.line);
+      if (b.t < 1) return true;
+      this.fx.remove(b.line);
       b.line.geometry.dispose();
       (b.line.material as THREE.Material).dispose();
+      return false;
+    });
+    for (const f of this.flashes) {
+      f.life -= dt;
+      const k = 1 - f.life / f.max;
+      f.sprite.scale.setScalar(f.size * (0.5 + k));
+      f.sprite.material.opacity = Math.max(0, 1 - k);
+    }
+    this.flashes = this.flashes.filter((f) => {
+      if (f.life > 0) return true;
+      this.fx.remove(f.sprite);
+      f.sprite.material.dispose();
       return false;
     });
 
@@ -275,10 +419,17 @@ export class PlanetView {
       this.planet = null;
     }
     this.fleet.clear();
-    this.orbiters = [];
-    this.shooters = [];
-    for (const b of this.bolts) this.scene.remove(b.line);
+    for (const b of this.bolts) {
+      b.line.geometry.dispose();
+      (b.line.material as THREE.Material).dispose();
+    }
+    for (const f of this.flashes) f.sprite.material.dispose();
+    this.fx.clear();
     this.bolts = [];
+    this.flashes = [];
+    this.bobbers = [];
+    this.fighters = [];
+    this.gunners = [[], []];
     this.setLegend("");
     this.controls.reset();
   }
@@ -291,11 +442,14 @@ export class PlanetView {
 
   dispose() {
     this.hide();
+    const c = this.renderer.domElement;
+    c.removeEventListener("pointerdown", this.onDown);
+    c.removeEventListener("pointerup", this.onUp);
     window.removeEventListener("resize", this.resize);
     document.removeEventListener("visibilitychange", this.onVisibility);
     this.controls.dispose();
     this.renderer.dispose();
-    this.renderer.domElement.remove();
+    c.remove();
     this.legend.remove();
   }
 }

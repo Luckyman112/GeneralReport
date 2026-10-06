@@ -255,6 +255,18 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
 .bat3d:hover{background:rgba(240,164,49,.18)}
 /* досье планеты сквозное для мыши (под ним крутится 3D-шар) — кнопке клики нужны */
 #detail .bat3d{pointer-events:auto}
+.dipwrap{overflow-x:auto}
+table.dip{border-collapse:collapse;font:11px var(--mono);width:100%}
+table.dip th{font-weight:400;color:var(--dim);padding:2px 4px;text-align:left;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+table.dip th i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
+table.dip td{padding:2px;text-align:center}
+table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,rgba(255,255,255,.05) 3px 6px)}
+.dipcell{width:22px;height:22px;padding:0;border:1px solid;background:rgba(5,7,12,.5);font:12px var(--mono);cursor:pointer}
+.dipcell:disabled{cursor:default;opacity:1}
+.diplegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:11px var(--mono)}
+.g3d-toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:rgba(5,7,12,.85);border:1px solid var(--line2);
+  color:var(--ink);font:12px var(--mono);letter-spacing:.06em;padding:8px 14px;pointer-events:none;animation:g3dfade 2.6s forwards}
+@keyframes g3dfade{0%,80%{opacity:1}100%{opacity:0}}
 .forcegrid{display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:4px 6px;align-items:center;margin-top:4px}
 .forcegrid span{font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .forcegrid input{width:100%;min-width:0}
@@ -292,6 +304,10 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
     <section class="card">
       <h2>Эскалация</h2>
       <div class="body" id="esc-body"></div>
+    </section>
+    <section class="card">
+      <h2>Дипломатия</h2>
+      <div class="body" id="dip-body"></div>
     </section>
     <section class="card">
       <h2>Стратегические объекты</h2>
@@ -345,6 +361,7 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
         <div class="stat"><div class="lab">Зоны</div><div class="v" id="d-zones">—</div></div>
         <div class="stat"><div class="lab">Гарнизон</div><div class="v" id="d-gar">—</div></div>
         <div class="stat"><div class="lab">Снабжение</div><div class="v" id="d-sup">—</div></div>
+        <div class="stat wide"><div class="lab">Орбита</div><div class="v" id="d-orbit">—</div></div>
         <div class="stat wide"><div class="lab">Трассы</div><div class="v" id="d-lanes">—</div></div>
         <div class="stat wide" id="d-event-wrap" hidden><div class="lab">Запланирован ивент</div><div class="v" id="d-event">—</div></div>
       </div>
@@ -625,6 +642,23 @@ function hexRgb(hex) {
 function facOf(id) {
   return FACTION[id] || FACTION.__unknown;
 }
+/* Дипломатия: отношения пар фракций (DATA.diplomacy, ключ "a|b" по алфавиту).
+ * Без записи — как было до шкалы: две ненейтральные фракции воюют. Спорными
+ * (горячими) трассы становятся только между врагами. */
+const REL = {
+  enemy: { label: 'война', sym: '✕', col: '#e2564b' },
+  neutral: { label: 'нейтралитет', sym: '–', col: '#7c8794' },
+  ally: { label: 'союз', sym: '✓', col: '#5fd38a' }
+};
+const REL_CYCLE = { enemy: 'neutral', neutral: 'ally', ally: 'enemy' };
+function relKey(a, b) { return a < b ? a + '|' + b : b + '|' + a; }
+function rel(a, b) {
+  if (!a || !b || a === b) return 'self';
+  const v = (DATA.diplomacy || {})[relKey(a, b)];
+  if (REL[v]) return v;
+  return isNeu(a) || isNeu(b) ? 'neutral' : 'enemy';
+}
+function hostile(a, b) { return rel(a, b) === 'enemy'; }
 function isNeu(id) {
   return !!facOf(id).neutral;
 }
@@ -698,6 +732,12 @@ function indexData() {
     const m = DATA.factions.find(f => !f.neutral);
     DATA.meta.main = m ? m.id : (DATA.factions[0] ? DATA.factions[0].id : '');
   }
+  DATA.diplomacy = (DATA.diplomacy && typeof DATA.diplomacy === 'object') ? DATA.diplomacy : {};
+  Object.keys(DATA.diplomacy).forEach(k => {
+    const [a, b] = k.split('|');
+    if (!FACTION[a] || !FACTION[b] || !REL[DATA.diplomacy[k]]) delete DATA.diplomacy[k];
+  });
+  try { if (MAP3D) MAP3D.prune(new Set(SYSTEMS.map(x => x.id))); } catch (e) { /* MAP3D ещё не объявлен */ }
 }
 function today() {
   const d = new Date();
@@ -1133,7 +1173,7 @@ function recompute() {
   const disputed = [], cut = new Set(), supply = {}, sup = {};
   LANES.forEach(([a, b]) => {
     const oa = SYS[a].own, ob = SYS[b].own;
-    if (!isNeu(oa) && !isNeu(ob) && oa !== ob) disputed.push([a, b]);
+    if (hostile(oa, ob)) disputed.push([a, b]);
   });
   // connectivity ignores blockaded lanes: a closed lane carries nothing
   for (const f of DATA.factions) {
@@ -1342,9 +1382,9 @@ function laneStyle(a, b) {
   if (isBlocked(a, b)) return { col: '#b0453c', w: 2, hot: false, blocked: true };
   const rt = ROUTE[laneKey(a, b)];
   const oa = SYS[a].own, ob = SYS[b].own;
-  if (rt && !(!isNeu(oa) && !isNeu(ob) && oa !== ob)) return { col: rt.color, w: 2.6, hot: false, route: rt };
+  if (rt && !hostile(oa, ob)) return { col: rt.color, w: 2.6, hot: false, route: rt };
   if (rt) return { col: HOT, w: 3, hot: true, route: rt };
-  if (!isNeu(oa) && !isNeu(ob) && oa !== ob) return { col: HOT, w: 2.2, hot: true };
+  if (hostile(oa, ob)) return { col: HOT, w: 2.2, hot: true };
   if (oa === ob && !isNeu(oa)) return { col: facOf(oa).col, w: 1.6, hot: false };
   return { col: 'rgba(163,196,224,.62)', w: 1.3, hot: false };
 }
@@ -1530,7 +1570,7 @@ function drawNodes(alpha) {
     ctx.beginPath(); ctx.arc(top.x, top.y, glowR, 0, 6.2832); ctx.fill();
 
     const px = clamp(Math.round(rad * 1.6), 12, 96);
-    const sp = sprite(s, px);
+    const sp = (MAP3D && MAP3D.get(s)) || sprite(s, px);
     ctx.globalAlpha = nodeA;
     ctx.drawImage(sp, top.x - rad, top.y - rad, rad * 2, rad * 2);
 
@@ -1941,6 +1981,7 @@ function syncPanel() {
       garrisonHint(s) + '</div>' +
     '<div class="field"><div class="lab">Объекты на планете</div>' + facilityBlock(s) + '</div>' +
     '<div class="field"><div class="lab">Зоны контроля</div>' + zonesBlock(s) + '</div>' +
+    '<div class="field"><div class="lab">Орбита</div>' + orbitBlock(s) + '</div>' +
     (editing ? '<div class="field"><div class="lab">Внешний вид</div>' + palBlock(s) + '</div>' : '') +
     (editing ? '<div class="field"><div class="lab">Описание</div><textarea id="f-note" rows="3" aria-label="Описание системы">' + esc(s.note || '') + '</textarea></div>' : '') +
     supBlock +
@@ -1954,6 +1995,7 @@ function syncPanel() {
       : '<button class="wide" data-act="dive">Спуститься к планете</button>');
 
   if (editing) bindPalette(s);
+  if (editing) bindOrbit(s);
   if (editing) {
     el('f-name').addEventListener('input', e => { s.name = e.target.value; touch(); });
     el('f-kind').addEventListener('change', e => { s.kind = e.target.value; invalidate(s.id); touch(); });
@@ -2107,6 +2149,59 @@ function zoneBreakdown(s) {
   return DATA.factions.filter(f => (zh[f.id] || 0) > 0).map(f =>
     '<span class="v" style="color:' + esc(f.color) + '">' + (zh[f.id] || 0) + ' из ' + s.zones + ' · ' + esc(f.name) + '</span>'
   ).join('');
+}
+/* Орбита планеты (видна в 3D): никого / флот фракции стоит у планеты / бой флотов.
+ * s.orbit не задана — «авто»: бой флотов, пока за планету идёт бой. */
+function liveBattleAt(id) { return DATA.battles.find(b => b.sys === id && LIVE_STAGES[b.status]) || null; }
+function orbitText(s) {
+  const o = s.orbit === undefined ? (liveBattleAt(s.id) ? 'battle' : '') : s.orbit;
+  if (o === 'battle') {
+    const lb = liveBattleAt(s.id);
+    const a = s.orbitAtt || (lb && lb.att), d = s.orbitDef || (lb && lb.def) || s.own;
+    if (!a || a === d) return 'бой флотов (стороны не заданы)';
+    return '<span style="color:' + esc(facOf(a).color) + '">' + esc(facOf(a).name) + '</span> против <span style="color:' +
+      esc(facOf(d).color) + '">' + esc(facOf(d).name) + '</span> — бой флотов';
+  }
+  if (o && FACTION[o]) {
+    const n = s.fleet || 0;
+    return '<span style="color:' + esc(facOf(o).color) + '">' + esc(facOf(o).name) + '</span>' + (n ? ' · флот ' + n + ' кор.' : ' · без флота');
+  }
+  return 'чисто';
+}
+function orbitBlock(s) {
+  if (!editing) return '<div class="kv" style="flex-wrap:wrap">' + orbitText(s) + '</div>';
+  const cur = s.orbit === undefined ? '__auto' : s.orbit;
+  const opt = (v, label) => '<option value="' + esc(v) + '"' + (cur === v ? ' selected' : '') + '>' + esc(label) + '</option>';
+  let h = '<select id="f-orbit" aria-label="Кто на орбите">' +
+    opt('__auto', 'Авто: бой флотов, пока идёт бой') + opt('', 'Никого') +
+    DATA.factions.map(f => opt(f.id, 'Контролирует: ' + f.name)).join('') + opt('battle', 'Идёт бой флотов') + '</select>';
+  if (cur && cur !== '__auto' && cur !== 'battle') {
+    h += '<label style="margin-top:6px">Кораблей у планеты (0 — без флота)<input type="number" id="f-fleet" min="0" max="10" value="' + (s.fleet || 0) + '"></label>';
+  }
+  if (cur === 'battle' || cur === '__auto') {
+    const facSel = (id, v) => '<select id="' + id + '"><option value="">как в наземном бою</option>' +
+      DATA.factions.map(f => '<option value="' + esc(f.id) + '"' + (v === f.id ? ' selected' : '') + '>' + esc(f.name) + '</option>').join('') + '</select>';
+    h += '<div class="grid2" style="margin-top:6px">' +
+      '<label>Атакует' + facSel('f-orbit-att', s.orbitAtt || '') + '</label>' +
+      '<label>Обороняет' + facSel('f-orbit-def', s.orbitDef || '') + '</label>' +
+      '<label>Кораблей<input type="number" id="f-fleet-att" min="1" max="8" value="' + (s.fleetAtt || 3) + '"></label>' +
+      '<label>Кораблей<input type="number" id="f-fleet-def" min="1" max="8" value="' + (s.fleetDef || 3) + '"></label></div>';
+  }
+  return h;
+}
+function bindOrbit(s) {
+  const on = (id, ev, fn) => { const n = el(id); if (n) n.addEventListener(ev, fn); };
+  on('f-orbit', 'change', e => {
+    const v = e.target.value;
+    if (v === '__auto') delete s.orbit; else s.orbit = v;
+    if (v && v !== '__auto' && v !== 'battle' && !Number.isFinite(s.fleet)) s.fleet = 3;
+    syncPanel(); touch();
+  });
+  on('f-fleet', 'input', e => { s.fleet = clamp(parseInt(e.target.value, 10) || 0, 0, 10); touch(); });
+  on('f-fleet-att', 'input', e => { s.fleetAtt = clamp(parseInt(e.target.value, 10) || 1, 1, 8); touch(); });
+  on('f-fleet-def', 'input', e => { s.fleetDef = clamp(parseInt(e.target.value, 10) || 1, 1, 8); touch(); });
+  on('f-orbit-att', 'change', e => { if (e.target.value) s.orbitAtt = e.target.value; else delete s.orbitAtt; touch(); });
+  on('f-orbit-def', 'change', e => { if (e.target.value) s.orbitDef = e.target.value; else delete s.orbitDef; touch(); });
 }
 function zonesBlock(s) {
   if (editing) {
@@ -2697,6 +2792,7 @@ function syncDetail() {
   el('d-gar').textContent = s.gar + ' полк.';
   el('d-lanes').textContent = ADJ[s.id].map(n => SYS[n].name).join(', ') || '—';
   el('d-sup').textContent = supplyText(s.id);
+  el('d-orbit').innerHTML = orbitText(s);
   const badges = badgesFor(s);
   el('d-event-wrap').hidden = !badges;
   if (badges) el('d-event').textContent = badges.map(bd => bd.title + (bd.briefing_start ? ' · ' + bd.briefing_start : '')).join('; ');
@@ -3016,6 +3112,22 @@ function syncLog() {
 /* Сводка "у кого сколько объектов": считает по факту владения системой
  * (см. facilityBlock — тот же принцип, эффект переходит вместе с системой),
  * а не по какой-то отдельной привязке объекта к фракции. */
+function syncDiplomacy() {
+  const F = DATA.factions;
+  if (F.length < 2) { el('dip-body').innerHTML = '<div class="hint" style="margin:0">нужно хотя бы две фракции</div>'; return; }
+  const head = '<tr><th></th>' + F.map((f, j) => '<th title="' + esc(f.name) + '"><i style="background:' + esc(f.color) + '"></i>' + (j + 1) + '</th>').join('') + '</tr>';
+  const rows = F.map((a, i) => '<tr><th title="' + esc(a.name) + '"><i style="background:' + esc(a.color) + '"></i>' + (i + 1) + '. ' + esc(a.name) + '</th>' +
+    F.map(b => {
+      if (a.id === b.id) return '<td class="self"></td>';
+      const r = REL[rel(a.id, b.id)];
+      const t = esc(a.name) + ' ↔ ' + esc(b.name) + ': ' + r.label;
+      return '<td><button class="dipcell" data-dip="' + esc(relKey(a.id, b.id)) + '" title="' + t + '" aria-label="' + t + '" style="color:' + r.col + ';border-color:' + r.col + '"' +
+        (editing ? '' : ' disabled') + '>' + r.sym + '</button></td>';
+    }).join('') + '</tr>').join('');
+  el('dip-body').innerHTML = '<div class="dipwrap"><table class="dip">' + head + rows + '</table></div>' +
+    '<div class="diplegend">' + Object.values(REL).map(r => '<span style="color:' + r.col + '">' + r.sym + ' ' + r.label + '</span>').join('') +
+    (editing ? '<span class="hint" style="margin:0">клик по клетке меняет отношение</span>' : '') + '</div>';
+}
 function syncFacSummary() {
   const nonNeutral = DATA.factions.filter(f => !f.neutral);
   const rows = DATA.facilityTypes.map(ft => {
@@ -3101,7 +3213,7 @@ function drawConvoys(alpha) {
   }
   ctx.restore();
 }
-function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncFacSummary(); syncBattles(); syncConvoys(); syncBlocks(); syncLog(); syncRequests(); }
+function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncDiplomacy(); syncFacSummary(); syncBattles(); syncConvoys(); syncBlocks(); syncLog(); syncRequests(); }
 
 el('rail-r').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -3259,6 +3371,12 @@ el('rail-l').addEventListener('click', e => {
   const f = facOf(DATA.meta.main);
   if (b.id === 'res-add') { f.res.push({ k: 'Ресурс', v: '0' }); syncRes(); touch(); }
   else if (b.dataset.resdel !== undefined) { f.res.splice(+b.dataset.resdel, 1); syncRes(); touch(); }
+  else if (b.dataset.dip !== undefined) {
+    if (!editing) return;
+    const [x, y] = b.dataset.dip.split('|');
+    DATA.diplomacy[b.dataset.dip] = REL_CYCLE[rel(x, y)] || 'enemy';
+    recompute(); syncStats(); touch();
+  }
   else if (b.dataset.reqview !== undefined) { previewRequest(b.dataset.reqview); }
   else if (b.dataset.reqok !== undefined) { decideRequest(b.dataset.reqok, true); }
   else if (b.dataset.reqno !== undefined) { decideRequest(b.dataset.reqno, false); }
@@ -3669,6 +3787,7 @@ function frame(ts) {
     drawNodes(mapAlpha);
   }
   if (mode === 'map') drawMinimap(); else el('minimap').classList.remove('show');
+  if (MAP3D && mode !== 'planet') MAP3D.tick(now, 4);
   // 2D-шар рисуем, пока 3D-сцена не проявилась (плавная подмена без провала)
   if (trans > .001 && diveTarget && SYS[diveTarget] && !(planet3dOn && mode === 'planet' && now - planet3dSince > 700)) {
     drawPlanetScene(SYS[diveTarget], smooth(.05, .6, trans), trans);
@@ -3678,7 +3797,7 @@ function frame(ts) {
 
 /* ---------- 3D: планета, бой, корабли блокад (исходники: frontend/src/galaxy3d) ----------
  * Модуль грузится по требованию; без WebGL всё остаётся на 2D-холсте. */
-let G3D = null, g3dLoading = null, planetView = null, battleView = null;
+let G3D = null, g3dLoading = null, planetView = null, battleView = null, MAP3D = null;
 let planet3dOn = false, planet3dSince = 0, g3dKey = '', SHIP_SPRITES = null;
 function webglOk() {
   try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; }
@@ -3706,7 +3825,14 @@ async function show3DPlanet(id) {
   const G = await load3D();
   if (!G || mode !== 'planet' || diveTarget !== id) return;
   try {
-    if (!planetView) planetView = new G.PlanetView(el('g3d'));
+    if (!planetView) {
+      planetView = new G.PlanetView(el('g3d'));
+      // второй клик — спуск на поверхность: наземный бой, если он идёт
+      planetView.onPlanetClick = () => {
+        const b = diveTarget && liveBattleAt(diveTarget);
+        if (b) openBattle3D(b); else g3dToast('На поверхности сейчас тихо — наземного боя нет');
+      };
+    }
     const p = payloadFor(id);
     g3dKey = payloadKey(p);
     await planetView.show(p);
@@ -3714,6 +3840,13 @@ async function show3DPlanet(id) {
   if (mode !== 'planet' || diveTarget !== id) return;
   el('g3d').classList.add('show');
   planet3dOn = true; planet3dSince = now;
+}
+function g3dToast(text) {
+  const t = document.createElement('div');
+  t.className = 'g3d-toast';
+  t.textContent = text;
+  el('g3d').appendChild(t);
+  setTimeout(() => t.remove(), 2600);
 }
 function hide3DPlanet() {
   planet3dOn = false;
@@ -3749,7 +3882,12 @@ window.addEventListener('resize', () => {
 });
 // корабли блокад на 2D-карте — снимки 3D-моделей вместо плоских силуэтов
 function loadShipSprites() {
-  load3D().then(G => (G ? G.shipSprites(112) : null)).then(sp => { if (sp) SHIP_SPRITES = sp; }).catch(() => {});
+  load3D().then(G => {
+    if (!G) return null;
+    // объёмные планеты на самой карте вместо плоских спрайтов
+    try { MAP3D = new G.PlanetSprites(128); } catch (e) { console.warn('3D-планеты карты:', e); }
+    return G.shipSprites(112);
+  }).then(sp => { if (sp) SHIP_SPRITES = sp; }).catch(() => {});
 }
 
 /* ---------- boot ---------- */

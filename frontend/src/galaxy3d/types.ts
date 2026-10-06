@@ -19,6 +19,15 @@ export interface SystemData {
   zones?: number;
   zoneHolders?: Record<string, number>;
   pal?: Palette;
+  /** Орбита: "" — пусто, id фракции — её флот стоит у планеты, "battle" — бой флотов. */
+  orbit?: string;
+  /** Кораблей во флоте владельца орбиты (0 — флота нет). */
+  fleet?: number;
+  /** Стороны и размер флотов в бою на орбите; по умолчанию — стороны идущего боя. */
+  orbitAtt?: string;
+  orbitDef?: string;
+  fleetAtt?: number;
+  fleetDef?: number;
 }
 
 export interface FactionData {
