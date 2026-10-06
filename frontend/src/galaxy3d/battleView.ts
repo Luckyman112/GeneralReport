@@ -160,6 +160,9 @@ export class BattleView {
     const att = this.faction(battle.att);
     const def = this.faction(battle.def);
     this.armies = [armyOf(att), armyOf(def)];
+    // у армии без пехоты (см. ARMIES) в бою её нет — и в счёте, и в шапке
+    if (!ARMIES[this.armies[0]].infantry) forces.att.inf = 0;
+    if (!ARMIES[this.armies[1]].infantry) forces.def.inf = 0;
     const power = (f: { inf: number; veh: number; air: number }) => f.inf + f.veh * 6 + f.air * 4 + 1;
     this.strength = [power(forces.att), power(forces.def)];
     const share = this.strength[0] / (this.strength[0] + this.strength[1]);
@@ -275,8 +278,8 @@ export class BattleView {
     return tintFor(this.faction(side === 0 ? this.p.battle.att : this.p.battle.def));
   }
 
-  private async spawnInfantry(side: SideIdx, key: ModelKey | "trooper", n: number) {
-    if (n <= 0) return;
+  private async spawnInfantry(side: SideIdx, key: ModelKey | "trooper" | null, n: number) {
+    if (n <= 0 || !key) return;
     const proto = key === "trooper" ? null : await loadModel(key).catch(() => null);
     if (key !== "trooper" && !proto) return;
     if (!this.alive) return;

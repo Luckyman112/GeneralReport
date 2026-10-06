@@ -1455,7 +1455,9 @@ its old 2D drawing.
 - Map nodes are real 3D planets (`mapSprites.ts`): one hidden WebGL canvas renders
   a few planets per frame into plain canvases that the 2D map draws. Falls back to
   the old flat sprites until a planet's texture loads, and without WebGL.
-- Clones are still procedural (`trooper.ts`) but built from welded primitives:
+- Clones are switched off for now (user decision): `ARMIES.rep.infantry` is `null`, so
+  Republic fights with vehicles and aircraft only and its infantry count shows 0. The
+  procedural model is still there (`trooper.ts`), built from welded primitives:
   one geometry per material per moving part via `mergeGeometries`, so a full
   battlefield stays at a sane draw-call count. If a usable clone GLB ever shows up,
   drop it in `catalog.ts` as `ARMIES.rep.infantry` and the rig code falls away.

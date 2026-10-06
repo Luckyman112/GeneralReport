@@ -30,8 +30,8 @@ export type ModelKey = keyof typeof MODELS;
 
 export interface ArmyRoster {
   label: string;
-  /** "trooper" — клон из примитивов (см. trooper.ts). */
-  infantry: ModelKey | "trooper";
+  /** "trooper" — клон из примитивов (см. trooper.ts); null — пехоты в бою нет. */
+  infantry: ModelKey | "trooper" | null;
   vehicle: ModelKey;
   air: ModelKey;
   capital: ModelKey;
@@ -43,7 +43,10 @@ export interface ArmyRoster {
 export const ARMIES: Record<ArmyId, ArmyRoster> = {
   rep: {
     label: "Республика",
-    infantry: "trooper",
+    // Клоны временно убраны (решение пользователя: процедурная модель не
+    // устраивает, ждём нормальную). Вернуть — поставить обратно "trooper"
+    // или ключ GLB-модели клона из MODELS.
+    infantry: null,
     vehicle: "atte",
     air: "laat",
     capital: "venator",
