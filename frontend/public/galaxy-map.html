@@ -1444,7 +1444,7 @@ function drawBlockadeShip(p, q, mx, my, factionId, col, alpha) {
   ctx.translate(x, y);
   ctx.rotate(ang);
   ctx.globalAlpha = alpha * .95;
-  const spr = SHIP_SPRITES && G3D ? SHIP_SPRITES[G3D.armyOf(facOf(factionId).raw || { id: factionId })] : null;
+  const spr = shipSpriteFor(factionId);
   if (spr) ctx.drawImage(spr, -17, -17, 34, 34);
   else shipSilhouette(factionId, col);
   ctx.globalAlpha = alpha * .55;
@@ -3884,6 +3884,27 @@ window.addEventListener('resize', () => {
   if (planetView && planet3dOn) { const l = sphereLayout(); planetView.setLayout({ x: l.x, y: l.y, r: l.disp }); }
 });
 // корабли блокад на 2D-карте — снимки 3D-моделей вместо плоских силуэтов
+/* Моделей кораблей всего две — республиканская и КНС, поэтому у остальных
+ * фракций корпус перекрашивается в их цвет (то же, что делает 3D-сцена, см.
+ * frontend/src/galaxy3d/tint.ts). Перекрашенные картинки кэшируем. */
+const shipTintCache = {};
+function shipSpriteFor(factionId) {
+  if (!SHIP_SPRITES || !G3D) return null;
+  const f = facOf(factionId);
+  const base = SHIP_SPRITES[G3D.armyOf(f.raw || { id: factionId })];
+  if (!base || factionId === 'rep' || factionId === 'sep') return base || null;
+  const key = factionId + ':' + f.col;
+  if (shipTintCache[key]) return shipTintCache[key];
+  const c = document.createElement('canvas');
+  c.width = base.width; c.height = base.height;
+  const g = c.getContext('2d');
+  g.drawImage(base, 0, 0);
+  g.globalCompositeOperation = 'source-atop';
+  g.globalAlpha = .55;
+  g.fillStyle = f.col;
+  g.fillRect(0, 0, c.width, c.height);
+  return shipTintCache[key] = c;
+}
 function loadShipSprites() {
   load3D().then(G => {
     if (!G) return null;
