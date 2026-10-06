@@ -235,6 +235,9 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
 #d-battles .dbattle.done{border-left-color:var(--dim);opacity:.75}
 #d-battles .dbattle .n{font-family:var(--mono);font-size:11.5px;color:var(--ice)}
 #d-battles .dbattle .n b{font-weight:500}
+#panel .dbtn.primary{border-color:var(--hot);color:var(--hot);background:rgba(240,164,49,.1);padding:6px 12px}
+#d-battles .dbtn{pointer-events:auto;align-self:flex-start;margin-top:6px;font-size:12px;padding:5px 10px}
+#d-battles .dbtn.primary{border-color:var(--hot);color:var(--hot);background:rgba(240,164,49,.1)}
 
 @media (max-width:1180px){
   :root{--side:246px;--side2:262px}
@@ -2145,6 +2148,8 @@ function syncPanel() {
       garrisonHint(s) + '</div>' +
     '<div class="field"><div class="lab">Объекты на планете</div>' + facilityBlock(s) + '</div>' +
     '<div class="field"><div class="lab">Зоны контроля</div>' + zonesBlock(s) + '</div>' +
+    // бой ставится прямо отсюда — в режиме правки эта панель закрывает досье планеты
+    (editing ? '<div class="field"><div class="lab">Бои</div><button class="dbtn primary" data-start-battle="' + esc(s.id) + '">⚔ Развернуть бой на этой планете</button></div>' : '') +
     '<div class="field"><div class="lab">Орбита</div>' + orbitBlock(s) + '</div>' +
     (editing ? '<div class="field"><div class="lab">Внешний вид</div>' + palBlock(s) + '</div>' : '') +
     (editing ? '<div class="field"><div class="lab">Описание</div><textarea id="f-note" rows="3" aria-label="Описание системы">' + esc(s.note || '') + '</textarea></div>' : '') +
@@ -2189,6 +2194,8 @@ function syncPanel() {
 }
 
 panel.addEventListener('click', e => {
+  const sb = e.target.closest('[data-start-battle]');
+  if (sb) { startBattleAt(sb.dataset.startBattle); syncPanel(); return; }
   const b = e.target.closest('button[data-act]');
   if (!b || !selected) return;
   const s = SYS[selected];
@@ -3211,12 +3218,56 @@ function syncDetail() {
           '<b style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</b> против ' +
           '<b style="color:' + esc(facOf(b.def).color) + '">' + esc(facOf(b.def).name) + '</b></div>' +
           battleProgress(b) +
-          (LIVE_STAGES[b.status] ? '<div class="bat3d-hint">⚔ Нажмите на планету, чтобы спуститься к бою</div>' : '') +
+          (LIVE_STAGES[b.status] ? '<div class="bat3d-hint">⚔ Нажмите на планету, чтобы спуститься к бою</div>'
+            : canEditAtAll ? '<button class="dbtn" data-resume-battle="' + esc(b.id) + '">▶ Возобновить бой</button>' : '') +
         '</div>';
       }).join('')
     : '';
+  if (canEditAtAll) {
+    el('d-battles').innerHTML += '<button class="dbtn primary" data-start-battle="' + esc(s.id) + '">⚔ Развернуть бой здесь</button>';
+  }
   refresh3D();
 }
+/* Развернуть бой на планете (жалоба пользователя: «не получается развернуть бои
+ * на планете» — кнопка «+ бой» пряталась в правой панели и только в режиме
+ * правки). Теперь бой ставится прямо из досье планеты; режим правки включается
+ * сам. Сектор — первый свободный, обороняется владелец, нападает первый его враг. */
+function startBattleAt(sysId) {
+  const s = SYS[sysId];
+  if (!s) return null;
+  if (!canEditAtAll) { g3dToast('Ставить бои могут Ассистент и Куратор ивентологии (ивентологи — через предложение правки)'); return null; }
+  if (!editing) el('btn-mode').click();
+  const def = s.own && !isNeu(s.own) ? s.own : (DATA.factions.find(f => !f.neutral) || {}).id;
+  const att = (DATA.factions.find(f => f.id !== def && hostile(f.id, def)) || {}).id;
+  if (!att) { alert('Некому нападать: у «' + facOf(def).name + '» нет врагов в матрице дипломатии.'); return null; }
+  const busy = new Set(DATA.battles.filter(b => b.sys === sysId && LIVE_STAGES[b.status] && b.zone).map(b => +b.zone));
+  let zone;
+  if (s.zones > 0) {
+    zone = [...Array(s.zones).keys()].map(k => k + 1).find(z => !busy.has(z));
+    if (!zone) { g3dToast('Во всех секторах планеты уже идут бои'); return null; }
+  }
+  const bt = { id: 'b' + Date.now(), sys: sysId, att, def, status: 'active', when: '' };
+  if (zone) bt.zone = zone;
+  DATA.battles.unshift(bt);
+  logAdd('battle', 'Бой', facOf(att).name + ' атакует ' + s.name + (zone ? ' (сектор ' + zone + ')' : '') + '.', sysId);
+  addFlash(sysId, 'battle');
+  indexData(); syncBattles(); syncDetail(); touch();
+  return bt;
+}
+el('detail').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.startBattle !== undefined) {
+    if (startBattleAt(b.dataset.startBattle) && planet3dOn) g3dToast('Бой развёрнут. Стороны, сектор и силы меняются в «Активных боях» справа; нажмите на планету, чтобы спуститься к бою.');
+  } else if (b.dataset.resumeBattle !== undefined) {
+    const bt = DATA.battles.find(x => x.id === b.dataset.resumeBattle);
+    if (!bt) return;
+    if (!editing) el('btn-mode').click();
+    bt.status = 'active';
+    addFlash(bt.sys, 'battle');
+    indexData(); syncBattles(); syncDetail(); touch();
+  }
+});
 el('back').addEventListener('click', surface);
 
 /* ---------- state sync ---------- */
@@ -3796,19 +3847,7 @@ el('rail-r').addEventListener('click', e => {
     }
     if (b.dataset.cvdel !== undefined) { DATA.convoys.splice(+b.dataset.cvdel, 1); syncConvoys(); touch(); return; }
     if (b.id === 'bat-add') {
-      const sysId = selected || (SYSTEMS[0] && SYSTEMS[0].id);
-      if (!sysId) return;
-      const own = SYS[sysId] && SYS[sysId].own;
-      const def = own && !isNeu(own) ? own : (DATA.factions.find(f => !f.neutral) || {}).id;
-      const att = (DATA.factions.find(f => f.id !== def && hostile(f.id, def)) || {}).id;
-      if (!att) { alert('Некому нападать: у «' + facOf(def).name + '» нет врагов в матрице дипломатии.'); return; }
-      DATA.battles.unshift({
-        id: 'b' + Date.now(), sys: sysId,
-        att, def,
-        status: 'active', when: ''
-      });
-      addFlash(sysId, 'battle');
-      indexData(); syncBattles(); touch();
+      startBattleAt(selected || (SYSTEMS[0] && SYSTEMS[0].id));
       return;
     }
     if (b.dataset.batdel !== undefined) { DATA.battles.splice(+b.dataset.batdel, 1); indexData(); syncBattles(); touch(); return; }
@@ -4479,7 +4518,8 @@ async function show3DPlanet(id) {
           g3dToast('Бой завершён' + (last.result ? ': ' + last.result : '') + '. Технику видно, пока бой идёт — смените статус, чтобы показать её.');
         } else if (last && last.status === 'planned') {
           g3dToast('Бой только назначен — техника появится, когда статус сменится на «развёртывание» или «затяжной бой».');
-        } else g3dToast('На поверхности сейчас тихо — наземного боя нет');
+        } else g3dToast('На поверхности сейчас тихо — наземного боя нет.' +
+          (canEditAtAll ? ' Чтобы начать, нажмите «⚔ Развернуть бой здесь» в досье справа.' : ''));
       };
     }
     const p = payloadFor(id);
