@@ -1446,6 +1446,13 @@ every other faction flies borrowed hulls tinted to its own colour
 (`tint.ts`, used by the orbit, blockades and ground vehicles); Republic and CIS
 keep their native colours.
 
+**View-as no longer widens galaxy-map rights** — `AccessContext.is_simulated` is set in
+both view-as branches, and `can_edit_galaxy_map` returns False while it is on. Without
+it an admin could open "view as" a Curator of Ивентология and edit the shared map,
+although a plain admin is deliberately not on the editor list. Viewing stays open.
+Use the same flag for any other permission where a simulation would grant more than
+the real account has.
+
 ### Promotion requirements follow the charter (устав)
 - `PromotionCategoryRequirement.count_mode` (migration 0094): `author` = the soldier
   filed the report themselves ("провёл"), `participant` = listed in someone else's

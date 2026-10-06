@@ -86,6 +86,11 @@ class AccessContext:
     is_founder: bool = False
     # unaffected by view-as simulation, so frontend can offer exit
     is_real_admin: bool = False
+    # True во время «просмотра от лица» (и по роли, и по конкретному человеку).
+    # Нужно там, где симуляция иначе РАСШИРЯЕТ права смотрящего: админ, глядящий
+    # глазами Куратора ивентологии, получал его can_edit_galaxy_map и мог
+    # править общую карту, хотя сам в список редакторов не входит.
+    is_simulated: bool = False
     # computed once, before entering any view-as branch below
     can_use_view_as: bool = False
     is_high_command: bool = False
@@ -193,7 +198,11 @@ class AccessContext:
     def can_edit_galaxy_map(self) -> bool:
         """Редактировать \"Галактику\" и решать по заявкам на её правку — только
         Ассистент/Куратор ивентологии и основатель (включает локального админа).
-        Не can_decide_event: тот пускает любого is_admin (решение пользователя)."""
+        Не can_decide_event: тот пускает любого is_admin (решение пользователя).
+        В режиме «просмотра от лица» правка запрещена всем: иначе это обход
+        списка редакторов, см. is_simulated."""
+        if self.is_simulated:
+            return False
         return self.is_event_assistant or self.is_event_curator or self.is_founder
 
     @property
@@ -519,6 +528,7 @@ def _build_access_context(
     is_real_admin: bool,
     can_use_view_as: bool,
     is_password_login: bool = False,
+    is_simulated: bool = False,
 ) -> AccessContext:
     return AccessContext(
         user=user,
@@ -526,6 +536,7 @@ def _build_access_context(
         is_password_login=is_password_login,
         is_founder=fields["is_founder"],
         is_real_admin=is_real_admin,
+        is_simulated=is_simulated,
         can_use_view_as=can_use_view_as,
         is_high_command=fields["is_high_command"],
         is_instructor=fields["is_instructor"],
@@ -577,6 +588,7 @@ def build_view_as_context(user: User, *, role: str, regiment_id: int | None) -> 
         is_admin=False,
         is_password_login=False,
         is_real_admin=True,
+        is_simulated=True,
         can_use_view_as=True,
         is_high_command=(role == "high_command"),
     )
@@ -641,7 +653,7 @@ async def get_access_context(
             raise NotFoundError("Пользователь с таким Discord ID не найден — он ни разу не логинился на сайте")
         target_fields = await _compute_permission_fields(db, target, app_config)
         return _build_access_context(
-            user, target_fields, app_config, is_real_admin=True, can_use_view_as=True
+            user, target_fields, app_config, is_real_admin=True, can_use_view_as=True, is_simulated=True
         )
 
     # view-as-role: admin/high-command only, restricted access via build_view_as_context
