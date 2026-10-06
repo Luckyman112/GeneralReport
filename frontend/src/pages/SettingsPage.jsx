@@ -639,6 +639,21 @@ function InstructorRolesSettings() {
   );
 }
 
+// Вынесен из SettingsPage: объявленный внутри рендера компонент пересоздавался
+// на каждом рендере страницы, и React каждый раз перемонтировал все селекты.
+function RoleSelect({ roles, value, onChange }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">— не выбрано —</option>
+      {roles.map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function SettingsPage() {
   const { token, access } = useAuth();
   const [roles, setRoles] = useState([]);
@@ -738,19 +753,6 @@ export function SettingsPage() {
 
   if (loading) return <PageLoading />;
 
-  function RoleSelect({ value, onChange }) {
-    return (
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— не выбрано —</option>
-        {roles.map((r) => (
-          <option key={r.id} value={r.id}>
-            {r.name}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
   return (
     <div className="settings-page">
       <h2>Настройки</h2>
@@ -769,7 +771,7 @@ export function SettingsPage() {
               <h4>Заместитель</h4>
               <label>
                 Discord-роль
-                <RoleSelect value={deputyRoleId} onChange={setDeputyRoleId} />
+                <RoleSelect roles={roles} value={deputyRoleId} onChange={setDeputyRoleId} />
               </label>
             </div>
 
@@ -777,7 +779,7 @@ export function SettingsPage() {
               <h4>Командир</h4>
               <label>
                 Discord-роль
-                <RoleSelect value={commanderRoleId} onChange={setCommanderRoleId} />
+                <RoleSelect roles={roles} value={commanderRoleId} onChange={setCommanderRoleId} />
               </label>
             </div>
 
@@ -789,7 +791,7 @@ export function SettingsPage() {
               </p>
               <label>
                 Discord-роль
-                <RoleSelect value={highCommandRoleId} onChange={setHighCommandRoleId} />
+                <RoleSelect roles={roles} value={highCommandRoleId} onChange={setHighCommandRoleId} />
               </label>
             </div>
 
@@ -797,7 +799,7 @@ export function SettingsPage() {
               <h4>Высшая администрация</h4>
               <label>
                 Discord-роль
-                <RoleSelect value={adminRoleId} onChange={setAdminRoleId} />
+                <RoleSelect roles={roles} value={adminRoleId} onChange={setAdminRoleId} />
               </label>
 
               <label>
@@ -830,7 +832,7 @@ export function SettingsPage() {
               </p>
               <label>
                 Discord-роль
-                <RoleSelect value={founderRoleId} onChange={setFounderRoleId} />
+                <RoleSelect roles={roles} value={founderRoleId} onChange={setFounderRoleId} />
               </label>
 
               <label>

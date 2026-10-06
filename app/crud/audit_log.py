@@ -1,4 +1,5 @@
-from datetime import datetime
+import re
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +34,42 @@ async def log(
             discipline=discipline,
         )
     )
+    await db.commit()
+
+
+async def log_coalesced(
+    db: AsyncSession,
+    *,
+    actor_user_id: int,
+    action: str,
+    details: str,
+    actor_is_admin: bool = False,
+    window_minutes: int = 30,
+) -> None:
+    """Как log(), но повторы того же действия того же человека в пределах окна
+    склеиваются в одну запись со счётчиком. Нужно для автосохранений (карта
+    галактики сохраняется после каждой правки): иначе одна сессия правки давала
+    десятки одинаковых строк и забивала журнал."""
+    since = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    last = (
+        await db.execute(
+            select(AuditLog)
+            .where(
+                AuditLog.actor_user_id == actor_user_id,
+                AuditLog.action == action,
+                AuditLog.created_at >= since,
+            )
+            .order_by(AuditLog.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if last is None:
+        await log(db, actor_user_id=actor_user_id, action=action, details=details, actor_is_admin=actor_is_admin)
+        return
+    m = re.search(r"сохранений: (\d+)\)$", last.details or "")
+    count = (int(m.group(1)) if m else 1) + 1
+    last.details = f"{details} (сохранений: {count})"
+    last.created_at = datetime.now(timezone.utc)
     await db.commit()
 
 

@@ -3752,6 +3752,12 @@ input[type="file"]::-webkit-file-upload-button:hover {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  /* на телефоне кнопки «Настроить»/«Заморозить» уходят на вторую строку, а не за край */
+  flex-wrap: wrap;
+}
+.regiment-card-name {
+  flex: 1 1 10rem;
+  min-width: 0;
 }
 
 /* Заморожено (is_archived) — не удалено, просто выключено из активного
@@ -4678,4 +4684,15 @@ button.notification-bell-button {
 @media (max-width: 720px) {
   .request-row { grid-template-columns: auto minmax(0, 1fr); }
   .request-row .request-status, .request-row-quick { grid-column: 2; justify-content: flex-start; }
+}
+
+/* Экран ошибки страницы (PageErrorBoundary) */
+.page-error {
+  max-width: 560px;
+  margin: 3rem auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
 }

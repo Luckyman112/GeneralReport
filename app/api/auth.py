@@ -7,6 +7,7 @@ from collections import defaultdict
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limit import client_ip
 from app.config import settings
 from app.core import discord_client
 from app.core.constants import PASSWORD_LOGIN_DISCORD_ID
@@ -111,8 +112,8 @@ async def login_via_password(
     payload: PasswordLoginRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> TokenResponse:
     # password login = full admin bypass, rate-limited
-    client_ip = request.client.host if request.client else "unknown"
-    _check_password_rate_limit(client_ip)
+    # за туннелем request.client.host у всех один — см. rate_limit.client_ip
+    _check_password_rate_limit(client_ip(request))
 
     app_config = await app_settings_crud.get(db)
     # env value wins over db setting, so owner can't be locked out via panel

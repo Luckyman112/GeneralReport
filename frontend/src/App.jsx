@@ -8,6 +8,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { BootScreen } from "./components/BootScreen";
 import { InactiveBlock } from "./components/InactiveBlock";
 import { MaintenanceBanner, MaintenanceBlock, useMaintenanceStatus } from "./components/MaintenanceGate";
+import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { PageLoading } from "./components/PageLoading";
 import { PromotionBanner } from "./components/PromotionBanner";
 import { RegistrationGate } from "./components/RegistrationGate";
@@ -158,6 +159,7 @@ function Layout({ children }) {
 
 function AppRoutes() {
   const { loading, error } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return <BootScreen error={error} />;
@@ -165,6 +167,7 @@ function AppRoutes() {
 
   return (
     <Layout>
+      <PageErrorBoundary resetKey={location.pathname}>
       <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -329,6 +332,7 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/main" replace />} />
       </Routes>
       </Suspense>
+      </PageErrorBoundary>
     </Layout>
   );
 }

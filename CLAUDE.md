@@ -1641,6 +1641,22 @@ membership — including the 17th's — is now entirely driven by whatever Disco
 staff/the external sync assign, same as any other regiment; nothing in this app
 grants Discord roles anymore.
 
+### Client IP, rate limits, blank-page protection (2026-10 audit)
+- The site sits behind Cloudflare Tunnel, so `request.client.host` is the cloudflared
+  address for every visitor. Use `app/core/rate_limit.py::client_ip(request)`, which
+  reads `CF-Connecting-IP`. Before this fix the whole site shared one API rate-limit
+  bucket (300/min for everyone), and so did the password-login limiter.
+- `RateLimitMiddleware` counts only `/api/` and `/auth/` (600/min per IP). Static files
+  used to count too: fast navigation got a 429 on a lazy page chunk, and the page
+  never loaded.
+- `components/PageErrorBoundary.jsx` wraps the routes (reset on path change). A
+  render error or failed chunk now shows a message with an «Обновить страницу» button,
+  not a site-wide blank screen. A stale chunk after a deploy (`vite:preloadError`, or
+  the same error caught by the boundary) reloads the page, at most once a minute.
+- `audit_log_crud.log_coalesced` merges repeats of one action by one person within
+  30 minutes into a single entry with a counter. The galaxy map autosaves after every
+  edit and used to flood «Журнал действий».
+
 ### Frontend conventions
 - Every async button/form handler must wrap its `api.*` call in try/catch and surface
   the failure — `showToast(e.message, "error")` (`ToastContext`) for one-off actions,

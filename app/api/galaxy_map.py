@@ -51,12 +51,13 @@ async def update_galaxy_map(
         raise ForbiddenError("Редактировать карту может только Ассистент/Куратор ивентологии или основатель")
     row = await galaxy_map_crud.replace(db, data=payload.data, updated_by_user_id=access.user.id)
     logger.info("%s сохранил карту кампании напрямую", access.user.username)
-    await audit_log_crud.log(
+    # карта сохраняется после каждой правки — склеиваем, чтобы не забить журнал
+    await audit_log_crud.log_coalesced(
         db,
         actor_user_id=access.user.id,
         actor_is_admin=access.is_admin,
         action="galaxy_map_update",
-        details="Прямое сохранение карты кампании",
+        details="Правка карты кампании",
     )
     return GalaxyMapRead.model_validate(row)
 
