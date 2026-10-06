@@ -22,6 +22,10 @@ export interface ModelSpec {
 export const MODELS = {
   // размеры — Вукипедия (длина, у B1 — рост)
   b1: { url: "/models/units/b1.glb", size: 1.93, byHeight: true, yaw: 0 },
+  // клон-штурмовик фазы I, рост 1.83 м
+  clone: { url: "/models/units/clone.glb", size: 1.83, byHeight: true, yaw: -Math.PI / 2 },
+  // пехота Дозора Смерти — мандалорец в броне (модель Джанго Фетта), 1.83 м
+  mando: { url: "/models/units/mando.glb", size: 1.83, byHeight: true, yaw: 0 },
   atte: { url: "/models/vehicles/atte.glb", size: 22.02, yaw: 0 },
   aat: { url: "/models/vehicles/aat.glb", size: 9.19, yaw: 0 },
   // AT-AP — шагоход Республики, ходит вторым типом наземки рядом с AT-TE
@@ -73,7 +77,7 @@ export type ModelKey = keyof typeof MODELS;
 
 export interface ArmyRoster {
   label: string;
-  /** Пехота — пока не используется (бой идёт техникой на поверхности планеты). */
+  /** Пехота: стоит цепью перед техникой. */
   infantry: ModelKey | null;
   vehicle: ModelKey;
   /** Второй тип наземки: чередуется с основным. */
@@ -94,8 +98,7 @@ export interface ArmyRoster {
 export const ARMIES: Record<ArmyId, ArmyRoster> = {
   rep: {
     label: "Республика",
-    // клоны убраны (решение пользователя), нужна нормальная GLB-модель
-    infantry: null,
+    infantry: "clone",
     vehicle: "atte",
     vehicle2: "atap",
     air: "laat",
@@ -133,14 +136,14 @@ export const ARMIES: Record<ArmyId, ArmyRoster> = {
   // Дозор Смерти: свой фрегат и истребитель, наземка взята у КНС и перекрашена
   dw: {
     label: "Дозор Смерти",
-    infantry: null,
+    infantry: "mando",
     vehicle: "aat",
     air: "dwfighter",
     capital: "lancer",
     escort: "lancer",
     fighter: "dwfighter",
     bolt: 0x5fd0ff,
-    own: ["lancer", "dwfighter"],
+    own: ["lancer", "dwfighter", "mando"],
   },
   // пираты: свой фрегат, остальное взаймы (перекрашивается)
   pirate: {

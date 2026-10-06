@@ -15,6 +15,8 @@ const FIGHTER_K = 0.014 / 12.71;
 const GROUND_K = 0.0014;
 /** Дройдек в одном бою не больше трёх (решение пользователя). */
 const DROID_MAX = 3;
+/** Пехоты на сторону: две на каждую машину, от 2 до 8. */
+const INFANTRY_MAX = 8;
 /** Станции крупнее кораблей того же размера не рисуем: тот же коэффициент, что у кораблей. */
 const STATION_K = SHIP_K;
 /** Камера при спуске к бою: высота над поверхностью (в радиусах планеты). */
@@ -592,6 +594,15 @@ export class PlanetView {
         const v = b.v + FIELD_V * ((i - (veh - 1) / 2) / Math.max(1, veh - 1)) * 1.6 + rand(-0.004, 0.004);
         const key = r.vehicle2 && i % 2 === 1 ? r.vehicle2 : r.vehicle;
         jobs.push(this.spawnUnit(key, side, dir, b, token, b.u - dir * FIELD_U * rand(0.75, 1.1), v));
+      }
+      if (r.infantry) {
+        // цепь пехоты ближе всех к фронту, в два неровных ряда
+        const ni = Math.min(INFANTRY_MAX, Math.max(2, veh * 2));
+        for (let i = 0; i < ni; i++) {
+          const v = b.v + FIELD_V * ((i - (ni - 1) / 2) / Math.max(1, ni - 1)) * 1.3 + rand(-0.002, 0.002);
+          const row = i % 2 ? 0.5 : 0.56;
+          jobs.push(this.spawnUnit(r.infantry, side, dir, b, token, b.u - dir * FIELD_U * (row + rand(-0.02, 0.02)), v));
+        }
       }
       if (r.droid && veh > 0) {
         const nd = Math.min(DROID_MAX, veh);

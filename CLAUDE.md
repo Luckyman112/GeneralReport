@@ -1513,6 +1513,11 @@ its old 2D drawing.
   15.24 m, no animation, so it stands still). `droid` adds droidekas (CIS and Banking
   Clan, 1.83 m tall) in front of the vehicles, at most `DROID_MAX = 3` per side per
   battle (user decision).
+- Infantry is on the field again: Republic phase I clone troopers, CIS and Banking
+  Clan B1, Death Watch Mandalorians (the Jango Fett model, 1.83 m, native to the army so
+  never tinted). They stand in two uneven rows nearest the front, two per vehicle, from
+  2 to `INFANTRY_MAX = 8` per side, and fire like the rest. At canon scale they are
+  specks next to the walkers and only read when zoomed in.
 - `DATA.stations` (`[{id, key, name, fac, sys}]`, a top-level key copied in
   `loadData()` and listed in `_LIST_KEYS`): any number per type. Types: `xq6` (XQ6
   Platform, Republic) and `cis` (CIS station). A station hangs below the fleets in the
