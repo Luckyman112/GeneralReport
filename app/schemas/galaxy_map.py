@@ -15,7 +15,10 @@ from app.schemas.user import UserBrief
 # в обход обычного UI. Дальше внутрь (поля отдельной системы и т.д.)
 # намеренно не лезем — это именно лёгкая защита от структурно неверного
 # верхнего уровня, не полная валидация.
-_LIST_KEYS = ("systems", "factions", "lanes", "regions", "routes", "battles", "convoys", "blockades", "log", "facilityTypes")
+_LIST_KEYS = (
+    "systems", "factions", "lanes", "regions", "routes", "battles", "convoys", "blockades", "log", "facilityTypes",
+    "uniqueShips",
+)
 _DICT_KEYS = ("meta", "diplomacy")
 
 

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { armyOf } from "./catalog";
 import type { FactionData } from "./types";
 
 /** Модели есть только у Республики и КНС. Любая другая фракция (пираты, Дозор
@@ -7,6 +8,8 @@ import type { FactionData } from "./types";
  * чьи они, нельзя. У самих Республики и КНС корпуса остаются родными. */
 export function tintFor(faction: FactionData | null | undefined): THREE.Color | null {
   if (!faction || faction.id === "rep" || faction.id === "sep") return null;
+  // у Банковского клана свой фрегат — его не перекрашиваем
+  if (armyOf(faction) === "bank") return null;
   try {
     return new THREE.Color(faction.color);
   } catch {

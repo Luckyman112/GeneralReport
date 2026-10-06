@@ -1484,6 +1484,20 @@ its old 2D drawing.
   a few planets per frame into plain canvases that the 2D map draws. Falls back to
   the old flat sprites until a planet's texture loads, and without WebGL.
 
+**Unique and faction-only ships**:
+- `DATA.uniqueShips` (`[{key, name, fac, sys}]`) holds named one-of-a-kind ships.
+  The catalog of keys lives in both `UNIQUE_SHIPS` objects (page and `catalog.ts`);
+  `normalizeUniqueShips()` keeps exactly one record per key, so the model can never be
+  duplicated. Only `slave1` exists so far: Slave I (Firespray-31, 21.5 m measured
+  vertically, since it flies upright). It shows as a gold diamond with its name on the
+  2D map and hangs by its planet in the orbit view. The list is a new top-level key:
+  copied in `loadData()` and listed in `_LIST_KEYS`.
+- `ARMIES.bank` (InterGalactic Banking Clan): Munificent frigates (825 m) as capital
+  and escort, the rest CIS hardware, droid infantry. `armyOf()` hands it out only to
+  a faction whose name matches «банков»/«banking», even if another faction picks it,
+  and that army is never tinted. The Munificent GLB is heavy (~250k vertices) because
+  simplification did not reduce it further without breaking the hull.
+
 **Galaxy Map 3D, fixes** — `loadData()` rebuilds the document key by key, so a new
 top-level key must be copied there explicitly or it silently disappears on every
 page load (bug report: diplomacy would not persist). Per-system fields survive

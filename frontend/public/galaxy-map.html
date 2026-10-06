@@ -256,6 +256,7 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
 .dipcell{width:100%;height:24px;padding:0;border:1px solid;background:rgba(5,7,12,.5);font:12px var(--mono);cursor:pointer}
 .dipcell:disabled{cursor:default;opacity:1}
 .battle .lab,.dbattle .lab{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
+.uq-row{display:flex;flex-direction:column;gap:4px}
 .dipkeys{display:flex;flex-wrap:wrap;gap:2px 10px;font:11px var(--mono);color:var(--dim)}
 .dipkeys i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
 .diplegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:11px var(--mono)}
@@ -306,6 +307,10 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
     <section class="card">
       <h2>Эскалация</h2>
       <div class="body" id="esc-body"></div>
+    </section>
+    <section class="card">
+      <h2>Именные корабли</h2>
+      <div class="body" id="uq-body"></div>
     </section>
     <section class="card">
       <h2>Дипломатия</h2>
@@ -752,6 +757,7 @@ function indexData() {
     const [a, b] = k.split('|');
     if (!FACTION[a] || !FACTION[b] || !REL[DATA.diplomacy[k]]) delete DATA.diplomacy[k];
   });
+  normalizeUniqueShips();
   try { if (MAP3D) MAP3D.prune(new Set(SYSTEMS.map(x => x.id))); } catch (e) { /* MAP3D ещё не объявлен */ }
 }
 function today() {
@@ -843,7 +849,9 @@ function loadData(raw) {
     log: Array.isArray(d.log) ? d.log.map(e => ({ ...e })) : [],
     // отношения фракций — объект, а не список; без копии здесь настройки
     // дипломатии терялись при каждой загрузке страницы
-    diplomacy: (d.diplomacy && typeof d.diplomacy === 'object' && !Array.isArray(d.diplomacy)) ? { ...d.diplomacy } : {}
+    diplomacy: (d.diplomacy && typeof d.diplomacy === 'object' && !Array.isArray(d.diplomacy)) ? { ...d.diplomacy } : {},
+    // именные корабли (по одному на всю галактику, см. UNIQUE_SHIPS ниже)
+    uniqueShips: Array.isArray(d.uniqueShips) ? d.uniqueShips.map(u => ({ ...u })) : []
   };
   DATA.factions.forEach(f => { if (!Array.isArray(f.res)) f.res = []; });
   indexData();
@@ -1652,6 +1660,7 @@ function drawNodes(alpha) {
     }
 
     drawOrbitMarks(s, top.x, top.y, rad, nodeA);
+    drawUniqueShipMark(s, top.x, top.y, rad, nodeA);
 
     // Вспышка-кольцо при смене владельца/начале-завершении боя (см. addFlash) —
     // расширяется и гаснет за DATA.meta.fx.flashMs (настраивается Асик+).
@@ -2509,7 +2518,7 @@ function syncFactions() {
       '<input value="' + esc(f.name) + '" data-fac="' + esc(f.id) + '" data-k="name" aria-label="Название фракции">' +
       '<label class="neu-flag"><input type="checkbox" data-fac="' + esc(f.id) + '" data-k="neutral"' + (f.neutral ? ' checked' : '') + '> нейтральная</label>' +
       '<select data-fac="' + esc(f.id) + '" data-k="army" aria-label="Войска в 3D" title="Какими моделями фракция воюет в 3D">' +
-        [['', 'войска: авто'], ['rep', 'войска: клоны'], ['sep', 'войска: дроиды']].map(([v, l]) => '<option value="' + v + '"' + ((f.army || '') === v ? ' selected' : '') + '>' + l + '</option>').join('') +
+        [['', 'войска: авто'], ['rep', 'войска: Республика'], ['sep', 'войска: КНС'], ['bank', 'войска: Банковский клан']].map(([v, l]) => '<option value="' + v + '"' + ((f.army || '') === v ? ' selected' : '') + '>' + l + '</option>').join('') +
       '</select>' +
       '<button class="mini" data-facdel="' + esc(f.id) + '" aria-label="Удалить фракцию">×</button>' +
     '</div>').join('');
@@ -3330,6 +3339,60 @@ function syncLog() {
 /* Сводка "у кого сколько объектов": считает по факту владения системой
  * (см. facilityBlock — тот же принцип, эффект переходит вместе с системой),
  * а не по какой-то отдельной привязке объекта к фракции. */
+/* Именные корабли: модель одна на всю галактику — запись в DATA.uniqueShips
+ * одна на ключ, корабль стоит у одной системы (или «не на карте»). */
+const UNIQUE_SHIPS = { slave1: { title: '«Раб-1»', klass: 'Firespray-31' } };
+function normalizeUniqueShips() {
+  const seen = new Set();
+  DATA.uniqueShips = (DATA.uniqueShips || []).filter(u => UNIQUE_SHIPS[u.key] && !seen.has(u.key) && seen.add(u.key));
+  for (const key of Object.keys(UNIQUE_SHIPS)) {
+    if (!seen.has(key)) DATA.uniqueShips.push({ key, name: UNIQUE_SHIPS[key].title, fac: '', sys: '' });
+  }
+  DATA.uniqueShips.forEach(u => {
+    if (u.sys && !SYS[u.sys]) u.sys = '';
+    if (u.fac && !FACTION[u.fac]) u.fac = '';
+  });
+}
+function uniqueShipsAt(id) { return (DATA.uniqueShips || []).filter(u => u.sys === id); }
+function syncUniqueShips() {
+  const list = DATA.uniqueShips || [];
+  el('uq-body').innerHTML = list.map((u, i) => {
+    const meta = UNIQUE_SHIPS[u.key] || { klass: '' };
+    if (!editing) {
+      const where = u.sys && SYS[u.sys]
+        ? '<button class="mini" data-goto="' + esc(u.sys) + '">у ' + esc(SYS[u.sys].name) + '</button>'
+        : '<span style="color:var(--dim)">не на карте</span>';
+      return '<div class="kv" style="align-items:center;gap:8px"><span><b>' + esc(u.name) + '</b> <span style="color:var(--dim);font:11px var(--mono)">' +
+        esc(meta.klass) + '</span>' + (u.fac ? ' · <span style="color:' + esc(facOf(u.fac).color) + '">' + esc(facOf(u.fac).name) + '</span>' : '') +
+        '</span>' + where + '</div>';
+    }
+    return '<div class="uq-row"><div class="lab">' + esc(meta.klass) + ' · один на всю галактику</div>' +
+      '<input value="' + esc(u.name) + '" data-uq="' + i + '" data-k="name" aria-label="Название">' +
+      '<div class="editgrid" style="margin-top:5px">' +
+        '<select data-uq="' + i + '" data-k="fac" aria-label="Чей"><option value="">без фракции</option>' +
+          DATA.factions.map(f => '<option value="' + esc(f.id) + '"' + (u.fac === f.id ? ' selected' : '') + '>' + esc(f.name) + '</option>').join('') + '</select>' +
+        '<select data-uq="' + i + '" data-k="sys" aria-label="Где"><option value="">не на карте</option>' +
+          SYSTEMS.slice().sort((a, b) => a.name.localeCompare(b.name)).map(s => '<option value="' + esc(s.id) + '"' + (u.sys === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select>' +
+      '</div></div>';
+  }).join('') || '<div class="hint" style="margin:0">именных кораблей нет</div>';
+}
+function drawUniqueShipMark(s, x, y, rad, a) {
+  const here = uniqueShipsAt(s.id);
+  if (!here.length) return;
+  here.forEach((u, i) => {
+    const px = x - rad * 1.05 - i * 12, py = y + rad * .95;
+    const col = u.fac ? facOf(u.fac).col : '#f0c674';
+    ctx.globalAlpha = a;
+    ctx.fillStyle = col; ctx.strokeStyle = '#05070c'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px, py - 6); ctx.lineTo(px + 4.5, py); ctx.lineTo(px, py + 6); ctx.lineTo(px - 4.5, py); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    if (cam.z > .9) {
+      ctx.font = '500 10px "IBM Plex Mono", monospace';
+      ctx.fillStyle = col; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(u.name, px - 7, py);
+    }
+  });
+}
 function syncDiplomacy() {
   const F = DATA.factions;
   if (F.length < 2) { el('dip-body').innerHTML = '<div class="hint" style="margin:0">нужно хотя бы две фракции</div>'; return; }
@@ -3438,7 +3501,7 @@ function drawConvoys(alpha) {
   }
   ctx.restore();
 }
-function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncDiplomacy(); syncFacSummary(); syncBattles(); syncConvoys(); syncBlocks(); syncLog(); syncRequests(); }
+function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncUniqueShips(); syncDiplomacy(); syncFacSummary(); syncBattles(); syncConvoys(); syncBlocks(); syncLog(); syncRequests(); }
 
 el('rail-r').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -3634,8 +3697,21 @@ el('rail-l').addEventListener('click', e => {
   else if (b.dataset.reqok !== undefined) { decideRequest(b.dataset.reqok, true); }
   else if (b.dataset.reqno !== undefined) { decideRequest(b.dataset.reqno, false); }
 });
+el('rail-l').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.uq === undefined) return;
+  const u = DATA.uniqueShips[+t.dataset.uq];
+  if (!u || !editing) return;
+  u[t.dataset.k] = t.value;
+  syncUniqueShips(); syncDetail(); touch();
+});
 el('rail-l').addEventListener('input', e => {
   const t = e.target;
+  if (t.dataset.uq !== undefined && t.dataset.k === 'name') {
+    const u = DATA.uniqueShips[+t.dataset.uq];
+    if (u && editing) { u.name = t.value; touch(); }
+    return;
+  }
   if (t.dataset.res === undefined) return;
   const f = facOf(DATA.meta.main);
   if (f.res[+t.dataset.res]) { f.res[+t.dataset.res][t.dataset.k] = t.value; touch(); }
@@ -4070,11 +4146,12 @@ function payloadFor(id) {
     sys: SYS[id],
     factions: DATA.factions,
     battles: DATA.battles.filter(b => b.sys === id && LIVE_STAGES[b.status]),
+    uniqueShips: uniqueShipsAt(id).map(u => ({ key: u.key, name: u.name, fac: u.fac })),
     blockades: DATA.blockades.filter(b => b.a === id || b.b === id),
     layout: { x: lay.x, y: lay.y, r: lay.disp }
   };
 }
-function payloadKey(p) { return JSON.stringify([p.sys, p.battles, p.blockades, p.factions.map(f => [f.id, f.color, f.army])]); }
+function payloadKey(p) { return JSON.stringify([p.sys, p.battles, p.blockades, p.uniqueShips, p.factions.map(f => [f.id, f.color, f.army])]); }
 async function show3DPlanet(id) {
   const G = await load3D();
   if (!G || mode !== 'planet' || diveTarget !== id) return;
@@ -4130,8 +4207,10 @@ const shipTintCache = {};
 function shipSpriteFor(factionId) {
   if (!SHIP_SPRITES || !G3D) return null;
   const f = facOf(factionId);
-  const base = SHIP_SPRITES[G3D.armyOf(f.raw || { id: factionId })];
-  if (!base || factionId === 'rep' || factionId === 'sep') return base || null;
+  const army = G3D.armyOf(f.raw || { id: factionId });
+  const base = SHIP_SPRITES[army];
+  // родные корпуса не перекрашиваем: Республика, КНС и Munificent Банковского клана
+  if (!base || factionId === 'rep' || factionId === 'sep' || army === 'bank') return base || null;
   const key = factionId + ':' + f.col;
   if (shipTintCache[key]) return shipTintCache[key];
   const c = document.createElement('canvas');

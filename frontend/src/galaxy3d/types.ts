@@ -63,7 +63,15 @@ export interface BlockadeData {
   str?: number;
 }
 
+/** Именной корабль у планеты (см. catalog.ts::UNIQUE_SHIPS). */
+export interface UniqueShipData {
+  key: string;
+  name: string;
+  fac?: string;
+}
+
 export interface PlanetPayload {
+  uniqueShips?: UniqueShipData[];
   sys: SystemData;
   factions: FactionData[];
   /** Идущие бои на планете — их может быть несколько, по одному на сектор. */

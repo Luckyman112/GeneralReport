@@ -2,7 +2,7 @@
  * боя и в космосе; фракция на карте выбирает армию полем `army` (по умолчанию
  * Республика — клоны, все остальные — дроиды КНС, пока нет своих моделей). */
 
-export type ArmyId = "rep" | "sep";
+export type ArmyId = "rep" | "sep" | "bank";
 
 export interface ModelSpec {
   url: string;
@@ -30,7 +30,18 @@ export const MODELS = {
   venator: { url: "/models/ships/venator.glb", size: 1137, yaw: -Math.PI / 2 },
   arquitens: { url: "/models/ships/arquitens.glb", size: 325, yaw: 0 },
   providence: { url: "/models/ships/providence.glb", size: 1088, yaw: 0 },
+  // фрегат Межгалактического банковского клана — только в их наборе
+  munificent: { url: "/models/ships/munificent.glb", size: 825, yaw: 0 },
+  // «Раб-1» (Firespray-31) — именной, существует в одном экземпляре: в армии не
+  // входит, на карте стоит там, куда его поставили (DATA.uniqueShips). Летит
+  // «стоя», 21.5 м — это его вертикальный размер.
+  slave1: { url: "/models/ships/slave1.glb", size: 21.5, byHeight: true, yaw: 0 },
 } satisfies Record<string, ModelSpec>;
+
+/** Именные корабли — по одному экземпляру на всю галактику. */
+export const UNIQUE_SHIPS: Record<string, { model: ModelKey; title: string }> = {
+  slave1: { model: "slave1", title: "«Раб-1» (Firespray-31)" },
+};
 
 export function flightOf(key: ModelKey): "strafe" | "hover" {
   const spec: ModelSpec = MODELS[key];
@@ -73,10 +84,30 @@ export const ARMIES: Record<ArmyId, ArmyRoster> = {
     fighter: "vulture",
     bolt: 0xff4a3a,
   },
+  // Банковский клан: свой фрегат Munificent (Вукипедия: принадлежность —
+  // InterGalactic Banking Clan), остальное — техника КНС, в которую клан входит
+  bank: {
+    label: "Банковский клан",
+    infantry: "b1",
+    vehicle: "aat",
+    air: "vulture",
+    capital: "munificent",
+    escort: "munificent",
+    fighter: "vulture",
+    bolt: 0xff4a3a,
+  },
 };
 
-export function armyOf(faction: { id: string; army?: string } | null | undefined): ArmyId {
-  if (faction?.army === "rep" || faction?.army === "sep") return faction.army;
+/** Банковский клан узнаём по названию — у него нет фиксированного id на карте. */
+export function isBankingClan(faction: { name?: string } | null | undefined): boolean {
+  return /банков|banking/i.test(faction?.name || "");
+}
+
+export function armyOf(faction: { id: string; army?: string; name?: string } | null | undefined): ArmyId {
+  const a = faction?.army;
+  if (a === "rep" || a === "sep") return a;
+  // Munificent — исключительно банковский: чужой фракции его набор не выдаём
+  if (a === "bank" || isBankingClan(faction)) return isBankingClan(faction) ? "bank" : "sep";
   return faction?.id === "rep" ? "rep" : "sep";
 }
 

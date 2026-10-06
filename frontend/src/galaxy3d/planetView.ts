@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { instantiate, loadModel } from "./assets";
-import { ARMIES, armyOf, flightOf, hashStr, type ArmyRoster, type ModelKey } from "./catalog";
+import { ARMIES, UNIQUE_SHIPS, armyOf, flightOf, hashStr, type ArmyRoster, type ModelKey } from "./catalog";
 import { Planet, SUN_DIR, zoneLayout } from "./planet";
 import { applyTint, tintFor } from "./tint";
 import { LIVE_STAGES, resolveForces, type BattleData, type FactionData, type Forces, type PlanetPayload } from "./types";
@@ -424,6 +424,21 @@ export class PlanetView {
       const cnt = Math.min(6, Math.max(1, Math.round(bl.str || 1)));
       if (!(await this.formation(roster(bl.fac), cnt, tip, sign === 1 ? -1 : 1, token, null, tintFor(fac(bl.fac))))) return;
       lines.push(`<b>Блокада</b> ${tag(bl.fac)} · ${cnt} кор.`);
+    }
+
+    // именные корабли — ровно один экземпляр, висит у планеты чуть в стороне
+    for (const [i, u] of (p.uniqueShips || []).entries()) {
+      const spec = UNIQUE_SHIPS[u.key];
+      if (!spec) continue;
+      const s = await ship(spec.model, FIGHTER_K * 1.6, u.fac ? tintFor(fac(u.fac)) : null);
+      if (token !== this.token) return;
+      if (!s) continue;
+      const pos = new THREE.Vector3(-0.25 - i * 0.12, 0.62, 1.42);
+      s.position.copy(pos);
+      s.lookAt(pos.clone().add(new THREE.Vector3(1, -0.15, 0.4)));
+      this.fleet.add(s);
+      this.bobbers.push({ obj: s, base: pos, phase: i * 2.3 });
+      lines.push(`<b>Именной корабль</b> ${u.name || spec.title}${u.fac ? " · " + tag(u.fac) : ""}`);
     }
 
     if (sys.zones) {
