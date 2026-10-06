@@ -250,11 +250,8 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
 .g3d-bar i{display:block;height:100%;opacity:.85}
 .g3d-bar-labels{display:flex;justify-content:space-between;font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:-6px}
 .g3d-hint{margin-top:auto;font:11px var(--mono);letter-spacing:.1em;color:var(--dim);text-align:center}
-.bat3d{border:1px solid var(--hot)!important;color:var(--hot)!important;padding:5px 10px!important;margin-top:8px;align-self:flex-start;
-  font:500 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;background:rgba(240,164,49,.08)}
-.bat3d:hover{background:rgba(240,164,49,.18)}
-/* досье планеты сквозное для мыши (под ним крутится 3D-шар) — кнопке клики нужны */
-#detail .bat3d{pointer-events:auto}
+.g3d-cta{color:var(--hot);letter-spacing:.08em}
+.bat3d-hint{margin-top:8px;font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--hot)}
 table.dip{border-collapse:separate;border-spacing:2px;table-layout:fixed;width:100%;font:11px var(--mono)}
 table.dip th{font-weight:400;color:var(--dim);padding:0;text-align:left;vertical-align:middle}
 table.dip th.col{width:24px;text-align:center}
@@ -2872,7 +2869,7 @@ function syncDetail() {
           '<div class="n"><b style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</b> против ' +
           '<b style="color:' + esc(facOf(b.def).color) + '">' + esc(facOf(b.def).name) + '</b></div>' +
           battleProgress(b) +
-          (LIVE_STAGES[b.status] ? '<button class="mini bat3d" data-bat3d="' + DATA.battles.indexOf(b) + '">⚔ Смотреть бой</button>' : '') +
+          (LIVE_STAGES[b.status] ? '<div class="bat3d-hint">⚔ Нажмите на планету — откроется наземный бой</div>' : '') +
         '</div>';
       }).join('')
     : '';
@@ -3075,14 +3072,12 @@ function syncBattles() {
             return '<input type="number" min="0" max="999" data-bat="' + i + '" data-k="forces.' + sd + '.' + k + '" value="' + v + '" aria-label="' + lab + ' ' + k + '">';
           }).join('')).join('') +
       '</div>' +
-      (LIVE_STAGES[b.status] ? '<button class="mini bat3d" data-bat3d="' + i + '">⚔ Смотреть бой</button>' : '') +
       '<button class="mini" data-batreport="' + i + '" style="border:1px solid var(--line);padding:4px 8px;margin-top:6px">📋 Скопировать отчёт</button></div>';
     return '<div class="battle' + live + '" data-goto="' + esc(b.sys) + '" role="button" tabindex="0">' +
       '<div class="n">' + esc(s.name) + '</div><div class="m">' +
       '<span style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</span> против ' +
       '<span style="color:' + esc(facOf(b.def).color) + '">' + esc(facOf(b.def).name) + '</span></div>' +
       battleProgress(b) +
-      (LIVE_STAGES[b.status] ? '<button class="mini bat3d" data-bat3d="' + i + '">⚔ Смотреть бой</button>' : '') +
       '<button class="mini" data-batreport="' + i + '" style="border:1px solid var(--line);padding:3px 7px;margin-top:6px;align-self:flex-start">📋 Скопировать отчёт</button></div>';
   }).join('');
 }
@@ -3960,13 +3955,6 @@ function closeBattle3D() {
   if (battleView) { const v = battleView; battleView = null; v.dispose(); }
   el('g3d-battle').classList.remove('show');
 }
-document.addEventListener('click', e => {
-  const t = e.target.closest && e.target.closest('[data-bat3d]');
-  if (!t) return;
-  e.stopPropagation(); e.preventDefault();
-  const b = DATA.battles[+t.dataset.bat3d];
-  if (b) openBattle3D(b);
-}, true);
 window.addEventListener('resize', () => {
   if (planetView && planet3dOn) { const l = sphereLayout(); planetView.setLayout({ x: l.x, y: l.y, r: l.disp }); }
 });

@@ -110,6 +110,8 @@ export class PlanetView {
   private token = 0;
   private visible = false;
   private down: { x: number; y: number } | null = null;
+  /** На планете идёт наземный бой — клик по ней его откроет, курсор подсказывает это. */
+  private ground = false;
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -142,6 +144,7 @@ export class PlanetView {
     this.controls.rotateSpeed = 0.45;
 
     c.addEventListener("pointerdown", this.onDown);
+    c.addEventListener("pointermove", this.onMove);
     c.addEventListener("pointerup", this.onUp);
     window.addEventListener("resize", this.resize);
     document.addEventListener("visibilitychange", this.onVisibility);
@@ -151,16 +154,25 @@ export class PlanetView {
     this.down = { x: e.clientX, y: e.clientY };
   };
 
+  private overPlanet(e: PointerEvent): boolean {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    return ray.ray.intersectsSphere(new THREE.Sphere(new THREE.Vector3(), 1));
+  }
+
+  private onMove = (e: PointerEvent) => {
+    if (this.down) return;
+    this.renderer.domElement.style.cursor = this.ground && this.overPlanet(e) ? "pointer" : "";
+  };
+
   /** Клик без перетаскивания по диску планеты. */
   private onUp = (e: PointerEvent) => {
     const d = this.down;
     this.down = null;
     if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 || !this.onPlanetClick) return;
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(ndc, this.camera);
-    if (ray.ray.intersectsSphere(new THREE.Sphere(new THREE.Vector3(), 1))) this.onPlanetClick();
+    if (this.overPlanet(e)) this.onPlanetClick();
   };
 
   private resize = () => {
@@ -205,6 +217,7 @@ export class PlanetView {
     const tag = (fid: string) => `<span style="color:${colorOf(fid)}">${fac(fid).name}</span>`;
     const sys = p.sys;
     const live = p.battle && LIVE_STAGES.has(p.battle.status) ? p.battle : null;
+    this.ground = Boolean(live);
 
     this.planet = new Planet(sys);
     this.planet.setZones(zoneLayout(sys, colorOf, live ? [live.att, live.def] : []));
@@ -253,7 +266,7 @@ export class PlanetView {
       const held = Object.entries(sys.zoneHolders || {}).filter(([, k]) => k > 0);
       lines.push(`<b>Поверхность</b> ${held.map(([fid, k]) => `${tag(fid)} ${k}/${sys.zones}`).join(" · ")}`);
     } else if (sys.own) lines.push(`<b>Поверхность</b> ${tag(sys.own)}`);
-    if (live) lines.push(`<b>Наземный бой</b> ${tag(live.att)} против ${tag(live.def)} — нажмите на планету`);
+    if (live) lines.push(`<b>Наземный бой</b> ${tag(live.att)} против ${tag(live.def)}<br><span class="g3d-cta">⚔ Нажмите на планету, чтобы спуститься к бою</span>`);
     this.setLegend(lines.join("<br>"));
   }
 
@@ -447,6 +460,7 @@ export class PlanetView {
     this.hide();
     const c = this.renderer.domElement;
     c.removeEventListener("pointerdown", this.onDown);
+    c.removeEventListener("pointermove", this.onMove);
     c.removeEventListener("pointerup", this.onUp);
     window.removeEventListener("resize", this.resize);
     document.removeEventListener("visibilitychange", this.onVisibility);

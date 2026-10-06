@@ -1412,12 +1412,14 @@ its old 2D drawing.
   later, so the swap doesn't flash. `refresh3D()` (called from `syncDetail`)
   rebuilds the scene only when the system, live battle, blockades or faction
   colors actually changed. Zones render as longitude sectors in the owner's color.
-- Battle view: "⚔ Смотреть бой" on any live battle (dossier and right rail) opens a
-  full-screen looping diorama of infantry, vehicles and aircraft. Unit counts come
+- Battle view: a full-screen looping diorama of infantry, vehicles and aircraft. There
+  is deliberately no separate button for it (user decision): it opens by clicking the
+  planet in the 3D view while a ground battle is live, the cursor turns into a pointer
+  over the planet then, and the dossier and legend say so. Unit counts come
   from `battle.forces.{att,def}.{inf,veh,air}` when set (edit-mode number grid
   under each battle), otherwise they are derived from `prog`. `#detail` is
   `pointer-events:none` by design, so any clickable thing added to the dossier
-  needs `pointer-events:auto` (see `#detail .bat3d`).
+  needs `pointer-events:auto`.
 - `faction.army` (`rep`/`sep`, select in the factions drawer) picks the model set.
   The default is clones for `id === 'rep'` and droids for everyone else
   (`catalog.ts::armyOf`). Lane blockades on the 2D map use sprites rendered from
