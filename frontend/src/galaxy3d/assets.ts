@@ -22,7 +22,10 @@ function normalize(gltf: GLTF, key: ModelKey): Prototype {
   root.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(root);
   const size = box.getSize(new THREE.Vector3());
-  const ref = "byHeight" in spec && spec.byHeight ? size.y : Math.max(size.x, size.y, size.z);
+  // длина — вдоль оси, которая после поворота yaw станет «вперёд» (+Z): при
+  // повороте на 90° это исходная X, иначе Z
+  const sideways = Math.abs(Math.abs(spec.yaw ?? 0) - Math.PI / 2) < 0.01;
+  const ref = "byHeight" in spec && spec.byHeight ? size.y : sideways ? size.x : size.z;
   const k = spec.size / (ref || 1);
   const center = box.getCenter(new THREE.Vector3());
 

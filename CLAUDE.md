@@ -1427,6 +1427,23 @@ its old 2D drawing.
   under each battle), else derived from `prog`; capped at 6 vehicles and 3 aircraft
   per side. `#detail` is `pointer-events:none` by design, so any clickable thing
   added to the dossier needs `pointer-events:auto`.
+- Several ground battles can run on one planet, one per sector: `battle.zone` (1..zones,
+  picked in the battle editor; a sector can hold one live battle), unset means the
+  first free sector. Every battle sector pulses (`Planet.setHot`), the legend lists
+  them as buttons, clicking a sector on the globe descends to that sector's battle,
+  and the surface legend switches between sectors.
+- Orbital bombardment needs the orbit to belong to the attacker (`System.orbit` =
+  attacker, with ships) and either side to have `air === 0`. During a fleet battle
+  ships fight each other, never the planet (user decision).
+- Fire cadence: each side fires once per random 0.5–1.5 s (`FIRE_MIN`/`FIRE_MAX`),
+  bolt speed unchanged. The 2D map uses the same cadence.
+- Flight (`MODELS.*.flight`): starfighters (`strafe`) only fly forward in attack runs,
+  diving over the front, then come round again; the LAAT (`hover`) hangs above its
+  own line like a helicopter and fires from there.
+- Sizes follow Wookieepedia lengths (`MODELS.*.size`, measured along the model's
+  forward axis, not the longest one: ARC-170 and LAAT are wider than long). One
+  coefficient per class (`SHIP_K`, `FIGHTER_K`, `GROUND_K`), so ships of one class
+  keep their real proportions and one type always has one size.
 - The 2D map shows the same picture from afar (`drawOrbitMarks`): an allied fleet is
   a few ships standing by the planet, a fleet battle is both sides' ships with
   flickering shots between them, a ground battle adds explosions on the planet disk,

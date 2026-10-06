@@ -279,6 +279,13 @@ export class Planet {
     this.surface.material.uniforms.uZoneAmt.value = on ? 1 : 0;
   }
 
+  /** Подсветить (пульсом) сектора, где идут бои, — по одному на каждый бой. */
+  setHot(indices: number[]) {
+    const hot = this.surface.material.uniforms.uZoneHot.value as number[];
+    hot.fill(0);
+    for (const i of indices) if (i >= 0 && i < hot.length) hot[i] = 1;
+  }
+
   /** Узел, который вращается вместе с текстурой, — к нему крепится техника на планете. */
   get surfaceNode(): THREE.Object3D {
     return this.surface;

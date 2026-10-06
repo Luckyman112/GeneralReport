@@ -6,25 +6,36 @@ export type ArmyId = "rep" | "sep";
 
 export interface ModelSpec {
   url: string;
-  /** Размер по самой длинной оси (или по высоте для пехоты), в метрах. */
+  /** Длина корпуса (нос–корма) по Вукипедии, в метрах; у пехоты — рост. Мерится
+   * именно по оси «вперёд», а не по самой длинной: у ARC-170 и LAAT размах
+   * крыльев больше длины, и масштаб по наибольшей оси их ужимал. */
   size: number;
-  /** Мерить по высоте, а не по самой длинной оси (пехота в Т-позе шире, чем выше). */
+  /** Мерить по высоте (пехота). */
   byHeight?: boolean;
   /** Поворот, чтобы «вперёд» смотрело в +Z. */
   yaw?: number;
+  /** Как летает: strafe — только вперёд, заходами в атаку (истребители);
+   * hover — зависает и стреляет с места, почти не смещаясь (LAAT). */
+  flight?: "strafe" | "hover";
 }
 
 export const MODELS = {
-  b1: { url: "/models/units/b1.glb", size: 1.9, byHeight: true, yaw: 0 },
-  atte: { url: "/models/vehicles/atte.glb", size: 13, yaw: 0 },
-  aat: { url: "/models/vehicles/aat.glb", size: 9.5, yaw: 0 },
-  laat: { url: "/models/ships/laat.glb", size: 17, yaw: Math.PI },
-  arc170: { url: "/models/ships/arc170.glb", size: 13, yaw: 0 },
-  vulture: { url: "/models/ships/vulture.glb", size: 6, yaw: 0 },
+  // размеры — Вукипедия (длина, у B1 — рост)
+  b1: { url: "/models/units/b1.glb", size: 1.93, byHeight: true, yaw: 0 },
+  atte: { url: "/models/vehicles/atte.glb", size: 22.02, yaw: 0 },
+  aat: { url: "/models/vehicles/aat.glb", size: 9.19, yaw: 0 },
+  laat: { url: "/models/ships/laat.glb", size: 17.69, yaw: Math.PI, flight: "hover" },
+  arc170: { url: "/models/ships/arc170.glb", size: 12.71, yaw: 0, flight: "strafe" },
+  vulture: { url: "/models/ships/vulture.glb", size: 6.96, yaw: 0, flight: "strafe" },
   venator: { url: "/models/ships/venator.glb", size: 1137, yaw: -Math.PI / 2 },
   arquitens: { url: "/models/ships/arquitens.glb", size: 325, yaw: 0 },
   providence: { url: "/models/ships/providence.glb", size: 1088, yaw: 0 },
 } satisfies Record<string, ModelSpec>;
+
+export function flightOf(key: ModelKey): "strafe" | "hover" {
+  const spec: ModelSpec = MODELS[key];
+  return spec.flight || "strafe";
+}
 
 export type ModelKey = keyof typeof MODELS;
 

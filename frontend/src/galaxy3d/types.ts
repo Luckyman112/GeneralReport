@@ -52,6 +52,8 @@ export interface BattleData {
   prog?: number;
   since?: string;
   forces?: { att?: Forces; def?: Forces };
+  /** Сектор планеты, где идёт этот бой (1..zones); не задан — первый свободный. */
+  zone?: number;
 }
 
 export interface BlockadeData {
@@ -64,7 +66,8 @@ export interface BlockadeData {
 export interface PlanetPayload {
   sys: SystemData;
   factions: FactionData[];
-  battle: BattleData | null;
+  /** Идущие бои на планете — их может быть несколько, по одному на сектор. */
+  battles: BattleData[];
   blockades: BlockadeData[];
   /** Экранный центр и радиус диска планеты в пикселях холста карты. */
   layout: { x: number; y: number; r: number };

@@ -238,6 +238,11 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
 .g3d-back[hidden]{display:none}
 .g3d-back:hover{background:rgba(240,164,49,.15)}
 .g3d-dim{color:var(--dim)}
+.g3d-legend{pointer-events:auto}
+.g3d-sector{border:1px solid var(--hot);background:rgba(240,164,49,.1);color:var(--hot);font:500 10.5px var(--mono);letter-spacing:.1em;
+  text-transform:uppercase;padding:2px 7px;margin:2px 4px 2px 0;cursor:pointer}
+.g3d-sector:hover{background:rgba(240,164,49,.25)}
+.sector-tag{font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--hot);border:1px solid rgba(240,164,49,.5);padding:0 5px;margin-right:4px}
 .g3d-cta{color:var(--hot);letter-spacing:.08em}
 .bat3d-hint{margin-top:8px;font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--hot)}
 table.dip{border-collapse:separate;border-spacing:2px;table-layout:fixed;width:100%;font:11px var(--mono)}
@@ -2268,36 +2273,34 @@ function drawOrbitMarks(s, x, y, rad, a) {
       pd.push([px, py]); drawMiniShip(st.def, px, py, 0, size, a);
     }
     if (lb && st.att === lb.att) attShips = pa;
-    // перестрелка: короткие лучи, мигающие через раз
+    // перестрелка: у каждой стороны один выстрел за окно 0.5–1.5 с, в случайный момент
     if (!RM) {
-      for (let k = 0; k < 3; k++) {
-        const tick = Math.floor(now / 160) + k * 17 + Math.round(s.x);
-        if (h01(tick) < .45) continue;
-        const from = h01(tick * 3) < .5 ? pa : pd, to = from === pa ? pd : pa;
-        const A = from[Math.floor(h01(tick * 5) * from.length)], B = to[Math.floor(h01(tick * 7) * to.length)];
-        if (!A || !B) continue;
-        const f = (now % 160) / 160;
+      for (const side of [0, 1]) {
+        const from = side ? pd : pa, to = side ? pa : pd;
+        const win = 500 + h01(Math.round(s.x) * 7 + side) * 1000;
+        const idx = Math.floor((now + side * 377) / win), t0 = idx * win + h01(idx * 13 + side) * (win - 260);
+        const f = (now + side * 377 - t0) / 260;
+        if (f < 0 || f > 1 || !from.length || !to.length) continue;
+        const A = from[Math.floor(h01(idx * 5 + side) * from.length)], B = to[Math.floor(h01(idx * 7 + side) * to.length)];
         ctx.globalAlpha = a * (1 - f) * .95;
-        ctx.strokeStyle = from === pa ? facOf(st.att).col : facOf(st.def).col;
+        ctx.strokeStyle = side ? facOf(st.def).col : facOf(st.att).col;
         ctx.lineWidth = 1.4;
-        ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(A[0] + (B[0] - A[0]) * Math.min(1, f * 1.6), A[1] + (B[1] - A[1]) * Math.min(1, f * 1.6)); ctx.stroke();
+        const k = Math.min(1, f * 1.6);
+        ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(A[0] + (B[0] - A[0]) * k, A[1] + (B[1] - A[1]) * k); ctx.stroke();
       }
     }
   }
   if (!lb) return;
-  // бомбардировка: атакующие бьют по планете, если у кого-то нет авиации
-  if (battleBombards(lb) && !RM) {
-    if (!attShips.length) {
-      for (let i = 0; i < 2; i++) {
-        const px = x + rad * 1.1 + i * size * .5, py = y - rad * 1.15 - i * size * .2;
-        attShips.push([px, py]); drawMiniShip(lb.att, px, py, Math.PI * .75, size * .9, a);
-      }
-    }
-    const tick = Math.floor(now / 220) + Math.round(s.y);
-    if (h01(tick) > .35) {
-      const A = attShips[Math.floor(h01(tick * 3) * attShips.length)];
-      const ang = h01(tick * 11) * 6.283, rr = Math.sqrt(h01(tick * 13)) * rad * .6;
-      const f = (now % 220) / 220;
+  // обстрел с орбиты: только если орбита за атакующими (не бой флотов) и у кого-то
+  // нет авиации — при бое флотов корабли заняты друг другом
+  const bombard = !RM && st && st.kind === 'fleet' && st.fac === lb.att && attShips.length && battleBombards(lb);
+  if (bombard) {
+    const win = 500 + h01(Math.round(s.y) * 3) * 1000;
+    const idx = Math.floor(now / win), t0 = idx * win + h01(idx * 11) * (win - 320);
+    const f = (now - t0) / 320;
+    if (f >= 0 && f <= 1) {
+      const A = attShips[Math.floor(h01(idx * 3) * attShips.length)];
+      const ang = h01(idx * 17) * 6.283, rr = Math.sqrt(h01(idx * 19)) * rad * .6;
       ctx.globalAlpha = a * (1 - f);
       ctx.strokeStyle = facOf(lb.att).col; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr); ctx.stroke();
@@ -2985,7 +2988,8 @@ function syncDetail() {
     ? '<div class="lab">Бои на планете</div>' + bts.map(b => {
         const live = LIVE_STAGES[b.status] ? '' : ' done';
         return '<div class="dbattle' + live + '">' +
-          '<div class="n"><b style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</b> против ' +
+          '<div class="n">' + (b.zone ? '<span class="sector-tag">сектор ' + b.zone + '</span> ' : '') +
+          '<b style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</b> против ' +
           '<b style="color:' + esc(facOf(b.def).color) + '">' + esc(facOf(b.def).name) + '</b></div>' +
           battleProgress(b) +
           (LIVE_STAGES[b.status] ? '<div class="bat3d-hint">⚔ Нажмите на планету, чтобы спуститься к бою</div>' : '') +
@@ -3182,6 +3186,12 @@ function syncBattles() {
       '<div class="editgrid"><select data-bat="' + i + '" data-k="status">' +
         Object.keys(BATTLE_STATUS).map(k => '<option value="' + k + '"' + (k === b.status ? ' selected' : '') + '>' + BATTLE_STATUS[k] + '</option>').join('') +
       '</select><input value="' + esc(b.since || '') + '" data-bat="' + i + '" data-k="since" placeholder="с 12.08"></div>' +
+      (SYS[b.sys] && SYS[b.sys].zones
+        ? '<label style="margin-top:6px">Сектор планеты<select data-bat="' + i + '" data-k="zone">' +
+            '<option value="">авто (первый свободный)</option>' +
+            Array.from({ length: SYS[b.sys].zones }, (_, z) => '<option value="' + (z + 1) + '"' + (b.zone === z + 1 ? ' selected' : '') + '>сектор ' + (z + 1) + '</option>').join('') +
+          '</select></label>'
+        : '') +
       '<label style="margin-top:6px">Перевес атакующего<input type="range" data-bat="' + i + '" data-k="prog" min="0" max="100" step="2" value="' +
         (Number.isFinite(b.prog) ? b.prog : 50) + '"></label>' +
       battleProgress(b) +
@@ -3542,6 +3552,16 @@ el('rail-r').addEventListener('change', e => {
   if (t.dataset.bat !== undefined) {
     const b = DATA.battles[+t.dataset.bat];
     if (b && t.dataset.k.startsWith('forces.')) { setBattleForce(b, t); return; }
+    if (b && t.dataset.k === 'zone') {
+      const z = parseInt(t.value, 10);
+      if (Number.isFinite(z) && z > 0) {
+        const busy = DATA.battles.find(o => o !== b && o.sys === b.sys && LIVE_STAGES[o.status] && o.zone === z);
+        if (busy) { alert('В секторе ' + z + ' уже идёт другой бой.'); t.value = b.zone || ''; return; }
+        b.zone = z;
+      } else delete b.zone;
+      syncBattles(); syncDetail(); touch();
+      return;
+    }
     if (b && (t.dataset.k === 'att' || t.dataset.k === 'def')) {
       const na = t.dataset.k === 'att' ? t.value : b.att, nd = t.dataset.k === 'def' ? t.value : b.def;
       const why = attackBlocked(na, nd);
@@ -4049,12 +4069,12 @@ function payloadFor(id) {
   return {
     sys: SYS[id],
     factions: DATA.factions,
-    battle: DATA.battles.find(b => b.sys === id && LIVE_STAGES[b.status]) || null,
+    battles: DATA.battles.filter(b => b.sys === id && LIVE_STAGES[b.status]),
     blockades: DATA.blockades.filter(b => b.a === id || b.b === id),
     layout: { x: lay.x, y: lay.y, r: lay.disp }
   };
 }
-function payloadKey(p) { return JSON.stringify([p.sys, p.battle, p.blockades, p.factions.map(f => [f.id, f.color, f.army])]); }
+function payloadKey(p) { return JSON.stringify([p.sys, p.battles, p.blockades, p.factions.map(f => [f.id, f.color, f.army])]); }
 async function show3DPlanet(id) {
   const G = await load3D();
   if (!G || mode !== 'planet' || diveTarget !== id) return;
