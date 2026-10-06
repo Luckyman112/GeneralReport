@@ -60,6 +60,9 @@ async def decide(
     return await db.get(EventActivityReport, report.id, options=_LOAD_OPTIONS, populate_existing=True)
 
 
+ACTIVITY_TYPES = ("mini", "combat", "rp")
+
+
 async def activity_summary_for_user_ids(db: AsyncSession, user_ids: list[int]) -> dict[int, dict]:
     """Кол-во ОДОБРЕННЫХ отчётов за 7д/30д/всё время + дата последнего,
     сгруппировано по submitted_by_user_id И по event_type — Мини-ивент и
@@ -105,15 +108,13 @@ async def activity_summary_for_user_ids(db: AsyncSession, user_ids: list[int]) -
 
     return {
         user_id: {
-            "mini": {
-                "count_week": _by_type(count_week, user_id, "mini"),
-                "count_month": _by_type(count_month, user_id, "mini"),
-                "count_all_time": _by_type(count_all_time, user_id, "mini"),
-            },
-            "combat": {
-                "count_week": _by_type(count_week, user_id, "combat"),
-                "count_month": _by_type(count_month, user_id, "combat"),
-                "count_all_time": _by_type(count_all_time, user_id, "combat"),
+            **{
+                event_type: {
+                    "count_week": _by_type(count_week, user_id, event_type),
+                    "count_month": _by_type(count_month, user_id, event_type),
+                    "count_all_time": _by_type(count_all_time, user_id, event_type),
+                }
+                for event_type in ACTIVITY_TYPES
             },
             "last_report_at": last_report_at.get(user_id),
         }

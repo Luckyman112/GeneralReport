@@ -6,7 +6,14 @@ import { MemberSearchPicker } from "./MemberSearchPicker";
 import { useToast } from "./ToastContext";
 import { formatMskDate } from "../utils/formatDate";
 
-const TYPE_LABELS = { mini: "Мини-ивент", combat: "Боевой вылет" };
+const TYPE_LABELS = { mini: "Мини-ивент", combat: "Боевой вылет", rp: "РП ивент" };
+/** Имена помогавших: новый формат — список co_hosts, старый — один co_host_username. */
+export function helpersOf(report) {
+  const list = (report.payload?.co_hosts || []).map((h) => h.username).filter(Boolean);
+  if (list.length) return list;
+  return report.payload?.co_host_username ? [report.payload.co_host_username] : [];
+}
+
 const STATUS_LABELS = { pending: "Ожидает решения", approved: "Одобрен", rejected: "Отклонён" };
 
 /** Отчёты Ивентологов о проведённых мероприятиях — отдельно от заявок на ивент
@@ -24,7 +31,9 @@ export function EventActivityReports() {
 
   const [eventType, setEventType] = useState("mini");
   const [eventId, setEventId] = useState("");
-  const [coHostId, setCoHostId] = useState("");
+  // помогавших может быть несколько (см. запрос ивентологов); старые отчёты
+  // хранят одного в co_host_username — отображение читает оба поля
+  const [coHostIds, setCoHostIds] = useState([]);
   const [rating, setRating] = useState("");
   const [screenshotUrls, setScreenshotUrls] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -81,14 +90,16 @@ export function EventActivityReports() {
         payload: {
           event_id: eventId ? Number(eventId) : null,
           event_title: myApprovedEvents.find((e) => String(e.id) === eventId)?.title || null,
-          co_host_discord_id: coHostId || null,
-          co_host_username: members.find((m) => m.discord_id === coHostId)?.username || null,
+          co_hosts: coHostIds.map((id) => ({
+            discord_id: id,
+            username: members.find((m) => m.discord_id === id)?.username || id,
+          })),
           rating: rating ? Number(rating) : null,
           screenshot_urls: screenshotUrls,
         },
       });
       setEventId("");
-      setCoHostId("");
+      setCoHostIds([]);
       setRating("");
       setScreenshotUrls([]);
       showToast("Отчёт отправлен");
@@ -117,7 +128,7 @@ export function EventActivityReports() {
     <>
       <h3>Отчёты о мероприятиях</h3>
       <p className="hint-text">
-        Мини-ивент или Боевой вылет — при создании форума на самом ивенте обязательно указывайте соответствующий
+        Мини-ивент, Боевой вылет или РП ивент — при создании форума на самом ивенте обязательно указывайте соответствующий
         тег. Локальные ивенты, повлиявшие на сюжет боевого вылета, тоже считаются Мини-ивентом.
       </p>
       {error && <p className="error-text">{error}</p>}
@@ -128,6 +139,7 @@ export function EventActivityReports() {
           <select value={eventType} onChange={(e) => setEventType(e.target.value)}>
             <option value="mini">Мини-ивент</option>
             <option value="combat">Боевой вылет</option>
+            <option value="rp">РП ивент</option>
           </select>
         </label>
         {myApprovedEvents.length > 0 && (
@@ -144,9 +156,25 @@ export function EventActivityReports() {
           </label>
         )}
         <label>
-          Помогал проводить (если был)
-          <MemberSearchPicker members={members} selectedId={coHostId} onSelect={setCoHostId} />
+          Помогали проводить (можно несколько)
+          <MemberSearchPicker
+            members={members.filter((m) => !coHostIds.includes(m.discord_id))}
+            selectedId=""
+            onSelect={(id) => id && setCoHostIds((prev) => (prev.includes(id) ? prev : [...prev, id]))}
+          />
         </label>
+        {coHostIds.length > 0 && (
+          <ul className="chip-list">
+            {coHostIds.map((id) => (
+              <li key={id} className="chip">
+                {members.find((m) => m.discord_id === id)?.username || id}
+                <button type="button" onClick={() => setCoHostIds((prev) => prev.filter((x) => x !== id))}>
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <label>
           Оценка за ивент (1-10, можно дробную)
           <input
@@ -190,7 +218,11 @@ export function EventActivityReports() {
               <span className="member-report-date">{formatMskDate(r.created_at)} МСК</span>
               <p className="report-byline">Провёл: {r.submitted_by?.nickname_override || r.submitted_by?.username}</p>
               {r.payload.event_title && <p className="hint-text">По заявке: {r.payload.event_title}</p>}
-              {r.payload.co_host_username && <p className="report-byline">Помогал: {r.payload.co_host_username}</p>}
+              {helpersOf(r).length > 0 && (
+                <p className="report-byline">
+                  {helpersOf(r).length > 1 ? "Помогали" : "Помогал"}: {helpersOf(r).join(", ")}
+                </p>
+              )}
               {r.payload.rating != null && <p className="hint-text">Оценка: {r.payload.rating}</p>}
               {(r.payload.screenshot_urls || []).length > 0 && (
                 <div className="report-images">

@@ -54,6 +54,7 @@ export function EventBookingCalendar() {
   const [endsAt, setEndsAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [confirmCancelId, setConfirmCancelId] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
 
   function load() {
     const rangeStart = startOfMonth(month);
@@ -165,9 +166,20 @@ export function EventBookingCalendar() {
     }
   }
 
-  async function handleCancel(bookingId) {
+  async function handleApprove(bookingId) {
     try {
-      await api.cancelEventBooking(token, bookingId);
+      await api.approveEventBooking(token, bookingId);
+      showToast("Бронь снова действует");
+      load();
+      loadUpcoming();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  }
+
+  async function handleCancel(bookingId, reason) {
+    try {
+      await api.cancelEventBooking(token, bookingId, reason);
       showToast("Бронь отменена");
       setConfirmCancelId(null);
       load();
@@ -290,24 +302,47 @@ export function EventBookingCalendar() {
         </>
       )}
 
-      {access?.can_decide_event && upcomingBookings.some((b) => b.status === "approved") && (
+      {access?.can_decide_event && upcomingBookings.some((b) => new Date(b.ends_at) > new Date()) && (
         <>
-          <h4>Одобренные брони</h4>
+          <h4>Брони ивентологов</h4>
+          <p className="hint-text">
+            Ивент отменили или перенесли — отмените бронь, слот освободится. Отменённую бронь можно вернуть, если
+            время ещё свободно.
+          </p>
           <ul className="member-report-list">
             {upcomingBookings
-              .filter((b) => b.status === "approved")
+              .filter((b) => new Date(b.ends_at) > new Date())
               .map((b) => (
                 <li key={b.id}>
                   <span className="member-report-date">
                     {formatMskDate(b.starts_at)} — {formatMskDate(b.ends_at)} МСК
                   </span>
                   <p className="member-report-content">
-                    {b.title} — {b.requested_by?.nickname_override || b.requested_by?.username}
+                    {b.title} — {b.requested_by?.nickname_override || b.requested_by?.username} —{" "}
+                    <span className={`status-badge status-${b.status}`}>
+                      {b.status === "rejected" ? "отменено" : STATUS_LABELS[b.status]}
+                    </span>
                   </p>
+                  {b.status === "rejected" && b.rejection_reason && (
+                    <p className="report-rejection-reason">Причина: {b.rejection_reason}</p>
+                  )}
                   <div className="report-form-actions">
-                    <button type="button" className="ghost error-text" onClick={() => setConfirmCancelId(b.id)}>
-                      Отменить
-                    </button>
+                    {b.status === "approved" ? (
+                      <button
+                        type="button"
+                        className="ghost error-text"
+                        onClick={() => {
+                          setCancelReason("");
+                          setConfirmCancelId(b.id);
+                        }}
+                      >
+                        Отменить
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => handleApprove(b.id)}>
+                        Одобрить снова
+                      </button>
+                    )}
                   </div>
                 </li>
               ))}
@@ -317,9 +352,20 @@ export function EventBookingCalendar() {
 
       <ConfirmDialog
         open={confirmCancelId !== null}
-        message="Отменить эту одобренную бронь? Слот снова станет свободным."
+        message={
+          <>
+            Отменить эту бронь? Слот снова станет свободным.
+            <input
+              type="text"
+              placeholder="Причина (необязательно): ивент перенесён, отменён…"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              style={{ width: "100%", marginTop: 10 }}
+            />
+          </>
+        }
         confirmLabel="Отменить бронь"
-        onConfirm={() => handleCancel(confirmCancelId)}
+        onConfirm={() => handleCancel(confirmCancelId, cancelReason.trim())}
         onCancel={() => setConfirmCancelId(null)}
       />
     </>

@@ -2336,6 +2336,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/event-room/comms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Comms Message
+         * @description Форма миника: бот отправляет сообщение «на коммуникатор бойцов» в канал,
+         *     выбранный в настройках (event_comms_channel_id). Без пинга ролей.
+         */
+        post: operations["send_comms_message_api_event_room_comms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/event-room": {
         parameters: {
             query?: never;
@@ -2836,6 +2857,27 @@ export interface paths {
          *     пользователя).
          */
         post: operations["cancel_booking_api_event_bookings__booking_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-bookings/{booking_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Booking
+         * @description Вернуть отменённую бронь — например, ивент перенесли обратно. Тот же
+         *     запрет на пересечение, что и при создании.
+         */
+        post: operations["approve_booking_api_event_bookings__booking_id__approve_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3749,7 +3791,7 @@ export interface components {
              * Event Type
              * @enum {string}
              */
-            event_type: "mini" | "combat";
+            event_type: "mini" | "combat" | "rp";
             /** Payload */
             payload: Record<string, never>;
         };
@@ -3771,7 +3813,7 @@ export interface components {
              * Event Type
              * @enum {string}
              */
-            event_type: "mini" | "combat";
+            event_type: "mini" | "combat" | "rp";
             /** Payload */
             payload: Record<string, never>;
             status: components["schemas"]["EventActivityReportStatus"];
@@ -3870,6 +3912,25 @@ export interface components {
         EventCancelRequest: {
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * EventCommsMessage
+         * @description Форма миника: сообщение «на коммуникатор бойцов».
+         */
+        EventCommsMessage: {
+            /** Sender */
+            sender: string;
+            /** Recipient */
+            recipient: string;
+            /** Message */
+            message: string;
+            /** Time */
+            time?: string | null;
+        };
+        /** EventCommsResult */
+        EventCommsResult: {
+            /** Text */
+            text: string;
         };
         /** EventCreate */
         EventCreate: {
@@ -4077,6 +4138,21 @@ export interface components {
              * @default 0
              */
             combat_count_all_time: number;
+            /**
+             * Rp Count Week
+             * @default 0
+             */
+            rp_count_week: number;
+            /**
+             * Rp Count Month
+             * @default 0
+             */
+            rp_count_month: number;
+            /**
+             * Rp Count All Time
+             * @default 0
+             */
+            rp_count_all_time: number;
             /** Activity Last Report At */
             activity_last_report_at?: string | null;
         };
@@ -4638,6 +4714,8 @@ export interface components {
             event_notify_channel_id: string | null;
             /** Event Notify Ping Role Id */
             event_notify_ping_role_id: string | null;
+            /** Event Comms Channel Id */
+            event_comms_channel_id?: string | null;
             /** Report Reject Role Ids */
             report_reject_role_ids: string[];
             /** Report Reject User Discord Ids */
@@ -4696,6 +4774,8 @@ export interface components {
             event_notify_channel_id?: string | null;
             /** Event Notify Ping Role Id */
             event_notify_ping_role_id?: string | null;
+            /** Event Comms Channel Id */
+            event_comms_channel_id?: string | null;
             /** Report Reject Role Ids */
             report_reject_role_ids?: string[] | null;
             /** Report Reject User Discord Ids */
@@ -11258,6 +11338,44 @@ export interface operations {
             };
         };
     };
+    send_comms_message_api_event_room_comms_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-View-As-Role"?: string | null;
+                "X-View-As-Regiment-Id"?: number | null;
+                "X-View-As-Extra"?: string | null;
+                "X-View-As-Discord-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventCommsMessage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventCommsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_events_api_event_room_get: {
         parameters: {
             query?: never;
@@ -12313,6 +12431,42 @@ export interface operations {
                 "application/json": components["schemas"]["EventBookingCancelRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventBookingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_booking_api_event_bookings__booking_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-View-As-Role"?: string | null;
+                "X-View-As-Regiment-Id"?: number | null;
+                "X-View-As-Extra"?: string | null;
+                "X-View-As-Discord-Id"?: string | null;
+            };
+            path: {
+                booking_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

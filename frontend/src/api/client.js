@@ -837,6 +837,10 @@ export const api = {
     }),
   cancelEventBooking: (token, bookingId, reason) =>
     request(`/api/event-bookings/${bookingId}/cancel`, { method: "POST", token, body: { reason: reason || null } }),
+  sendEventComms: (token, { sender, recipient, message, time }) =>
+    request("/api/event-room/comms", { method: "POST", token, body: { sender, recipient, message, time } }),
+  approveEventBooking: (token, bookingId) =>
+    request(`/api/event-bookings/${bookingId}/approve`, { method: "POST", token }),
 
   listAdminReports: (token) => request("/api/admin-reports", { token }),
   createAdminReport: (token, { reportType, payload }) =>

@@ -4522,3 +4522,16 @@ button.notification-bell-button {
   width: 18px;
   height: 18px;
 }
+
+/* Ивентрум: предпросмотр сообщения на коммуникатор */
+.comms-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: rgba(0, 0, 0, 0.25);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 12.5px;
+  line-height: 1.5;
+}

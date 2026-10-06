@@ -10,7 +10,7 @@ import { useToast } from "./ToastContext";
 import { usePeriodFilter } from "../hooks/usePeriodFilter";
 import { formatMskDate } from "../utils/formatDate";
 
-const EVENT_TYPE_LABELS = { mini: "Мини-ивент", combat: "Боевой вылет" };
+const EVENT_TYPE_LABELS = { mini: "Мини-ивент", combat: "Боевой вылет", rp: "РП ивент" };
 const SEVERITY_LABELS = { verbal: "Устный", strict: "Строгий" };
 
 const TABS = [

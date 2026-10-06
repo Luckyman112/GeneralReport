@@ -25,6 +25,7 @@ class ModuleAccessRead(BaseModel):
     event_curator_role_id: str | None
     event_notify_channel_id: str | None
     event_notify_ping_role_id: str | None
+    event_comms_channel_id: str | None = None
     report_reject_role_ids: list[str]
     report_reject_user_discord_ids: list[str]
     admin_staff_junior_role_id: str | None
@@ -56,6 +57,7 @@ class ModuleAccessUpdate(BaseModel):
     event_curator_role_id: str | None = None
     event_notify_channel_id: str | None = None
     event_notify_ping_role_id: str | None = None
+    event_comms_channel_id: str | None = None
     report_reject_role_ids: list[str] | None = None
     report_reject_user_discord_ids: list[str] | None = None
     admin_staff_junior_role_id: str | None = None

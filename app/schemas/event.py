@@ -72,6 +72,19 @@ class EventMapRead(BaseModel):
     url: str | None = None
 
 
+class EventCommsMessage(BaseModel):
+    """Форма миника: сообщение «на коммуникатор бойцов»."""
+
+    sender: str = Field(min_length=1, max_length=200)
+    recipient: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=1500)
+    time: str | None = Field(default=None, max_length=60)
+
+
+class EventCommsResult(BaseModel):
+    text: str
+
+
 class EventMapCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     url: str | None = Field(default=None, max_length=500)
@@ -107,6 +120,9 @@ class EventRosterEntry(BaseModel):
     combat_count_week: int = 0
     combat_count_month: int = 0
     combat_count_all_time: int = 0
+    rp_count_week: int = 0
+    rp_count_month: int = 0
+    rp_count_all_time: int = 0
     activity_last_report_at: datetime | None = None
 
 

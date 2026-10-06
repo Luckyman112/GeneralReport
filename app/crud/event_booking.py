@@ -80,3 +80,16 @@ async def cancel(db: AsyncSession, booking: EventBooking, *, cancelled_by_user_i
     booking.rejection_reason = reason or "Отменено после одобрения"
     await db.commit()
     return await db.get(EventBooking, booking.id, options=_LOAD_OPTIONS, populate_existing=True)
+
+
+async def restore(db: AsyncSession, booking: EventBooking, *, approved_by_user_id: int) -> EventBooking:
+    """Вернуть отменённую бронь (ивент всё же состоится). Пересечение с
+    другими бронями проверяет вызывающий — см. app/api/event_bookings.py."""
+    if booking.status == EventBookingStatus.APPROVED:
+        raise AppError("Бронь уже одобрена")
+    booking.status = EventBookingStatus.APPROVED
+    booking.decided_by_user_id = approved_by_user_id
+    booking.decided_at = datetime.now(timezone.utc)
+    booking.rejection_reason = None
+    await db.commit()
+    return await db.get(EventBooking, booking.id, options=_LOAD_OPTIONS, populate_existing=True)

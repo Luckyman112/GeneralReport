@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict
 from app.models.event_activity_report import EventActivityReportStatus
 from app.schemas.user import UserBrief
 
-EventActivityType = Literal["mini", "combat"]
+# "rp" — РП ивент, третий тип рядом с мини-ивентом и боевым вылетом
+EventActivityType = Literal["mini", "combat", "rp"]
 
 
 class EventActivityReportRead(BaseModel):

@@ -617,6 +617,24 @@ requires `event_notify_channel_id` configured — sent as a plain extra message
 in the same channel as the card (`💬 {username}: {content}`), never edits the
 card/embed itself.
 
+**Ивентрум batch (2026-10)**:
+- `EventActivityReport.event_type` has a third value, `rp` ("РП ивент"), counted
+  separately everywhere mini/combat are (`ACTIVITY_TYPES` in
+  `app/crud/event_activity_report.py`, `rp_count_*` on the roster, a third trend
+  series). Helpers are a list, `payload.co_hosts: [{discord_id, username}]`.
+  Old reports keep a single `co_host_username`, so read both (`helpersOf()` in
+  `EventActivityReports.jsx`).
+- Booking cancel (`POST /event-bookings/{id}/cancel`) used to commit and then 500 on
+  a notification that read fields the cancel schema doesn't have. Fixed.
+  `POST /event-bookings/{id}/approve` brings a cancelled booking back (same overlap
+  check as create). Both are `can_decide_event`.
+- The event request form no longer shows "Система". `star_system` still passes
+  through on edit, so old events keep their value.
+- Mini-event comms form (`EventCommsForm.jsx`, `POST /event-room/comms`): formats the
+  "[ На коммуникатор бойцов пришло сообщение ]" text and posts it to
+  `AppSettings.event_comms_channel_id` (migration 0096, picked in Настройки), no
+  role ping. The route is declared before the `/{event_id}` routes on purpose.
+
 ### Ивентрум roster — merged состав+activity table, split mini/combat
 `GET /event-room/roster` (`app/api/event_room.py::get_roster`) is one merged
 table (roster + activity summary used to be two separate tables/endpoints —

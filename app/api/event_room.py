@@ -30,6 +30,8 @@ from app.database import get_db
 from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.schemas.admin_reprimand import AdminReprimandRead
 from app.schemas.event import (
+    EventCommsMessage,
+    EventCommsResult,
     EventCancelRequest,
     EventCreate,
     EventMapCreate,
@@ -54,6 +56,43 @@ from app.schemas.regiment_commander import GuildMemberRead
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/event-room", tags=["event-room"])
+
+
+def format_comms_message(payload: "EventCommsMessage") -> str:
+    """Тот же текст, что показывает предпросмотр формы на фронте (EventCommsForm.jsx)."""
+    return (
+        "[ На коммуникатор бойцов пришло сообщение ]\n\n"
+        f"От кого: {payload.sender.strip()}\n"
+        f"Кому: {payload.recipient.strip()}\n\n"
+        f"Сообщение: {payload.message.strip()}\n\n"
+        f"[Время: {(payload.time or '').strip()}]"
+    )
+
+
+# Объявлен до маршрутов вида /{event_id}, чтобы "comms" не попадал в них как id.
+@router.post("/comms", response_model=EventCommsResult)
+async def send_comms_message(
+    payload: EventCommsMessage,
+    db: AsyncSession = Depends(get_db),
+    access: AccessContext = Depends(get_access_context),
+) -> EventCommsResult:
+    """Форма миника: бот отправляет сообщение «на коммуникатор бойцов» в канал,
+    выбранный в настройках (event_comms_channel_id). Без пинга ролей."""
+    if not access.is_event_submitter:
+        raise ForbiddenError("Доступно только Ивентологам")
+    app_config = await app_settings_crud.get(db)
+    if not app_config.event_comms_channel_id:
+        raise AppError("Канал для сообщений на коммуникатор не настроен (Настройки → Ивентрум)")
+    text = format_comms_message(payload)
+    await discord_client.send_channel_message(app_config.event_comms_channel_id, content=text)
+    await audit_log_crud.log(
+        db,
+        actor_user_id=access.user.id,
+        actor_is_admin=access.is_admin,
+        action="event_comms_send",
+        details=f"Сообщение на коммуникатор от «{payload.sender.strip()[:80]}»",
+    )
+    return EventCommsResult(text=text)
 
 # "летят те, кем командует тот" — командующего часто узнают только по ходу
 # брифинга, не до подачи заявки (см. решение пользователя)
@@ -215,6 +254,7 @@ async def get_roster(
         activity = activity_stats.get(user.id, {}) if user else {}
         mini = activity.get("mini", {})
         combat = activity.get("combat", {})
+        rp = activity.get("rp", {})
         entries.append(
             EventRosterEntry(
                 discord_id=member["discord_id"],
@@ -231,13 +271,16 @@ async def get_roster(
                 combat_count_week=combat.get("count_week", 0),
                 combat_count_month=combat.get("count_month", 0),
                 combat_count_all_time=combat.get("count_all_time", 0),
+                rp_count_week=rp.get("count_week", 0),
+                rp_count_month=rp.get("count_month", 0),
+                rp_count_all_time=rp.get("count_all_time", 0),
                 activity_last_report_at=activity.get("last_report_at"),
             )
         )
 
     role_order = {"куратор": 0, "ассистент": 1, "старший ивентолог": 2, "ивентолог": 3, "младший ивентолог": 4}
     entries.sort(
-        key=lambda e: (role_order.get(e.role, 9), -(e.mini_count_all_time + e.combat_count_all_time), e.username)
+        key=lambda e: (role_order.get(e.role, 9), -(e.mini_count_all_time + e.combat_count_all_time + e.rp_count_all_time), e.username)
     )
     return entries
 
@@ -276,6 +319,9 @@ async def get_roster_trend(
             ),
             EventActivityTrendSeries(
                 id="combat", label="Боевой вылет", points=[by_day.get(d, {}).get("combat", 0) for d in dates]
+            ),
+            EventActivityTrendSeries(
+                id="rp", label="РП ивент", points=[by_day.get(d, {}).get("rp", 0) for d in dates]
             ),
         ],
     )

@@ -334,6 +334,20 @@ function ModuleAccessSettings() {
         </select>
       </label>
       <label>
+        Канал для сообщений «на коммуникатор» (форма миника):
+        <select
+          value={access.event_comms_channel_id || ""}
+          onChange={(e) => setSingleField("event_comms_channel_id", e.target.value)}
+        >
+          <option value="">— не выбрано —</option>
+          {channels.map((c) => (
+            <option key={c.id} value={c.id}>
+              #{c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
         Канал уведомлений об одобренных ивентах:
         <select
           value={access.event_notify_channel_id || ""}

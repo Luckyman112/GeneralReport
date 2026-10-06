@@ -60,6 +60,7 @@ async def update_module_access(
         "event_curator_role_id",
         "event_notify_channel_id",
         "event_notify_ping_role_id",
+        "event_comms_channel_id",
         "admin_staff_junior_role_id",
         "admin_staff_middle_role_id",
         "admin_staff_warden_role_id",

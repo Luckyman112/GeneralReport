@@ -95,6 +95,8 @@ class AppSettings(Base):
     # Роль, которую бот пингует в тексте сообщения об одобренном ивенте
     # (в дополнение к вложенной картинке-досье) — необязательно
     event_notify_ping_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Канал для сообщений «на коммуникатор бойцов» из формы миника (Ивентрум)
+    event_comms_channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Отдельная привилегия "может отклонить любой рапорт" — не привязана к
     # командиру/заму формирования или INS/DEP/CU, настраивается ролью и/или

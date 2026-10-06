@@ -21,7 +21,7 @@ class EventActivityReport(Base):
     __tablename__ = "event_activity_reports"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    event_type: Mapped[str] = mapped_column(String(16))  # "mini" | "combat"
+    event_type: Mapped[str] = mapped_column(String(16))  # "mini" | "combat" | "rp"
     payload: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     status: Mapped[EventActivityReportStatus] = mapped_column(
         Enum(

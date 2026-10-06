@@ -7,6 +7,7 @@ import { DateTimePicker } from "../components/DateTimePicker";
 import { EmptyState } from "../components/EmptyState";
 import { EventActivityReports } from "../components/EventActivityReports";
 import { EventBookingCalendar } from "../components/EventBookingCalendar";
+import { EventCommsForm } from "../components/EventCommsForm";
 import { EventMemberDetailModal } from "../components/EventMemberDetailModal";
 import { HorizontalBarChart } from "../components/HorizontalBarChart";
 import { InlineSpinner } from "../components/InlineSpinner";
@@ -33,9 +34,9 @@ const ROLE_LABELS = {
 // пользователя — раньше период двигал только график, таблица показывала
 // фиксированные неделя/месяц/всё-время колонки одновременно)
 const PERIOD_OPTIONS = [
-  { key: "week", label: "Неделя", miniField: "mini_count_week", combatField: "combat_count_week" },
-  { key: "month", label: "Месяц", miniField: "mini_count_month", combatField: "combat_count_month" },
-  { key: "all", label: "Всё время", miniField: "mini_count_all_time", combatField: "combat_count_all_time" },
+  { key: "week", label: "Неделя", miniField: "mini_count_week", combatField: "combat_count_week", rpField: "rp_count_week" },
+  { key: "month", label: "Месяц", miniField: "mini_count_month", combatField: "combat_count_month", rpField: "rp_count_month" },
+  { key: "all", label: "Всё время", miniField: "mini_count_all_time", combatField: "combat_count_all_time", rpField: "rp_count_all_time" },
 ];
 
 function emptyAudience() {
@@ -492,14 +493,7 @@ function EventForm({ initial, maps, regiments, members, onSubmit, onCancel, subm
           onChange={(e) => setForm((f) => ({ ...f, planet_name: e.target.value }))}
         />
       </label>
-      <label>
-        Система
-        <input
-          type="text"
-          value={form.star_system}
-          onChange={(e) => setForm((f) => ({ ...f, star_system: e.target.value }))}
-        />
-      </label>
+      {/* Поле «Система» убрано по просьбе ивентологов; star_system из старых заявок сохраняется при правке */}
       <label>
         Ландшафт
         <input
@@ -830,6 +824,7 @@ function RosterPanel() {
   const periodOption = PERIOD_OPTIONS.find((p) => p.key === period) ?? PERIOD_OPTIONS[0];
   const miniChartData = roster.map((r) => ({ id: r.discord_id, label: r.username, value: r[periodOption.miniField] ?? 0 }));
   const combatChartData = roster.map((r) => ({ id: r.discord_id, label: r.username, value: r[periodOption.combatField] ?? 0 }));
+  const rpChartData = roster.map((r) => ({ id: r.discord_id, label: r.username, value: r[periodOption.rpField] ?? 0 }));
 
   return (
     <div className="regiment-panel">
@@ -862,6 +857,7 @@ function RosterPanel() {
                   <th>Отклонено</th>
                   <th>Мини-ивент</th>
                   <th>Боевой вылет</th>
+                  <th>РП ивент</th>
                   <th>Последний отчёт</th>
                 </tr>
               </thead>
@@ -875,6 +871,7 @@ function RosterPanel() {
                     <td className="mono-num">{r.rejected_count}</td>
                     <td className="mono-num">{r[periodOption.miniField]}</td>
                     <td className="mono-num">{r[periodOption.combatField]}</td>
+                    <td className="mono-num">{r[periodOption.rpField] ?? 0}</td>
                     <td>{r.activity_last_report_at ? formatMskDate(r.activity_last_report_at) : "—"}</td>
                   </tr>
                 ))}
@@ -886,6 +883,8 @@ function RosterPanel() {
           <HorizontalBarChart data={miniChartData} />
           <h4>Боевой вылет за период</h4>
           <HorizontalBarChart data={combatChartData} />
+          <h4>РП ивент за период</h4>
+          <HorizontalBarChart data={rpChartData} />
 
           <ActivityTrendPanel title="Активность по дням" fetchTrend={fetchTrend} />
         </>
@@ -1198,6 +1197,7 @@ export function EventRoomPage() {
 
       {canDecide && <RosterPanel />}
 
+      <EventCommsForm />
       <EventBookingCalendar />
       <EventActivityReports />
     </div>
