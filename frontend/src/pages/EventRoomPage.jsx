@@ -80,6 +80,12 @@ export function EventRoomPage() {
 
   const mine = useMemo(() => events.filter((e) => e.submitted_by?.id === user?.id), [events, user]);
   const myActive = useMemo(() => mine.filter((e) => !isArchived(e)), [mine]);
+  // У проверяющего свои заявки на рассмотрении уже стоят в очереди ниже —
+  // в «Моих» их не дублируем (баг-репорт: одна заявка показывалась дважды)
+  const myShown = useMemo(
+    () => (canDecide ? myActive.filter((e) => e.status !== "pending" && e.status !== "revision") : myActive),
+    [myActive, canDecide],
+  );
   const queue = useMemo(
     () => (canDecide ? events.filter((e) => e.status === "pending" || e.status === "revision") : []),
     [events, canDecide],
@@ -164,17 +170,17 @@ export function EventRoomPage() {
         </div>
       )}
 
-      {canSubmit && (
+      {canSubmit && (!canDecide || myShown.length > 0) && (
         <section className="regiment-panel">
           <h3>
             Мои заявки
-            {waiting.length > 0 && <span className="hint-text"> · на рассмотрении: {waiting.length}</span>}
+            {!canDecide && waiting.length > 0 && <span className="hint-text"> · на рассмотрении: {waiting.length}</span>}
           </h3>
-          {myActive.length === 0 ? (
+          {myShown.length === 0 ? (
             <EmptyState text="Активных заявок нет. Нажмите «+ Новая заявка»." />
           ) : (
             <div className="request-list">
-              {myActive.map((ev) => (
+              {myShown.map((ev) => (
                 <RequestCard key={ev.id} ev={ev} {...cardProps} />
               ))}
             </div>
