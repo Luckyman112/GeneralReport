@@ -262,8 +262,8 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
 ::-webkit-scrollbar-thumb{background:rgba(143,184,216,.3);border:3px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-thumb:hover{background:rgba(143,184,216,.55);background-clip:padding-box}
 ::-webkit-scrollbar-corner{background:transparent}
-.g3d-toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:rgba(5,7,12,.85);border:1px solid var(--line2);
-  color:var(--ink);font:12px var(--mono);letter-spacing:.06em;padding:8px 14px;pointer-events:none;animation:g3dfade 2.6s forwards}
+.g3d-toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);max-width:min(560px,90%);text-align:center;background:rgba(5,7,12,.85);border:1px solid var(--line2);
+  color:var(--ink);font:12px var(--mono);letter-spacing:.06em;padding:8px 14px;pointer-events:none;animation:g3dfade 4.5s forwards}
 @keyframes g3dfade{0%,80%{opacity:1}100%{opacity:0}}
 .forcegrid{display:grid;grid-template-columns:auto 1fr 1fr;gap:4px 6px;align-items:center;margin-top:4px}
 .forcegrid span{font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
@@ -4063,7 +4063,16 @@ async function show3DPlanet(id) {
       planetView = new G.PlanetView(el('g3d'));
       // клик по планете: если идёт наземный бой, PlanetView сам спускается к нему,
       // сюда приходит только клик по планете без боя
-      planetView.onPlanetClick = () => g3dToast('На поверхности сейчас тихо — наземного боя нет');
+      planetView.onPlanetClick = () => {
+        // объясняем, почему техники нет: бой назначен или уже завершён — на
+        // поверхности видны только идущие бои (LIVE_STAGES)
+        const last = DATA.battles.find(b => b.sys === diveTarget);
+        if (last && last.status === 'done') {
+          g3dToast('Бой завершён' + (last.result ? ': ' + last.result : '') + '. Технику видно, пока бой идёт — смените статус, чтобы показать её.');
+        } else if (last && last.status === 'planned') {
+          g3dToast('Бой только назначен — техника появится, когда статус сменится на «развёртывание» или «затяжной бой».');
+        } else g3dToast('На поверхности сейчас тихо — наземного боя нет');
+      };
     }
     const p = payloadFor(id);
     g3dKey = payloadKey(p);
@@ -4078,7 +4087,7 @@ function g3dToast(text) {
   t.className = 'g3d-toast';
   t.textContent = text;
   el('g3d').appendChild(t);
-  setTimeout(() => t.remove(), 2600);
+  setTimeout(() => t.remove(), 4500);
 }
 function hide3DPlanet() {
   planet3dOn = false;
