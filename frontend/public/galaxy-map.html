@@ -1474,14 +1474,19 @@ function drawBlockadeRow(fid, n, offX, facing, alpha, size, step) {
   for (let i = 0; i < n; i++) {
     ctx.save();
     ctx.translate(offX, (i - (n - 1) / 2) * step);
+    // корабли встают "паровозиком" — нос к корме вдоль линии заслона, перекрывая
+    // путь сплошной стеной (так блокаду строят на самом деле), а не носами на врага
+    ctx.rotate(facing > 0 ? Math.PI / 2 : -Math.PI / 2);
     // подсветка под корпусом: тёмные корпуса (КНС) иначе теряются на фоне космоса
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * .62);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * .55);
     g.addColorStop(0, "rgba(" + rgb + ",.5)");
     g.addColorStop(1, "rgba(" + rgb + ",0)");
+    ctx.save();
+    ctx.scale(1, .5);
     ctx.globalAlpha = alpha * .9;
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(0, 0, size * .62, 0, 6.2832); ctx.fill();
-    if (facing < 0) ctx.rotate(Math.PI);
+    ctx.beginPath(); ctx.arc(0, 0, size * .55, 0, 6.2832); ctx.fill();
+    ctx.restore();
     ctx.globalAlpha = alpha;
     if (spr) ctx.drawImage(spr, -size / 2, -size / 2, size, size);
     else { ctx.scale(size / 30, size / 30); shipSilhouette(fid, facOf(fid).col); }
@@ -1493,10 +1498,14 @@ function drawBlockade(p, q, mx, my, bl, alpha) {
   const ang = Math.atan2(q.y - p.y, q.x - p.x);
   const laneLen = Math.hypot(q.x - p.x, q.y - p.y);
   const { att, foe, n, fn } = blockadeSides(bl);
-  const size = clamp(24 * cam.z, 12, 38);
-  // строй не должен перекрывать трассу целиком — на отдалении корабли жмутся теснее
-  const step = Math.min(size * .92, Math.max(size * .5, laneLen * .55 / Math.max(n, fn, 1)));
-  const gap = foe ? Math.min(size * .95, laneLen * .16) : 0;
+  // Шаг строя всегда больше корпуса (1.25), иначе корабли налезают друг на друга и
+  // заслон читается сплошной полосой. Размер подгоняется под шаг, а шаг — под длину
+  // трассы, чтобы строй занимал её часть, а не всю.
+  const count = Math.max(n, fn, 1);
+  const want = clamp(26 * cam.z, 12, 42);
+  const step = Math.min(want * 1.15, Math.max(want * 1.15, laneLen * .72) / count);
+  const size = clamp(Math.min(want, step / 1.15), 8, 42);
+  const gap = foe ? Math.min(size * .8, laneLen * .16) : 0;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(ang);

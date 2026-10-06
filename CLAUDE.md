@@ -1458,8 +1458,10 @@ the real account has.
 row facing them. The opponent comes from `foe`: absent means "work it out from the
 lane ends" (the hostile owner of either system, so it follows the diplomacy matrix),
 an empty string means a single picket with nobody opposing, and a faction id pins it.
-`foeStr` is its ship count, defaulting to `str`. Ship size follows the zoom and the
-row tightens up so the picket never spans the whole lane; each hull gets a faction
+`foeStr` is its ship count, defaulting to `str`. Ships stand nose to tail along
+the line (not facing the enemy), the way a real blockade is formed. Spacing is derived first from the lane
+length, then the hull size from the spacing, so ships never overlap into one solid
+stripe; each hull gets a faction
 coloured glow underneath, because the CIS hulls are nearly black against space.
 
 ### Promotion requirements follow the charter (устав)
