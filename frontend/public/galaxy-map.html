@@ -233,23 +233,11 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
 .g3d-legend{position:absolute;left:16px;bottom:16px;font:12px/1.7 var(--mono);letter-spacing:.06em;color:var(--ice);
   background:rgba(5,7,12,.66);border:1px solid var(--line);padding:8px 11px;max-width:340px;pointer-events:none}
 .g3d-legend b{color:var(--ink);font-weight:500;text-transform:uppercase;letter-spacing:.16em;font-size:10.5px;margin-right:6px}
-#g3d-battle{position:fixed;inset:0;z-index:60;background:#05070c;display:none}
-#g3d-battle.show{display:block}
-#g3d-battle .g3d-battle-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
-.g3d-battle-hud{position:absolute;inset:0;pointer-events:none;padding:16px 18px;display:flex;flex-direction:column;gap:10px;font-family:var(--sans)}
-.g3d-battle-hud .g3d-top{display:flex;justify-content:space-between;align-items:flex-start}
-.g3d-eyebrow{font:500 11px var(--mono);letter-spacing:.32em;text-transform:uppercase;color:var(--hot)}
-.g3d-close{pointer-events:auto;width:40px;height:40px;border:1px solid var(--line2);background:rgba(5,7,12,.7);color:var(--ink);font-size:22px;cursor:pointer}
-.g3d-close:hover{border-color:var(--hot);color:var(--hot)}
-.g3d-sides{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.g3d-side{display:flex;flex-direction:column;gap:2px;background:rgba(5,7,12,.62);border:1px solid var(--line);padding:8px 12px}
-.g3d-side b{font-size:18px;font-weight:600}
-.g3d-side span{font:12px var(--mono);color:var(--ice);letter-spacing:.04em}
-.g3d-side.def{text-align:right}
-.g3d-bar{display:flex;height:8px;border:1px solid var(--line2);background:rgba(5,7,12,.6)}
-.g3d-bar i{display:block;height:100%;opacity:.85}
-.g3d-bar-labels{display:flex;justify-content:space-between;font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:-6px}
-.g3d-hint{margin-top:auto;font:11px var(--mono);letter-spacing:.1em;color:var(--dim);text-align:center}
+.g3d-back{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:5;padding:7px 14px;border:1px solid var(--hot);
+  background:rgba(5,7,12,.85);color:var(--hot);font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
+.g3d-back[hidden]{display:none}
+.g3d-back:hover{background:rgba(240,164,49,.15)}
+.g3d-dim{color:var(--dim)}
 .g3d-cta{color:var(--hot);letter-spacing:.08em}
 .bat3d-hint{margin-top:8px;font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--hot)}
 table.dip{border-collapse:separate;border-spacing:2px;table-layout:fixed;width:100%;font:11px var(--mono)}
@@ -277,7 +265,7 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
 .g3d-toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:rgba(5,7,12,.85);border:1px solid var(--line2);
   color:var(--ink);font:12px var(--mono);letter-spacing:.06em;padding:8px 14px;pointer-events:none;animation:g3dfade 2.6s forwards}
 @keyframes g3dfade{0%,80%{opacity:1}100%{opacity:0}}
-.forcegrid{display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:4px 6px;align-items:center;margin-top:4px}
+.forcegrid{display:grid;grid-template-columns:auto 1fr 1fr;gap:4px 6px;align-items:center;margin-top:4px}
 .forcegrid span{font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .forcegrid input{width:100%;min-width:0}
 </style>
@@ -287,7 +275,6 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
   <div>Нужен вход в COLLAPSAR, чтобы открыть карту.</div>
   <a href="/">На главную</a>
 </div>
-<div id="g3d-battle" role="dialog" aria-label="Сражение"></div>
 <div id="shell">
   <header id="top">
     <div>
@@ -669,6 +656,14 @@ function rel(a, b) {
   return isNeu(a) || isNeu(b) ? 'neutral' : 'enemy';
 }
 function hostile(a, b) { return rel(a, b) === 'enemy'; }
+// Нападение (бой, бой флотов, противник в блокаде) разрешено только между врагами.
+// Возвращает текст отказа или '' если можно.
+function attackBlocked(a, b) {
+  if (!a || !b || a === b) return '';
+  if (hostile(a, b)) return '';
+  return facOf(a).name + ' и ' + facOf(b).name + ' не во вражде (' + REL[rel(a, b)].label +
+    '). Чтобы начать бой, сначала поставьте «война» в матрице дипломатии.';
+}
 function isNeu(id) {
   return !!facOf(id).neutral;
 }
@@ -1651,6 +1646,8 @@ function drawNodes(alpha) {
       ctx.beginPath(); ctx.arc(hx, hy, hazeR, 0, 6.2832); ctx.fill();
     }
 
+    drawOrbitMarks(s, top.x, top.y, rad, nodeA);
+
     // Вспышка-кольцо при смене владельца/начале-завершении боя (см. addFlash) —
     // расширяется и гаснет за DATA.meta.fx.flashMs (настраивается Асик+).
     const fl = flashes.find(f => f.sys === s.id);
@@ -2213,6 +2210,114 @@ function zoneBreakdown(s) {
 }
 /* Орбита планеты (видна в 3D): никого / флот фракции стоит у планеты / бой флотов.
  * s.orbit не задана — «авто»: бой флотов, пока за планету идёт бой. */
+/* Что над планетой и на ней — для общей карты: бой флотов (корабли двух сторон
+ * с перестрелкой), союзный флот (просто стоит строем), наземный бой (разрывы на
+ * диске планеты), бомбардировка (у одной из сторон нет авиации). */
+function orbitState(s) {
+  const lb = liveBattleAt(s.id);
+  const o = s.orbit === undefined ? (lb ? 'battle' : '') : s.orbit;
+  if (o === 'battle') {
+    const att = s.orbitAtt || (lb && lb.att), def = s.orbitDef || (lb && lb.def) || s.own;
+    if (att && def && att !== def) return { kind: 'battle', att, def, nA: clamp(s.fleetAtt || 3, 1, 8), nD: clamp(s.fleetDef || 3, 1, 8) };
+    return null;
+  }
+  if (o && FACTION[o] && (s.fleet || 0) > 0) return { kind: 'fleet', fac: o, n: s.fleet };
+  return null;
+}
+function battleBombards(b) {
+  // ручные силы: авиация 0 у одной из сторон — атакующие бьют по планете
+  const air = side => b.forces && b.forces[side] && Number.isFinite(b.forces[side].air) ? b.forces[side].air : 1;
+  return air('att') === 0 || air('def') === 0;
+}
+const h01 = n => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
+function drawMiniShip(fid, x, y, ang, size, a) {
+  const spr = shipSpriteFor(fid);
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(ang);
+  const rgb = facOf(fid).rgb.join(',');
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * .6);
+  g.addColorStop(0, 'rgba(' + rgb + ',.45)'); g.addColorStop(1, 'rgba(' + rgb + ',0)');
+  ctx.globalAlpha = a * .8; ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, size * .6, 0, 6.2832); ctx.fill();
+  ctx.globalAlpha = a;
+  if (spr) ctx.drawImage(spr, -size / 2, -size / 2, size, size);
+  else { ctx.scale(size / 30, size / 30); shipSilhouette(fid, facOf(fid).col); }
+  ctx.restore();
+}
+function drawOrbitMarks(s, x, y, rad, a) {
+  const st = orbitState(s);
+  const lb = liveBattleAt(s.id);
+  const size = clamp(rad * .8, 8, 24);
+  let attShips = [];
+  if (st && st.kind === 'fleet') {
+    // союзный флот: стоит строем у планеты, без огня
+    const n = Math.min(3, st.n);
+    for (let i = 0; i < n; i++) {
+      const px = x + rad * 1.2 + i * size * .5, py = y - rad * .7 + i * size * .38;
+      drawMiniShip(st.fac, px, py, Math.PI * .92, size, a * .95);
+      if (lb && st.fac === lb.att) attShips.push([px, py]);
+    }
+  } else if (st && st.kind === 'battle') {
+    const pa = [], pd = [];
+    for (let i = 0; i < Math.min(3, st.nA); i++) {
+      const px = x + rad * 1.3 + i * size * .45, py = y - rad * .6 + i * size * .42;
+      pa.push([px, py]); drawMiniShip(st.att, px, py, Math.PI, size, a);
+    }
+    for (let i = 0; i < Math.min(3, st.nD); i++) {
+      const px = x - rad * 1.3 - i * size * .45, py = y - rad * .6 + i * size * .42;
+      pd.push([px, py]); drawMiniShip(st.def, px, py, 0, size, a);
+    }
+    if (lb && st.att === lb.att) attShips = pa;
+    // перестрелка: короткие лучи, мигающие через раз
+    if (!RM) {
+      for (let k = 0; k < 3; k++) {
+        const tick = Math.floor(now / 160) + k * 17 + Math.round(s.x);
+        if (h01(tick) < .45) continue;
+        const from = h01(tick * 3) < .5 ? pa : pd, to = from === pa ? pd : pa;
+        const A = from[Math.floor(h01(tick * 5) * from.length)], B = to[Math.floor(h01(tick * 7) * to.length)];
+        if (!A || !B) continue;
+        const f = (now % 160) / 160;
+        ctx.globalAlpha = a * (1 - f) * .95;
+        ctx.strokeStyle = from === pa ? facOf(st.att).col : facOf(st.def).col;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(A[0] + (B[0] - A[0]) * Math.min(1, f * 1.6), A[1] + (B[1] - A[1]) * Math.min(1, f * 1.6)); ctx.stroke();
+      }
+    }
+  }
+  if (!lb) return;
+  // бомбардировка: атакующие бьют по планете, если у кого-то нет авиации
+  if (battleBombards(lb) && !RM) {
+    if (!attShips.length) {
+      for (let i = 0; i < 2; i++) {
+        const px = x + rad * 1.1 + i * size * .5, py = y - rad * 1.15 - i * size * .2;
+        attShips.push([px, py]); drawMiniShip(lb.att, px, py, Math.PI * .75, size * .9, a);
+      }
+    }
+    const tick = Math.floor(now / 220) + Math.round(s.y);
+    if (h01(tick) > .35) {
+      const A = attShips[Math.floor(h01(tick * 3) * attShips.length)];
+      const ang = h01(tick * 11) * 6.283, rr = Math.sqrt(h01(tick * 13)) * rad * .6;
+      const f = (now % 220) / 220;
+      ctx.globalAlpha = a * (1 - f);
+      ctx.strokeStyle = facOf(lb.att).col; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr); ctx.stroke();
+    }
+  }
+  // наземный бой: разрывы на диске планеты
+  if (!RM) {
+    for (let k = 0; k < 4; k++) {
+      const ph = (now + k * 197 + s.x * 13) / 650, idx = Math.floor(ph), f = ph - idx;
+      const ang = h01(idx * 4 + k + s.x) * 6.283, rr = Math.sqrt(h01(idx * 7 + k + s.y)) * rad * .78;
+      const ex = x + Math.cos(ang) * rr, ey = y + Math.sin(ang) * rr * .9;
+      const er = rad * (.14 + .3 * f);
+      const g = ctx.createRadialGradient(ex, ey, 0, ex, ey, er);
+      g.addColorStop(0, 'rgba(255,240,200,.95)'); g.addColorStop(.35, 'rgba(255,150,60,.75)'); g.addColorStop(1, 'rgba(255,90,30,0)');
+      ctx.globalAlpha = a * (1 - f);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(ex, ey, er, 0, 6.2832); ctx.fill();
+    }
+  }
+}
 function liveBattleAt(id) { return DATA.battles.find(b => b.sys === id && LIVE_STAGES[b.status]) || null; }
 function orbitText(s) {
   const o = s.orbit === undefined ? (liveBattleAt(s.id) ? 'battle' : '') : s.orbit;
@@ -2261,8 +2366,22 @@ function bindOrbit(s) {
   on('f-fleet', 'input', e => { s.fleet = clamp(parseInt(e.target.value, 10) || 0, 0, 10); touch(); });
   on('f-fleet-att', 'input', e => { s.fleetAtt = clamp(parseInt(e.target.value, 10) || 1, 1, 8); touch(); });
   on('f-fleet-def', 'input', e => { s.fleetDef = clamp(parseInt(e.target.value, 10) || 1, 1, 8); touch(); });
-  on('f-orbit-att', 'change', e => { if (e.target.value) s.orbitAtt = e.target.value; else delete s.orbitAtt; touch(); });
-  on('f-orbit-def', 'change', e => { if (e.target.value) s.orbitDef = e.target.value; else delete s.orbitDef; touch(); });
+  const orbitSides = (att, def) => {
+    const lb = liveBattleAt(s.id);
+    return [att || (lb && lb.att), def || (lb && lb.def) || s.own];
+  };
+  on('f-orbit-att', 'change', e => {
+    const [a, d] = orbitSides(e.target.value, s.orbitDef);
+    const why = attackBlocked(a, d);
+    if (why) { alert(why); e.target.value = s.orbitAtt || ''; return; }
+    if (e.target.value) s.orbitAtt = e.target.value; else delete s.orbitAtt; touch();
+  });
+  on('f-orbit-def', 'change', e => {
+    const [a, d] = orbitSides(s.orbitAtt, e.target.value);
+    const why = attackBlocked(a, d);
+    if (why) { alert(why); e.target.value = s.orbitDef || ''; return; }
+    if (e.target.value) s.orbitDef = e.target.value; else delete s.orbitDef; touch();
+  });
 }
 function zonesBlock(s) {
   if (editing) {
@@ -2869,7 +2988,7 @@ function syncDetail() {
           '<div class="n"><b style="color:' + esc(facOf(b.att).color) + '">' + esc(facOf(b.att).name) + '</b> против ' +
           '<b style="color:' + esc(facOf(b.def).color) + '">' + esc(facOf(b.def).name) + '</b></div>' +
           battleProgress(b) +
-          (LIVE_STAGES[b.status] ? '<div class="bat3d-hint">⚔ Нажмите на планету — откроется наземный бой</div>' : '') +
+          (LIVE_STAGES[b.status] ? '<div class="bat3d-hint">⚔ Нажмите на планету, чтобы спуститься к бою</div>' : '') +
         '</div>';
       }).join('')
     : '';
@@ -2954,12 +3073,16 @@ function sysOptions(cur) {
 function facOptions(cur) {
   return DATA.factions.map(f => '<option value="' + esc(f.id) + '"' + (f.id === cur ? ' selected' : '') + '>' + esc(f.name) + '</option>').join('');
 }
+function battleDiploWarn(b) {
+  return LIVE_STAGES[b.status] && attackBlocked(b.att, b.def)
+    ? '<div class="hint" style="margin-top:4px;color:var(--danger)">⚠ стороны не во вражде — бой противоречит дипломатии</div>' : '';
+}
 function battleProgress(b) {
   const att = facOf(b.att), def = facOf(b.def);
   const p = clamp(Number.isFinite(b.prog) ? b.prog : 50, 0, 100);
   const days = daysSince(b.since);
   const lead = p > 56 ? att.name : p < 44 ? def.name : 'равновесие';
-  return '<div class="prog"><i style="width:' + p + '%;background:' + att.color + '"></i>' +
+  return battleDiploWarn(b) + '<div class="prog"><i style="width:' + p + '%;background:' + att.color + '"></i>' +
       '<u style="width:' + (100 - p) + '%;background:' + def.color + '"></u></div>' +
     '<div class="m" style="margin-top:5px">' +
       '<span>' + esc(BATTLE_STATUS[b.status] || b.status) + '</span><span>·</span>' +
@@ -3064,10 +3187,10 @@ function syncBattles() {
       battleProgress(b) +
       '<input value="' + esc(b.when || '') + '" data-bat="' + i + '" data-k="when" placeholder="примечание" style="margin-top:6px">' +
       '<input value="' + esc(b.result || '') + '" data-bat="' + i + '" data-k="result" placeholder="итог (например: планета захвачена)" style="margin-top:6px">' +
-      '<div class="lab" style="margin-top:8px">Силы в 3D-бою (пусто — по перевесу)</div>' +
-      '<div class="forcegrid"><span></span><span>пехота</span><span>техника</span><span>авиация</span>' +
+      '<div class="lab" style="margin-top:8px">Силы на поверхности (пусто — по перевесу; авиация 0 — атакующие бомбят с орбиты)</div>' +
+      '<div class="forcegrid"><span></span><span>техника</span><span>авиация</span>' +
         [['att', 'атака'], ['def', 'оборона']].map(([sd, lab]) => '<span>' + lab + '</span>' +
-          ['inf', 'veh', 'air'].map(k => {
+          ['veh', 'air'].map(k => {
             const v = b.forces && b.forces[sd] && Number.isFinite(b.forces[sd][k]) ? b.forces[sd][k] : '';
             return '<input type="number" min="0" max="999" data-bat="' + i + '" data-k="forces.' + sd + '.' + k + '" value="' + v + '" aria-label="' + lab + ' ' + k + '">';
           }).join('')).join('') +
@@ -3085,7 +3208,14 @@ function syncBattles() {
  * и противник определяется по владельцам систем, см. blockadeSides). */
 function setBlockadeField(bl, k, value) {
   if (k === 'str' || k === 'foeStr') bl[k] = clamp(parseInt(value, 10) || 1, 1, 6);
-  else if (k === 'foe') { if (value === '__auto') delete bl.foe; else bl.foe = value; }
+  else if (k === 'foe') {
+    if (value === '__auto') delete bl.foe;
+    else {
+      const why = value ? attackBlocked(bl.fac, value) : '';
+      if (why) { alert(why); syncBlocks(); return; }
+      bl.foe = value;
+    }
+  }
   else bl[k] = value;
 }
 function syncBlocks() {
@@ -3320,10 +3450,13 @@ el('rail-r').addEventListener('click', e => {
     if (b.id === 'bat-add') {
       const sysId = selected || (SYSTEMS[0] && SYSTEMS[0].id);
       if (!sysId) return;
-      const foes = DATA.factions.filter(f => !f.neutral);
+      const own = SYS[sysId] && SYS[sysId].own;
+      const def = own && !isNeu(own) ? own : (DATA.factions.find(f => !f.neutral) || {}).id;
+      const att = (DATA.factions.find(f => f.id !== def && hostile(f.id, def)) || {}).id;
+      if (!att) { alert('Некому нападать: у «' + facOf(def).name + '» нет врагов в матрице дипломатии.'); return; }
       DATA.battles.unshift({
         id: 'b' + Date.now(), sys: sysId,
-        att: (foes[1] || foes[0] || {}).id, def: (foes[0] || {}).id,
+        att, def,
         status: 'active', when: ''
       });
       addFlash(sysId, 'battle');
@@ -3409,6 +3542,11 @@ el('rail-r').addEventListener('change', e => {
   if (t.dataset.bat !== undefined) {
     const b = DATA.battles[+t.dataset.bat];
     if (b && t.dataset.k.startsWith('forces.')) { setBattleForce(b, t); return; }
+    if (b && (t.dataset.k === 'att' || t.dataset.k === 'def')) {
+      const na = t.dataset.k === 'att' ? t.value : b.att, nd = t.dataset.k === 'def' ? t.value : b.def;
+      const why = attackBlocked(na, nd);
+      if (why) { alert(why); t.value = b[t.dataset.k]; return; }
+    }
     if (b) {
       b[t.dataset.k] = t.value;
       // Автосдвиг зоны при завершении боя — по текущему перевесу (prog),
@@ -3459,7 +3597,17 @@ el('rail-l').addEventListener('click', e => {
   else if (b.dataset.dip !== undefined) {
     if (!editing) return;
     const [x, y] = b.dataset.dip.split('|');
-    DATA.diplomacy[b.dataset.dip] = REL_CYCLE[rel(x, y)] || 'enemy';
+    const next = REL_CYCLE[rel(x, y)] || 'enemy';
+    if (next !== 'enemy') {
+      const pair = f => (f.att === x && f.def === y) || (f.att === y && f.def === x);
+      const fights = DATA.battles.filter(f => LIVE_STAGES[f.status] && pair(f)).map(f => SYS[f.sys] ? SYS[f.sys].name : f.sys);
+      if (fights.length) {
+        alert('Нельзя поставить «' + REL[next].label + '»: между ' + facOf(x).name + ' и ' + facOf(y).name +
+          ' идут бои (' + fights.join(', ') + '). Сначала завершите их.');
+        return;
+      }
+    }
+    DATA.diplomacy[b.dataset.dip] = next;
     recompute(); syncStats(); touch();
   }
   else if (b.dataset.reqview !== undefined) { previewRequest(b.dataset.reqview); }
@@ -3726,7 +3874,8 @@ cv.addEventListener('wheel', e => {
 }, { passive: false });
 
 addEventListener('keydown', e => {
-  if (battleView) return; // 3D-бой поверх карты сам ловит Esc, карту под ним не трогаем
+  // на поверхности планеты Esc возвращает на орбиту, а не к карте галактики
+  if (e.key === 'Escape' && planetView && planet3dOn && planetView.isSurface()) { planetView.exitSurface(); return; }
   const tag = e.target.tagName;
   if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') {
     if (e.key === 'Escape') e.target.blur();
@@ -3882,7 +4031,7 @@ function frame(ts) {
 
 /* ---------- 3D: планета, бой, корабли блокад (исходники: frontend/src/galaxy3d) ----------
  * Модуль грузится по требованию; без WebGL всё остаётся на 2D-холсте. */
-let G3D = null, g3dLoading = null, planetView = null, battleView = null, MAP3D = null;
+let G3D = null, g3dLoading = null, planetView = null, MAP3D = null;
 let planet3dOn = false, planet3dSince = 0, g3dKey = '', SHIP_SPRITES = null;
 function webglOk() {
   try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; }
@@ -3912,11 +4061,9 @@ async function show3DPlanet(id) {
   try {
     if (!planetView) {
       planetView = new G.PlanetView(el('g3d'));
-      // второй клик — спуск на поверхность: наземный бой, если он идёт
-      planetView.onPlanetClick = () => {
-        const b = diveTarget && liveBattleAt(diveTarget);
-        if (b) openBattle3D(b); else g3dToast('На поверхности сейчас тихо — наземного боя нет');
-      };
+      // клик по планете: если идёт наземный бой, PlanetView сам спускается к нему,
+      // сюда приходит только клик по планете без боя
+      planetView.onPlanetClick = () => g3dToast('На поверхности сейчас тихо — наземного боя нет');
     }
     const p = payloadFor(id);
     g3dKey = payloadKey(p);
@@ -3942,18 +4089,6 @@ function refresh3D() {
   if (!planet3dOn || !diveTarget || !planetView || !SYS[diveTarget]) return;
   const p = payloadFor(diveTarget), key = payloadKey(p);
   if (key !== g3dKey) { g3dKey = key; planetView.show(p); }
-}
-async function openBattle3D(b) {
-  const G = await load3D();
-  if (!G) { alert('3D-сцена недоступна: браузер не поддерживает WebGL.'); return; }
-  closeBattle3D();
-  const host = el('g3d-battle');
-  host.classList.add('show');
-  battleView = new G.BattleView(host, { battle: b, sys: SYS[b.sys], factions: DATA.factions }, closeBattle3D);
-}
-function closeBattle3D() {
-  if (battleView) { const v = battleView; battleView = null; v.dispose(); }
-  el('g3d-battle').classList.remove('show');
 }
 window.addEventListener('resize', () => {
   if (planetView && planet3dOn) { const l = sphereLayout(); planetView.setLayout({ x: l.x, y: l.y, r: l.disp }); }

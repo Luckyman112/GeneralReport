@@ -30,8 +30,8 @@ export type ModelKey = keyof typeof MODELS;
 
 export interface ArmyRoster {
   label: string;
-  /** "trooper" — клон из примитивов (см. trooper.ts); null — пехоты в бою нет. */
-  infantry: ModelKey | "trooper" | null;
+  /** Пехота — пока не используется (бой идёт техникой на поверхности планеты). */
+  infantry: ModelKey | null;
   vehicle: ModelKey;
   air: ModelKey;
   capital: ModelKey;
@@ -43,9 +43,7 @@ export interface ArmyRoster {
 export const ARMIES: Record<ArmyId, ArmyRoster> = {
   rep: {
     label: "Республика",
-    // Клоны временно убраны (решение пользователя: процедурная модель не
-    // устраивает, ждём нормальную). Вернуть — поставить обратно "trooper"
-    // или ключ GLB-модели клона из MODELS.
+    // клоны убраны (решение пользователя), нужна нормальная GLB-модель
     infantry: null,
     vehicle: "atte",
     air: "laat",
@@ -96,17 +94,6 @@ export const SURFACES: Record<string, { maps: string[]; clouds?: string; recolor
   },
   urban: { maps: ["urban-a"], clouds: "clouds-c" },
   gas: { maps: ["gas-a", "gas-b"] },
-};
-
-/** Текстура земли для диорамы боя — без тёмных рамок по краям (они видны при повторе). */
-export const GROUND: Record<string, string> = {
-  terran: "terran-a",
-  ocean: "terran-a",
-  desert: "desert-a",
-  volcanic: "volcanic-a",
-  ice: "ice-a",
-  urban: "ice-a",
-  gas: "desert-b",
 };
 
 export const ATMOSPHERE: Record<string, number> = {

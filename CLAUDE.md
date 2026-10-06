@@ -1405,21 +1405,37 @@ flagged here as a legitimate follow-up if ever requested):
 (`galaxy3d` in `vite.config.ts`) built to the stable, unhashed path
 `dist/galaxy3d/galaxy3d.js`. The static page loads it lazily with
 `import('/galaxy3d/galaxy3d.js')` and reads `window.Galaxy3D`
-(`PlanetView`, `BattleView`, `shipSprites`, `armyOf`). Without WebGL the page keeps
+(`PlanetView`, `PlanetSprites`, `shipSprites`, `armyOf`). Without WebGL the page keeps
 its old 2D drawing.
 - Planet view: when the dive animation finishes (`mode = 'planet'`), `show3DPlanet`
   overlays `#g3d` above the 2D canvas. The 2D sphere stops drawing about 700 ms
   later, so the swap doesn't flash. `refresh3D()` (called from `syncDetail`)
   rebuilds the scene only when the system, live battle, blockades or faction
   colors actually changed. Zones render as longitude sectors in the owner's color.
-- Battle view: a full-screen looping diorama of infantry, vehicles and aircraft. There
-  is deliberately no separate button for it (user decision): it opens by clicking the
-  planet in the 3D view while a ground battle is live, the cursor turns into a pointer
-  over the planet then, and the dossier and legend say so. Unit counts come
-  from `battle.forces.{att,def}.{inf,veh,air}` when set (edit-mode number grid
-  under each battle), otherwise they are derived from `prog`. `#detail` is
-  `pointer-events:none` by design, so any clickable thing added to the dossier
-  needs `pointer-events:auto`.
+- Battles happen on the planet itself, not in a separate scene (user decision; the
+  old full-screen `BattleView` and the procedural clone `trooper.ts` are deleted).
+  `PlanetView` has two modes. Orbit: the planet at the size of the 2D disk, fleets
+  standing in formation and firing, flashes on the surface in the contested sector,
+  and orbital bombardment when either side has `forces.*.air === 0` (the attacker's
+  orbit ships fire, or two attacker cruisers are brought in). Surface: clicking the
+  planet while a ground battle is live flies the camera down to the contested sector
+  (`Planet.hotZone`, otherwise sector 1, or a hashed longitude if the planet is not
+  split); vehicles stand on the sphere in two lines (`placeOnSurface`, children of
+  `planet.surfaceNode`, spin paused, clouds hidden, close-up detail noise on), the
+  ones with an animation walk up to the front and stop, aircraft circle above.
+  `↑ К орбите` or Esc returns. Counts: `battle.forces.{att,def}.{veh,air}` (edit grid
+  under each battle), else derived from `prog`; capped at 6 vehicles and 3 aircraft
+  per side. `#detail` is `pointer-events:none` by design, so any clickable thing
+  added to the dossier needs `pointer-events:auto`.
+- The 2D map shows the same picture from afar (`drawOrbitMarks`): an allied fleet is
+  a few ships standing by the planet, a fleet battle is both sides' ships with
+  flickering shots between them, a ground battle adds explosions on the planet disk,
+  and bombardment adds shots from attacker ships into the disk.
+- Attacks are only allowed between enemies (`attackBlocked`): new battles pick a
+  hostile pair, changing battle or orbit sides to a non-enemy is refused, so is a
+  manual blockade opponent, and the diplomacy matrix refuses to make peace while a
+  live battle between the two is on. An old battle that contradicts diplomacy shows
+  a warning in its card.
 - `faction.army` (`rep`/`sep`, select in the factions drawer) picks the model set.
   The default is clones for `id === 'rep'` and droids for everyone else
   (`catalog.ts::armyOf`). Lane blockades on the 2D map use sprites rendered from
@@ -1430,9 +1446,8 @@ its old 2D drawing.
   are white and store density in **alpha**; palette colors (`sys.pal`, 0–255) are
   sRGB and must go through `setRGB(..., SRGBColorSpace)`. Getting either wrong
   covers every planet in a milky veil. Several source maps (`terran-a`, `urban-a`)
-  have a dashed black border at the poles, so the battle ground crops the middle
-  band. The Sketchfab clone-trooper GLB was unusable (broken skin), so clones are
-  procedural (`trooper.ts`).
+  have a dashed black border at the poles. The Sketchfab clone-trooper GLB was
+  unusable (broken skin); there is no infantry on the planet until a usable one exists.
 
 **Galaxy Map 3D, round 2** — diplomacy, orbit, 3D nodes:
 - `DATA.diplomacy` maps a faction pair to `enemy`/`neutral`/`ally`, keyed `"a|b"`
@@ -1446,21 +1461,11 @@ its old 2D drawing.
   while a ground battle is live), `""` empty, a faction id (its fleet stands there,
   `fleet` ships), or `"battle"` (`orbitAtt`/`orbitDef`, `fleetAtt`/`fleetDef`).
   Ships hold a wedge formation and do not orbit the planet.
-- Clicking the planet in the 3D view opens the ground battle when one is live
-  (`PlanetView.onPlanetClick`, a raycast against the unit sphere), otherwise it
-  shows a short toast.
-- Ship size is a fraction of the planet radius (`LEN` in `planetView.ts`), and the
-  camera pulls in to `ZOOM` after the dive, so a Venator reads as a speck against
-  the planet rather than a landmark.
+- Ship size is a fraction of the planet radius (`LEN` in `planetView.ts`), so a
+  Venator reads as a speck against the planet rather than a landmark.
 - Map nodes are real 3D planets (`mapSprites.ts`): one hidden WebGL canvas renders
   a few planets per frame into plain canvases that the 2D map draws. Falls back to
   the old flat sprites until a planet's texture loads, and without WebGL.
-- Clones are switched off for now (user decision): `ARMIES.rep.infantry` is `null`, so
-  Republic fights with vehicles and aircraft only and its infantry count shows 0. The
-  procedural model is still there (`trooper.ts`), built from welded primitives:
-  one geometry per material per moving part via `mergeGeometries`, so a full
-  battlefield stays at a sane draw-call count. If a usable clone GLB ever shows up,
-  drop it in `catalog.ts` as `ARMIES.rep.infantry` and the rig code falls away.
 
 **Galaxy Map 3D, fixes** — `loadData()` rebuilds the document key by key, so a new
 top-level key must be copied there explicitly or it silently disappears on every

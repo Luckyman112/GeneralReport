@@ -31,8 +31,15 @@ const SURFACE_FRAG = /* glsl */ `
   uniform int uZones;
   uniform vec3 uZoneCol[${MAX_ZONES}];
   uniform float uZoneHot[${MAX_ZONES}];
-  uniform float uZoneAmt, uTime;
+  uniform float uZoneAmt, uTime, uDetail;
   varying vec2 vUv;
+
+  float hash21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x), mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
   varying vec3 vNormalW;
   varying vec3 vViewDir;
 
@@ -44,6 +51,14 @@ const SURFACE_FRAG = /* glsl */ `
     if (uRecolor) {
       col = lum < 0.5 ? mix(uSea, uLand, smoothstep(0.0, 0.5, lum)) : mix(uLand, uHigh, smoothstep(0.5, 1.0, lum));
       col *= 0.75 + 0.5 * lum;
+    }
+
+    // мелкая фактура поверх текстуры — видна только вблизи (наземный бой),
+    // иначе растянутая карта 1024px превращается в кашу
+    if (uDetail > 0.0) {
+      vec2 q = vUv * vec2(900.0, 450.0);
+      float d = vnoise(q) * 0.6 + vnoise(q * 3.1) * 0.4;
+      col *= mix(1.0, 0.78 + 0.44 * d, uDetail);
     }
 
     vec3 n = normalize(vNormalW);
@@ -157,6 +172,11 @@ export class Planet {
   private surface: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private clouds: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial> | null = null;
   private spin: THREE.Group;
+  /** Вращать ли планету — при спуске к наземному бою останавливается. */
+  spinning = true;
+  /** Индекс оспариваемого сектора (там, где идёт бой), -1 — нет. */
+  hotZone = -1;
+  zoneCount = 0;
   /** Основная текстура загружена — до этого шар рисуется пустым. */
   ready = false;
 
@@ -186,6 +206,7 @@ export class Planet {
       uZoneHot: { value: new Array(MAX_ZONES).fill(0) },
       uZoneAmt: { value: 1 },
       uTime: { value: 0 },
+      uDetail: { value: 0 },
     };
     this.surface = new THREE.Mesh(
       new THREE.SphereGeometry(1, 128, 96),
@@ -246,6 +267,8 @@ export class Planet {
   setZones(state: ZoneState | null) {
     const u = this.surface.material.uniforms;
     u.uZones.value = state ? state.colors.length : 0;
+    this.zoneCount = state ? state.colors.length : 0;
+    this.hotZone = state ? state.hot.indexOf(1) : -1;
     if (!state) return;
     state.colors.forEach((c, i) => (u.uZoneCol.value as THREE.Color[])[i].copy(c));
     (u.uZoneHot.value as number[]).fill(0);
@@ -256,9 +279,28 @@ export class Planet {
     this.surface.material.uniforms.uZoneAmt.value = on ? 1 : 0;
   }
 
+  /** Узел, который вращается вместе с текстурой, — к нему крепится техника на планете. */
+  get surfaceNode(): THREE.Object3D {
+    return this.surface;
+  }
+
+  /** Точка поверхности в координатах surfaceNode: u — долгота (0..1, как vUv.x
+   * и сектора), v — широта (0 — северный полюс, 0.5 — экватор), h — высота
+   * (1 — поверхность). Повторяет формулу THREE.SphereGeometry. */
+  static point(u: number, v: number, h = 1): THREE.Vector3 {
+    const phi = u * Math.PI * 2;
+    const theta = v * Math.PI;
+    return new THREE.Vector3(-Math.cos(phi) * Math.sin(theta) * h, Math.cos(theta) * h, Math.sin(phi) * Math.sin(theta) * h);
+  }
+
+  setCloseUp(on: boolean) {
+    this.surface.material.uniforms.uDetail.value = on ? 1 : 0;
+    if (this.clouds) this.clouds.visible = !on;
+  }
+
   update(dt: number, t: number) {
-    this.surface.rotation.y += dt * 0.035;
-    if (this.clouds) this.clouds.rotation.y += dt * 0.048;
+    if (this.spinning) this.surface.rotation.y += dt * 0.035;
+    if (this.clouds && this.spinning) this.clouds.rotation.y += dt * 0.048;
     this.surface.material.uniforms.uTime.value = t;
   }
 
