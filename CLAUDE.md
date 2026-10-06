@@ -1453,6 +1453,15 @@ although a plain admin is deliberately not on the editor list. Viewing stays ope
 Use the same flag for any other permission where a simulation would grant more than
 the real account has.
 
+**Blockades are a picket line, not one ship** — a blockade draws `str` cruisers
+(1-6) standing across the lane at its midpoint, and the opposing side draws its own
+row facing them. The opponent comes from `foe`: absent means "work it out from the
+lane ends" (the hostile owner of either system, so it follows the diplomacy matrix),
+an empty string means a single picket with nobody opposing, and a faction id pins it.
+`foeStr` is its ship count, defaulting to `str`. Ship size follows the zoom and the
+row tightens up so the picket never spans the whole lane; each hull gets a faction
+coloured glow underneath, because the CIS hulls are nearly black against space.
+
 ### Promotion requirements follow the charter (устав)
 - `PromotionCategoryRequirement.count_mode` (migration 0094): `author` = the soldier
   filed the report themselves ("провёл"), `participant` = listed in someone else's
