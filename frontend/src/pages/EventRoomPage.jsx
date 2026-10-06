@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { EmptyState } from "../components/EmptyState";
 import { EventActivityReports } from "../components/EventActivityReports";
 import { EventBookingCalendar } from "../components/EventBookingCalendar";
 import { InlineSpinner } from "../components/InlineSpinner";
-import { RequestCard } from "../components/eventroom/RequestCard";
+import { RequestList } from "../components/eventroom/RequestList";
 import { RequestDetailsModal } from "../components/eventroom/RequestDetailsModal";
 import { RequestFormModal } from "../components/eventroom/RequestFormModal";
 import { RosterPanel } from "../components/eventroom/RosterPanel";
@@ -80,37 +79,66 @@ export function EventRoomPage() {
 
   const mine = useMemo(() => events.filter((e) => e.submitted_by?.id === user?.id), [events, user]);
   const myActive = useMemo(() => mine.filter((e) => !isArchived(e)), [mine]);
-  // У проверяющего свои заявки на рассмотрении уже стоят в очереди ниже —
-  // в «Моих» их не дублируем (баг-репорт: одна заявка показывалась дважды)
-  const myShown = useMemo(
-    () => (canDecide ? myActive.filter((e) => e.status !== "pending" && e.status !== "revision") : myActive),
-    [myActive, canDecide],
-  );
-  const queue = useMemo(
-    () => (canDecide ? events.filter((e) => e.status === "pending" || e.status === "revision") : []),
-    [events, canDecide],
-  );
-  const othersActive = useMemo(
-    () =>
-      canDecide
-        ? events.filter((e) => e.submitted_by?.id !== user?.id && e.status === "approved" && !isArchived(e))
-        : [],
-    [events, canDecide, user],
-  );
-  const archived = useMemo(() => (canDecide ? events : mine).filter(isArchived), [events, mine, canDecide]);
+  const byNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+
+  // Вкладки списка. Очередь — по порядку подачи (кто раньше подал, того раньше
+  // смотрят), остальное — свежие сверху.
+  const tabs = useMemo(() => {
+    const active = events.filter((e) => !isArchived(e));
+    if (canDecide) {
+      return [
+        {
+          key: "queue",
+          label: "На рассмотрении",
+          accent: true,
+          showAuthor: true,
+          empty: "Нет заявок, ожидающих решения.",
+          items: active
+            .filter((e) => e.status === "pending" || e.status === "revision")
+            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
+        },
+        {
+          key: "to-send",
+          label: "Ждут отправки",
+          showAuthor: true,
+          empty: "Все одобренные заявки отправлены.",
+          items: active.filter((e) => statusOf(e) === "approved").sort(byNewest),
+        },
+        {
+          key: "sent",
+          label: "Отправленные",
+          showAuthor: true,
+          empty: "Пока ничего не отправлено.",
+          items: active.filter((e) => statusOf(e) === "sent").sort(byNewest),
+        },
+        {
+          key: "mine",
+          label: "Мои",
+          empty: "Своих активных заявок нет.",
+          items: [...myActive].sort(byNewest),
+        },
+        {
+          key: "archive",
+          label: "Архив",
+          showAuthor: true,
+          empty: "Архив пуст.",
+          items: events.filter(isArchived).sort(byNewest),
+        },
+      ];
+    }
+    return [
+      { key: "active", label: "Активные", empty: "Активных заявок нет. Нажмите «+ Новая заявка».", items: [...myActive].sort(byNewest) },
+      { key: "archive", label: "Архив", empty: "Архив пуст.", items: mine.filter(isArchived).sort(byNewest) },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, mine, myActive, canDecide]);
+  const defaultTab = canDecide ? (tabs[0].items.length ? "queue" : "mine") : "active";
 
   // активные уведомления автору: что требует его действия
   const needFix = myActive.filter((e) => e.status === "revision");
   const toSend = myActive.filter((e) => statusOf(e) === "approved");
-  const waiting = myActive.filter((e) => e.status === "pending");
 
   const viewing = events.find((e) => e.id === viewId);
-  const cardProps = {
-    canDecide,
-    onChanged: load,
-    onEdit: (ev) => setFormFor({ editing: ev }),
-    onView: (ev) => setViewId(ev.id),
-  };
 
   async function handleSaveMap(form) {
     if (!form.name.trim()) return;
@@ -170,61 +198,18 @@ export function EventRoomPage() {
         </div>
       )}
 
-      {canSubmit && (!canDecide || myShown.length > 0) && (
+      {(canSubmit || canDecide) && (
         <section className="regiment-panel">
-          <h3>
-            Мои заявки
-            {!canDecide && waiting.length > 0 && <span className="hint-text"> · на рассмотрении: {waiting.length}</span>}
-          </h3>
-          {myShown.length === 0 ? (
-            <EmptyState text="Активных заявок нет. Нажмите «+ Новая заявка»." />
-          ) : (
-            <div className="request-list">
-              {myShown.map((ev) => (
-                <RequestCard key={ev.id} ev={ev} {...cardProps} />
-              ))}
-            </div>
-          )}
+          <h3>Заявки</h3>
+          <RequestList
+            tabs={tabs}
+            defaultTab={defaultTab}
+            canDecide={canDecide}
+            onView={(ev) => setViewId(ev.id)}
+            onEdit={(ev) => setFormFor({ editing: ev })}
+            onChanged={load}
+          />
         </section>
-      )}
-
-      {canDecide && (
-        <section className="regiment-panel">
-          <h3>На рассмотрении ({queue.length})</h3>
-          {queue.length === 0 ? (
-            <EmptyState text="Нет заявок, ожидающих решения." />
-          ) : (
-            <div className="request-list">
-              {queue.map((ev) => (
-                <RequestCard key={ev.id} ev={ev} showAuthor {...cardProps} />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {canDecide && othersActive.length > 0 && (
-        <section className="regiment-panel">
-          <h3>Одобренные заявки ивентологов</h3>
-          <div className="request-list">
-            {othersActive.map((ev) => (
-              <RequestCard key={ev.id} ev={ev} showAuthor {...cardProps} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {archived.length > 0 && (
-        <details className="regiment-panel eventroom-archive">
-          <summary>
-            Архив <span className="category-points-badge">{archived.length}</span>
-          </summary>
-          <div className="request-list">
-            {archived.map((ev) => (
-              <RequestCard key={ev.id} ev={ev} showAuthor={canDecide} {...cardProps} />
-            ))}
-          </div>
-        </details>
       )}
 
       {canDecide && (

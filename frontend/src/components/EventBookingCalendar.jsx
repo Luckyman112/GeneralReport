@@ -260,7 +260,7 @@ export function EventBookingCalendar() {
           <h4>Брони на {formatDayLabel(selectedDate)}</h4>
           <ul className="booking-day-list">
             {(bookingsByDateKey.get(toDateKey(selectedDate)) || []).map((b) => (
-              <li key={b.id} className={`booking-day-item status-${b.status}`}>
+              <li key={b.id} className={`booking-day-item bk-${b.status}`}>
                 <span className="booking-day-time">
                   {hhmm(b.starts_at)}–{hhmm(b.ends_at)} МСК
                 </span>

@@ -643,6 +643,12 @@ card/embed itself.
   `event_comms_channel_id`, falling back to the event channel, and has no ping).
   Reviewers may edit any time except after cancellation; the author only while
   `pending`/`revision`. The old standalone comms form and `POST /comms` are gone.
+  The page shows requests as one compact list (`eventroom/RequestList.jsx`): tabs
+  with counters (reviewers: queue / waiting to send / sent / mine / archive;
+  eventologists: active / archive), a kind filter, search and paging by 15. A row
+  opens the details modal that holds every action; the row itself carries only one
+  quick action. Row status classes are `rs-*`, not `status-*`: the global
+  `.status-pending` badge style would otherwise tint whole rows.
 - `GET /event-room/roster` takes `since`/`until`: request counts and report
   counts (`mini_count`/`combat_count`/`rp_count`) are for that range only (bug
   report: the request columns used to be all-time whatever the period said).
