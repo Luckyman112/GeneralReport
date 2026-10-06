@@ -27,6 +27,8 @@ export const MODELS = {
   laat: { url: "/models/ships/laat.glb", size: 17.69, yaw: Math.PI, flight: "hover" },
   arc170: { url: "/models/ships/arc170.glb", size: 12.71, yaw: 0, flight: "strafe" },
   vulture: { url: "/models/ships/vulture.glb", size: 6.96, yaw: 0, flight: "strafe" },
+  // бомбардировщик КНС: не стреляет, только сбрасывает ионные бомбы (решение пользователя)
+  hyena: { url: "/models/ships/hyena.glb", size: 12.5, yaw: 0, flight: "strafe" },
   venator: { url: "/models/ships/venator.glb", size: 1137, yaw: -Math.PI / 2 },
   arquitens: { url: "/models/ships/arquitens.glb", size: 325, yaw: 0 },
   providence: { url: "/models/ships/providence.glb", size: 1088, yaw: 0 },
@@ -59,6 +61,8 @@ export interface ArmyRoster {
   capital: ModelKey;
   escort: ModelKey;
   fighter: ModelKey;
+  /** Бомбардировщик: часть авиации, сбрасывает бомбы вместо стрельбы. */
+  bomber?: ModelKey;
   bolt: number;
 }
 
@@ -82,6 +86,7 @@ export const ARMIES: Record<ArmyId, ArmyRoster> = {
     capital: "providence",
     escort: "providence",
     fighter: "vulture",
+    bomber: "hyena",
     bolt: 0xff4a3a,
   },
   // Банковский клан: свой фрегат Munificent (Вукипедия: принадлежность —
@@ -94,6 +99,7 @@ export const ARMIES: Record<ArmyId, ArmyRoster> = {
     capital: "munificent",
     escort: "munificent",
     fighter: "vulture",
+    bomber: "hyena",
     bolt: 0xff4a3a,
   },
 };

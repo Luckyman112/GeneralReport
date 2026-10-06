@@ -1497,6 +1497,16 @@ its old 2D drawing.
   a faction whose name matches «банков»/«banking», even if another faction picks it,
   and that army is never tinted. The Munificent GLB is heavy (~250k vertices) because
   simplification did not reduce it further without breaking the hull.
+- `ArmyRoster.bomber` (CIS and Banking Clan: the Hyena, 12.5 m). Every second fighter
+  in an orbit attack run and every second aircraft on the surface is a bomber. It
+  never fires a laser (`canShoot` is false). On each run it drops ion bombs: one onto
+  an enemy capital ship in orbit, two onto enemy ground units on the surface. A bomb
+  is a glowing sprite that falls with acceleration and bursts in a blue flash.
+
+The galaxy page opens a help overlay (`#help`) on the first visit (`galaxyHelpSeen` in
+localStorage). The toolbar hides the edit-only buttons (`.tool-edit`) outside edit
+mode, and `syncModeUi()` shows the strip at the top that explains what the current
+mode allows.
 
 **Galaxy Map 3D, fixes** — `loadData()` rebuilds the document key by key, so a new
 top-level key must be copied there explicitly or it silently disappears on every

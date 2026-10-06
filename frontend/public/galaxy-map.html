@@ -108,6 +108,25 @@ body.in-planet #minimap{opacity:0}
 #tools{position:absolute;bottom:12px;left:12px;display:flex;gap:7px;flex-wrap:wrap;max-width:calc(100% - 360px);z-index:3}
 #btn-add{display:none}
 body.editing #btn-add{display:block}
+.tool-edit{border-color:rgba(240,164,49,.45)!important}
+body:not(.editing):not(.proposing) .tool-edit{display:none!important}
+#btn-mode.active{border-color:var(--hot);color:var(--hot);background:rgba(240,164,49,.12)}
+#edit-hint{position:absolute;top:44px;left:50%;transform:translateX(-50%);z-index:4;max-width:min(760px,calc(100% - 380px));
+  background:rgba(5,7,12,.9);border:1px solid rgba(240,164,49,.5);color:var(--ink);font-size:12.5px;line-height:1.45;padding:8px 12px}
+#edit-hint b{color:var(--hot);font-weight:500}
+#edit-hint[hidden]{display:none}
+body.in-planet #edit-hint{display:none}
+#help{position:fixed;inset:0;z-index:70;background:rgba(2,4,8,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+#help[hidden]{display:none}
+.help-box{position:relative;background:#0b1220;border:1px solid var(--line2);max-width:980px;width:100%;max-height:90vh;overflow:auto;padding:22px 26px}
+.help-box h2{margin:0 0 14px;font-size:20px}
+.help-box h3{margin:0 0 8px;font:500 11px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--hot)}
+.help-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px 26px}
+.help-grid ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:7px;font-size:13.5px;line-height:1.45;color:var(--ice)}
+.help-grid b{color:var(--ink);font-weight:500}
+.help-close{position:absolute;top:12px;right:12px;width:32px;height:32px;padding:0;font-size:18px}
+.help-again{display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:16px}
+.help-again span{font:12px var(--sans);letter-spacing:0;text-transform:none;color:var(--ice)}
 body.editing #btn-mode{color:var(--hot);border-color:rgba(240,164,49,.45)}
 body.proposing #btn-mode{color:var(--hot);border-color:rgba(240,164,49,.45)}
 body.in-planet #tools,body.in-planet #legend{opacity:0;pointer-events:none;transition:opacity .3s}
@@ -277,6 +296,52 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
 </style>
 </head>
 <body>
+<div id="help" hidden role="dialog" aria-modal="true" aria-labelledby="help-title">
+  <div class="help-box">
+    <button class="help-close" id="help-close" aria-label="Закрыть">×</button>
+    <h2 id="help-title">Как пользоваться картой галактики</h2>
+    <div class="help-grid">
+      <section>
+        <h3>Смотреть</h3>
+        <ul>
+          <li><b>Колесо мыши</b> — приблизить или отдалить, <b>перетаскивание</b> — сдвинуть карту.</li>
+          <li><b>Клик по планете</b> — её карточка справа: владелец, гарнизон, объекты, бои.</li>
+          <li><b>«Спуститься к планете»</b> в карточке — вид с орбиты: флоты, сектора, бои.</li>
+          <li>На орбите <b>клик по сектору с боем</b> — спуск к наземному бою. Назад — «↑ К орбите» или Esc, к карте — «← К карте галактики».</li>
+          <li><b>Поиск</b> и <b>фильтры</b> внизу — найти планету, оставить на виду только спорное или бои.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Что значат значки</h3>
+        <ul>
+          <li><b>Цвет свечения планеты</b> — кто её контролирует.</li>
+          <li><b>Оранжевые кольца</b> вокруг планеты — идёт бой, <b>вспышки на планете</b> — бой на поверхности.</li>
+          <li><b>Корабли у планеты без выстрелов</b> — стоящий флот; <b>корабли двух сторон с выстрелами</b> — бой флотов.</li>
+          <li><b>Оранжевая трасса</b> — спорная (между врагами), <b>красный пунктир с кораблями поперёк</b> — блокада.</li>
+          <li><b>Золотой ромб с именем</b> — именной корабль, <b>синий значок</b> — на планете запланирован ивент.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Панели по краям</h3>
+        <ul>
+          <li><b>Слева — «Контроль»</b>: сколько систем у фракций, ресурсы, эскалация, именные корабли, дипломатия, стратегические объекты.</li>
+          <li><b>Справа — «Сводка»</b>: идущие бои, блокады, конвои снабжения и журнал событий.</li>
+          <li>На телефоне панели открываются кнопками «Контроль» и «Сводка» сверху.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Править</h3>
+        <ul>
+          <li><b>Ассистент и Куратор ивентологии, основатель</b> правят сразу: «✎ Редактировать карту», изменения сохраняются сами.</li>
+          <li><b>Ивентологи</b> предлагают правку: правят у себя, затем «Отправить предложение» — его одобряет Ассистент или Куратор.</li>
+          <li>В режиме правки: <b>перетащите</b> планету, <b>двойной клик</b> по пустому месту — новая система, <b>Shift + клик</b> по двум планетам — трасса, клик по планете — её настройки справа.</li>
+          <li><b>Бой</b>: «+ бой» в «Активных боях» справа. Нападать можно только на врагов — отношения меняются в «Дипломатии» слева.</li>
+        </ul>
+      </section>
+    </div>
+    <label class="help-again"><input type="checkbox" id="help-dont"><span>Больше не показывать при входе (справка всегда есть по кнопке «? Как пользоваться»)</span></label>
+  </div>
+</div>
 <div id="authgate" hidden>
   <div>Нужен вход в COLLAPSAR, чтобы открыть карту.</div>
   <a href="/">На главную</a>
@@ -287,7 +352,6 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
       <div class="eyebrow" id="camp-eyebrow">Оперативная сводка</div>
       <h1 id="camp-name">Карта кампании</h1>
       <p class="hint">Тяните полотно, приближайте колёсиком. Нажмите планету — откроется орбитальная проекция с досье и гарнизоном.</p>
-      <p class="edithint">Двойной клик по пустому месту — новая система. Перетаскивание — перенос. Shift и клик по двум системам — трасса между ними.</p>
     </div>
     <div id="clock">
       <div>Систем на карте <b id="c-sys">0</b> · трасс <b id="c-lane">0</b></div>
@@ -332,17 +396,19 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
     <div id="legend"></div>
     <button id="back">← К карте галактики</button>
     <div id="g3d"></div>
+    <div id="edit-hint" hidden></div>
     <div id="tools">
-      <button id="btn-mode" aria-pressed="false">Режим: обзор</button>
-      <button id="btn-add">Добавить систему</button>
-      <button id="btn-fac" aria-expanded="false">Фракции и сектора</button>
-      <button id="btn-map" aria-expanded="false">Подложка и маршруты</button>
-      <button id="btn-drawer" aria-expanded="false">Данные</button>
-      <button id="btn-fit">Вся карта</button>
-      <button id="btn-undo" disabled title="Отменить последнее действие (Ctrl+Z)">↶ Отменить</button>
-      <input id="sys-search" list="sys-search-list" placeholder="Поиск планеты…" style="width:150px;flex:0 0 auto" aria-label="Поиск планеты">
+      <button id="btn-help" title="Короткая справка: как смотреть карту, что значат значки, как править">? Как пользоваться</button>
+      <button id="btn-fit" title="Отдалить камеру так, чтобы была видна вся карта">⤢ Вся карта</button>
+      <button id="btn-mode" aria-pressed="false" title="Включить правку карты">✎ Редактировать карту</button>
+      <button id="btn-add" class="tool-edit" title="Добавить новую систему в центр экрана (или двойной клик по пустому месту)">+ Новая система</button>
+      <button id="btn-fac" class="tool-edit" aria-expanded="false" title="Фракции и их цвета, сектора, типы объектов на планетах">Фракции и сектора</button>
+      <button id="btn-map" class="tool-edit" aria-expanded="false" title="Фоновое изображение карты, сетка, торговые маршруты, настройки анимаций и блокад">Фон и маршруты</button>
+      <button id="btn-drawer" class="tool-edit" aria-expanded="false" title="Сохранить карту в файл или загрузить из файла (JSON)">Импорт / экспорт</button>
+      <button id="btn-undo" class="tool-edit" disabled title="Отменить последнее действие (Ctrl+Z)">↶ Отменить</button>
+      <input id="sys-search" list="sys-search-list" placeholder="🔍 Найти планету…" title="Начните вводить название — камера перелетит к планете" style="width:150px;flex:0 0 auto" aria-label="Поиск планеты">
       <datalist id="sys-search-list"></datalist>
-      <select id="flt-kind" aria-label="Фильтр отображения" style="width:168px;flex:0 0 auto">
+      <select id="flt-kind" aria-label="Фильтр отображения" title="Приглушить на карте всё, кроме выбранного" style="width:168px;flex:0 0 auto">
         <option value="all">Показать всё</option>
         <option value="disputed">Только спорное</option>
         <option value="battles">Только с боями</option>
@@ -2925,6 +2991,25 @@ el('btn-add').addEventListener('click', () => {
   const c = unproj(W / 2, H / 2);
   addSystem(c.x, c.y - PLANE_H);
 });
+/* Подписи режима и полоса-подсказка — так новичку видно, в каком он режиме и
+ * что можно делать (запрос пользователя: меню было непонятным). */
+function syncModeUi() {
+  const b = el('btn-mode');
+  if (!editing) {
+    b.textContent = canMoveCreate ? '✎ Редактировать карту' : '✎ Предложить правку';
+    b.title = canMoveCreate ? 'Включить правку карты — изменения сохраняются сразу' : 'Поправить карту у себя и отправить предложение на одобрение';
+  } else {
+    b.textContent = canMoveCreate ? '✓ Готово' : '✓ Отправить предложение';
+    b.title = canMoveCreate ? 'Выйти из режима правки' : 'Отправить правки Ассистенту/Куратору на одобрение';
+  }
+  b.setAttribute('aria-pressed', editing ? 'true' : 'false');
+  b.classList.toggle('active', editing);
+  const hint = el('edit-hint');
+  hint.hidden = !editing;
+  hint.innerHTML = !editing ? '' : canMoveCreate
+    ? '<b>Режим правки.</b> Перетащите планету, чтобы сдвинуть · двойной клик по пустому месту — новая система · Shift + клик по двум планетам — трасса · клик по планете — её настройки справа. Всё сохраняется само.'
+    : '<b>Режим предложения.</b> Правки пока видите только вы. Когда закончите, нажмите «✓ Отправить предложение» — его рассмотрит Ассистент или Куратор ивентологии.';
+}
 el('btn-mode').addEventListener('click', () => {
   if (!canEditAtAll) return;
   const wasProposing = editing && !canMoveCreate;
@@ -2932,8 +3017,7 @@ el('btn-mode').addEventListener('click', () => {
   linkFrom = null;
   document.body.classList.toggle('editing', editing && canMoveCreate);
   document.body.classList.toggle('proposing', editing && !canMoveCreate);
-  el('btn-mode').textContent = !editing ? 'Режим: обзор' : (canMoveCreate ? 'Режим: редактор' : 'Режим: предложение правки');
-  el('btn-mode').setAttribute('aria-pressed', editing ? 'true' : 'false');
+  syncModeUi();
   syncPanel(); syncStats();
   // Ивентолог без права прямой правки: выход из режима "предложение" —
   // повод отправить черновик на рассмотрение (см. submitProposal)
@@ -3773,6 +3857,7 @@ async function loadAccess() {
   // всем, как и раньше (запрос пользователя).
   ['btn-fac', 'btn-map', 'btn-drawer'].forEach(id => { el(id).style.display = ACCESS.canEdit ? '' : 'none'; });
   el('btn-undo').style.display = canEditAtAll ? '' : 'none';
+  syncModeUi();
 }
 
 async function loadGalaxyMap() {
@@ -4232,6 +4317,22 @@ function loadShipSprites() {
   }).then(sp => { if (sp) SHIP_SPRITES = sp; }).catch(() => {});
 }
 
+/* ---------- справка ---------- */
+function openHelp() { el('help').hidden = false; el('help-close').focus(); }
+function closeHelp() {
+  el('help').hidden = true;
+  try { if (el('help-dont').checked) localStorage.setItem('galaxyHelpSeen', '1'); } catch (e) { /* хранилище недоступно — покажем ещё раз */ }
+}
+el('btn-help').addEventListener('click', openHelp);
+el('help-close').addEventListener('click', closeHelp);
+el('help').addEventListener('click', e => { if (e.target === el('help')) closeHelp(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !el('help').hidden) { e.stopImmediatePropagation(); closeHelp(); } }, true);
+function maybeShowHelp() {
+  let seen = false;
+  try { seen = localStorage.getItem('galaxyHelpSeen') === '1'; } catch (e) { seen = false; }
+  if (!seen) { el('help-dont').checked = true; openHelp(); }
+}
+
 /* ---------- boot ---------- */
 resize();
 (async function boot() {
@@ -4248,6 +4349,7 @@ resize();
   }
   syncBackdrop();
   loadShipSprites();
+  maybeShowHelp();
   cam.tz = cam.z = W > 820 ? .95 : .55;
   SYSTEMS.slice(0, 40).forEach(s => buildTexture(s, 'lo'));
   changed();

@@ -39,6 +39,22 @@ interface Flash {
   size: number;
 }
 
+let ionTex: THREE.Texture | null = null;
+function ionTexture(): THREE.Texture {
+  if (ionTex) return ionTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d")!;
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, "rgba(235,250,255,1)");
+  grad.addColorStop(0.3, "rgba(120,200,255,.85)");
+  grad.addColorStop(1, "rgba(60,120,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  ionTex = new THREE.CanvasTexture(c);
+  return ionTex;
+}
+
 /** Истребитель на орбите: только вперёд — заход на врага и дальше, без кругов. */
 interface Fighter {
   obj: THREE.Object3D;
@@ -50,6 +66,18 @@ interface Fighter {
   t: number;
   dur: number;
   fired: boolean;
+  bomber: boolean;
+}
+
+/** Ионная бомба: светящийся заряд летит к цели и рвётся голубой вспышкой. */
+interface Bomb {
+  sprite: THREE.Sprite;
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  t: number;
+  dur: number;
+  size: number;
+  parent: THREE.Object3D;
 }
 
 /** strafe — заход над полем по прямой с пикированием; hover — висит у своих (LAAT). */
@@ -60,6 +88,8 @@ interface AirState {
   dur: number;
   wait: number;
   phase: number;
+  bomber?: boolean;
+  dropped?: boolean;
 }
 
 interface GroundUnit {
@@ -174,6 +204,7 @@ export class PlanetView {
   private boltColor: [number, number] = [0x4fb0ff, 0xff4a3a];
   private bolts: Bolt[] = [];
   private flashes: Flash[] = [];
+  private bombs: Bomb[] = [];
   private units: GroundUnit[] = [];
   private battles: Battle[] = [];
   private current: Battle | null = null;
@@ -400,7 +431,7 @@ export class PlanetView {
         const homeD = new THREE.Vector3(-0.62, 0.18, 1.38);
         if (!(await this.formation(roster(att), nA, homeA, -1, token, 0, tA))) return;
         if (!(await this.formation(roster(def), nD, homeD, 1, token, 1, tD))) return;
-        await this.attackRuns(roster(att).fighter, roster(def).fighter, Math.min(6, 1 + nA), Math.min(6, 1 + nD), homeA, homeD, token, [tA, tD]);
+        await this.attackRuns(roster(att), roster(def), Math.min(6, 1 + nA), Math.min(6, 1 + nD), homeA, homeD, token, [tA, tD]);
         if (token !== this.token) return;
         lines.push(`<b>Орбита</b> бой флотов: ${tag(att)} против ${tag(def)}`);
       }
@@ -539,16 +570,20 @@ export class PlanetView {
       }
       const air = Math.min(3, n.air);
       for (let i = 0; i < air; i++) {
-        const kind = flightOf(r.air);
+        // у армии с бомбардировщиками каждый второй самолёт — бомбардировщик
+        const bomber = Boolean(r.bomber) && i % 2 === 1;
+        const key = bomber ? r.bomber! : r.air;
+        const kind = bomber ? "strafe" : flightOf(r.air);
         const v = b.v + FIELD_V * ((i - (air - 1) / 2) / Math.max(1, air - 1)) * 1.2;
         jobs.push(
-          this.spawnUnit(r.air, side, dir, b, token, b.u - dir * FIELD_U * rand(0.55, 0.8), v, {
+          this.spawnUnit(key, side, dir, b, token, b.u - dir * FIELD_U * rand(0.55, 0.8), v, {
             kind,
             v,
             t: kind === "strafe" ? rand(-0.6, 0.4) : 0,
             dur: rand(3.8, 5.2),
             wait: 0,
             phase: rand(0, Math.PI * 2),
+            bomber,
           }),
         );
       }
@@ -622,8 +657,8 @@ export class PlanetView {
   /** Истребители заходят в атаку по прямой: от своего строя сквозь строй врага
    * и дальше, потом новый заход. Кругов не делают (решение пользователя). */
   private async attackRuns(
-    a: ModelKey,
-    b: ModelKey,
+    a: ArmyRoster,
+    b: ArmyRoster,
     nA: number,
     nB: number,
     homeA: THREE.Vector3,
@@ -631,12 +666,14 @@ export class PlanetView {
     token: number,
     tints: [THREE.Color | null, THREE.Color | null],
   ) {
-    for (const [side, key, n, home, goal] of [
+    for (const [side, army, n, home, goal] of [
       [0, a, nA, homeA, homeB],
       [1, b, nB, homeB, homeA],
     ] as const) {
       for (let k = 0; k < n; k++) {
-        const s = await ship(key, FIGHTER_K, tints[side]);
+        // каждый второй в армии с бомбардировщиками — бомбардировщик
+        const bomber = Boolean(army.bomber) && k % 2 === 1;
+        const s = await ship(bomber ? army.bomber! : army.fighter, FIGHTER_K, tints[side]);
         if (token !== this.token) return;
         if (!s) continue;
         this.fleet.add(s);
@@ -650,6 +687,7 @@ export class PlanetView {
           t: 0,
           dur: 1,
           fired: false,
+          bomber,
         };
         this.newRun(f);
         f.t = Math.random();
@@ -690,6 +728,26 @@ export class PlanetView {
     sprite.position.copy(at);
     parent.add(sprite);
     this.flashes.push({ sprite, life: 0.5, max: 0.5, size });
+  }
+
+  /** Сброс ионной бомбы: светящийся заряд летит к цели и рвётся голубой вспышкой. */
+  private dropBomb(parent: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3, dur: number, size: number) {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: ionTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    sprite.position.copy(from);
+    sprite.scale.setScalar(size * 0.25);
+    parent.add(sprite);
+    this.bombs.push({ sprite, from: from.clone(), to: to.clone(), t: 0, dur, size, parent });
+  }
+
+  private ionBoom(parent: THREE.Object3D, at: THREE.Vector3, size: number) {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: ionTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    sprite.position.copy(at);
+    parent.add(sprite);
+    this.flashes.push({ sprite, life: 0.7, max: 0.7, size });
   }
 
   /** Готова ли группа стрелков к выстрелу: пауза 0.5–1.5 с между выстрелами. */
@@ -752,6 +810,18 @@ export class PlanetView {
       (b.line.material as THREE.Material).dispose();
       return false;
     });
+    for (const m of this.bombs) {
+      m.t += dt / m.dur;
+      // бомба падает с ускорением
+      m.sprite.position.copy(m.from).lerp(m.to, Math.min(1, m.t * m.t));
+      if (m.t >= 1) this.ionBoom(m.parent, m.to, m.size);
+    }
+    this.bombs = this.bombs.filter((m) => {
+      if (m.t < 1) return true;
+      m.parent.remove(m.sprite);
+      m.sprite.material.dispose();
+      return false;
+    });
     for (const f of this.flashes) {
       f.life -= dt;
       const k = 1 - f.life / f.max;
@@ -792,7 +862,13 @@ export class PlanetView {
       if (!f.fired && f.t > 0.3 && f.t < 0.55) {
         f.fired = true;
         const foes = this.gunners[f.side === 0 ? 1 : 0];
-        if (foes.length && Math.random() < 0.7) this.fire(this.fx, f.obj.position, pick(foes).position, this.boltColor[f.side], 0.22, 0);
+        if (foes.length && f.bomber) {
+          // бомбардировщик не стреляет — сбрасывает ионную бомбу на корабль
+          const target = pick(foes).position.clone().add(new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(0.02));
+          this.dropBomb(this.fx, f.obj.position, target, 0.9, 0.08);
+        } else if (foes.length && Math.random() < 0.7) {
+          this.fire(this.fx, f.obj.position, pick(foes).position, this.boltColor[f.side], 0.22, 0);
+        }
       }
     }
     if (!this.planet) return;
@@ -848,6 +924,7 @@ export class PlanetView {
   /** Самолёт стреляет только на подлёте (заход) или когда висит (LAAT). */
   private canShoot(u: GroundUnit): boolean {
     const a = u.air!;
+    if (a.bomber) return false; // бомбардировщик не стреляет
     return a.kind === "hover" || (a.t > 0.25 && a.t < 0.6);
   }
 
@@ -874,7 +951,19 @@ export class PlanetView {
       a.t = 0;
       a.wait = rand(0.3, 1.6);
       a.v = b.v + rand(-FIELD_V, FIELD_V);
+      a.dropped = false;
       return;
+    }
+    // над позициями противника бомбардировщик сбрасывает пару ионных бомб
+    if (a.bomber && !a.dropped && a.t > 0.5) {
+      a.dropped = true;
+      const foes = this.units.filter((x) => x.side !== u.side && !x.air);
+      for (let k = 0; k < 2; k++) {
+        const target = foes.length
+          ? pick(foes).obj.position.clone().add(new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(0.006))
+          : Planet.point(b.u + u.dir * FIELD_U * rand(0.3, 0.9), a.v + rand(-0.01, 0.01), 1.001);
+        this.dropBomb(this.ground, u.obj.position, target, rand(0.55, 0.8), 0.024);
+      }
     }
     const at = (k: number) =>
       Planet.point(b.u - u.dir * FIELD_U * 1.9 + u.dir * FIELD_U * 3.8 * k, a.v, 1.05 - 0.032 * Math.sin(Math.PI * k));
@@ -891,6 +980,11 @@ export class PlanetView {
       (b.line.material as THREE.Material).dispose();
     }
     this.bolts = [];
+    for (const m of this.bombs) {
+      m.parent.remove(m.sprite);
+      m.sprite.material.dispose();
+    }
+    this.bombs = [];
   }
 
   private clear() {
