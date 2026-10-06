@@ -1438,6 +1438,14 @@ its old 2D drawing.
   battlefield stays at a sane draw-call count. If a usable clone GLB ever shows up,
   drop it in `catalog.ts` as `ARMIES.rep.infantry` and the rig code falls away.
 
+**Galaxy Map 3D, fixes** — `loadData()` rebuilds the document key by key, so a new
+top-level key must be copied there explicitly or it silently disappears on every
+page load (bug report: diplomacy would not persist). Per-system fields survive
+because systems are spread with `...s`. Only Republic and CIS have ship models, so
+every other faction flies borrowed hulls tinted to its own colour
+(`tint.ts`, used by the orbit, blockades and ground vehicles); Republic and CIS
+keep their native colours.
+
 ### Promotion requirements follow the charter (устав)
 - `PromotionCategoryRequirement.count_mode` (migration 0094): `author` = the soldier
   filed the report themselves ("провёл"), `participant` = listed in someone else's

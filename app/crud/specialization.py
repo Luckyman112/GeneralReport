@@ -15,12 +15,18 @@ from app.models.specialization import (
 )
 from app.models.user import User
 
+# .selectinload(Specialization.min_rank) обязателен: SpecializationRead.min_rank
+# читается синхронно при сериализации ответа, а ленивая связь вне await в
+# асинхронном SQLAlchemy падает MissingGreenlet (500). Проявляется только у
+# специализаций с заданным min_rank_id — пустой FK разрешается без запроса к
+# БД, поэтому баг сидел незамеченным, пока звание никому не проставили
+# (баг-репорт: GET /members/{id}/specializations отдавал 500).
 _GRANT_LOAD_OPTIONS = [
-    selectinload(UserSpecialization.specialization),
+    selectinload(UserSpecialization.specialization).selectinload(Specialization.min_rank),
     selectinload(UserSpecialization.granted_by).selectinload(User.rank),
 ]
 _BAN_LOAD_OPTIONS = [
-    selectinload(SpecializationBan.specialization),
+    selectinload(SpecializationBan.specialization).selectinload(Specialization.min_rank),
     selectinload(SpecializationBan.created_by).selectinload(User.rank),
 ]
 
@@ -65,7 +71,7 @@ async def list_grants_by_category(db: AsyncSession, category: str) -> list[UserS
         .join(Specialization, UserSpecialization.specialization_id == Specialization.id)
         .where(Specialization.category == category)
         .options(
-            selectinload(UserSpecialization.specialization),
+            selectinload(UserSpecialization.specialization).selectinload(Specialization.min_rank),
             selectinload(UserSpecialization.user).selectinload(User.rank),
         )
     )

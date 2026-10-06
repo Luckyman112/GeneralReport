@@ -825,7 +825,10 @@ function loadData(raw) {
     battles: Array.isArray(d.battles) ? d.battles.map(b => ({ prog: 50, since: '', ...b })) : [],
     convoys: Array.isArray(d.convoys) ? d.convoys.map(c => ({ etaDays: 2, departed: '', status: 'enroute', ...c })) : [],
     blockades: Array.isArray(d.blockades) ? d.blockades.map(b => ({ ...b })) : [],
-    log: Array.isArray(d.log) ? d.log.map(e => ({ ...e })) : []
+    log: Array.isArray(d.log) ? d.log.map(e => ({ ...e })) : [],
+    // отношения фракций — объект, а не список; без копии здесь настройки
+    // дипломатии терялись при каждой загрузке страницы
+    diplomacy: (d.diplomacy && typeof d.diplomacy === 'object' && !Array.isArray(d.diplomacy)) ? { ...d.diplomacy } : {}
   };
   DATA.factions.forEach(f => { if (!Array.isArray(f.res)) f.res = []; });
   indexData();

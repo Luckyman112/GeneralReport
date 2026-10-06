@@ -1,7 +1,9 @@
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import discord_client
+from app.exceptions import AppError
 from app.models.regiment import Regiment
 from app.models.report_category import ReportCategory
 
@@ -116,6 +118,26 @@ async def get_by_name(db: AsyncSession, name: str) -> Regiment | None:
     return result.scalar_one_or_none()
 
 
+async def _role_taken_error(db: AsyncSession, discord_role_id: str, *, exclude_id: int | None = None) -> AppError:
+    """Текст ошибки для занятой Discord-роли (уникальный индекс
+    regiments_discord_role_id_key). Имя занявшего формирования читаем ОТДЕЛЬНЫМ
+    запросом уже после rollback — у объекта, на котором упал commit, атрибуты
+    протухшие, и обращение к ним в except падает MissingGreenlet."""
+    query = select(Regiment.name, Regiment.is_archived).where(Regiment.discord_role_id == discord_role_id)
+    if exclude_id is not None:
+        query = query.where(Regiment.id != exclude_id)
+    row = (await db.execute(query)).first()
+    if row is None:
+        return AppError("Не удалось сохранить формирование: такие данные уже заняты")
+    name, is_archived = row
+    if is_archived:
+        return AppError(
+            f"Эта Discord-роль уже привязана к формированию «{name}», оно сейчас в архиве. "
+            "Верните его из архива или смените роль."
+        )
+    return AppError(f"Эта Discord-роль уже привязана к формированию «{name}»")
+
+
 async def create(
     db: AsyncSession,
     *,
@@ -135,7 +157,11 @@ async def create(
         starting_rank_id=starting_rank_id,
     )
     db.add(regiment)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise await _role_taken_error(db, discord_role_id) from None
     await db.refresh(regiment)
 
     # Системные + базовые категории заводятся сразу следом — если что-то из
@@ -236,8 +262,15 @@ async def resolve_regiments_for_discord_ids(db: AsyncSession, discord_ids: list[
 async def update(db: AsyncSession, regiment: Regiment, **changes) -> Regiment:
     """changes — только реально переданные клиентом поля (exclude_unset в
     эндпоинте), поэтому color: None здесь означает явную очистку, а не "не трогать"."""
+    # снимаем до commit — после rollback атрибуты объекта уже протухли
+    regiment_id = regiment.id
+    role_id = changes.get("discord_role_id", regiment.discord_role_id)
     for key, value in changes.items():
         setattr(regiment, key, value)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise await _role_taken_error(db, role_id, exclude_id=regiment_id) from None
     await db.refresh(regiment)
     return regiment

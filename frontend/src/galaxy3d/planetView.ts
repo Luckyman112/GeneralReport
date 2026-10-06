@@ -3,6 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { instantiate, loadModel } from "./assets";
 import { ARMIES, MODELS, armyOf, hashStr, type ArmyRoster, type ModelKey } from "./catalog";
 import { Planet, SUN_DIR, zoneLayout } from "./planet";
+import { applyTint, tintFor } from "./tint";
 import { LIVE_STAGES, type FactionData, type PlanetPayload } from "./types";
 
 /** Длины кораблей в радиусах планеты. Не реальный масштаб (там корабль был бы
@@ -73,11 +74,11 @@ function flashTexture(): THREE.Texture {
   return flashTex;
 }
 
-async function ship(key: ModelKey, length: number): Promise<THREE.Object3D | null> {
+async function ship(key: ModelKey, length: number, tint: THREE.Color | null): Promise<THREE.Object3D | null> {
   try {
     const o = instantiate(await loadModel(key));
     o.scale.setScalar(length / MODELS[key].size);
-    return o;
+    return applyTint(o, tint);
   } catch {
     return null;
   }
@@ -221,17 +222,18 @@ export class PlanetView {
         const nA = Math.max(1, Math.min(8, sys.fleetAtt ?? 3));
         const nD = Math.max(1, Math.min(8, sys.fleetDef ?? 3));
         this.boltColor = [roster(att).bolt, roster(def).bolt];
-        const fA = await this.formation(roster(att), nA, new THREE.Vector3(0.42, 0.22, 1.5), -1, token, 0);
-        const fD = await this.formation(roster(def), nD, new THREE.Vector3(-0.42, 0.12, 1.42), 1, token, 1);
+        const tA = tintFor(fac(att)), tD = tintFor(fac(def));
+        const fA = await this.formation(roster(att), nA, new THREE.Vector3(0.42, 0.22, 1.5), -1, token, 0, tA);
+        const fD = await this.formation(roster(def), nD, new THREE.Vector3(-0.42, 0.12, 1.42), 1, token, 1, tD);
         if (!fA || !fD) return;
-        await this.dogfight(roster(att), roster(def), Math.min(8, 2 + nA), Math.min(8, 2 + nD), token);
+        await this.dogfight(roster(att), roster(def), Math.min(8, 2 + nA), Math.min(8, 2 + nD), token, [tA, tD]);
         if (token !== this.token) return;
         lines.push(`<b>Орбита</b> бой: ${tag(att)} против ${tag(def)}`);
       }
     } else if (orbit && orbit !== "battle") {
       const n = Math.max(0, Math.min(10, sys.fleet ?? 0));
       if (n > 0) {
-        if (!(await this.formation(roster(orbit), n, new THREE.Vector3(0.62, 0.34, 1.42), -1, token, 0))) return;
+        if (!(await this.formation(roster(orbit), n, new THREE.Vector3(0.62, 0.34, 1.42), -1, token, 0, tintFor(fac(orbit))))) return;
         lines.push(`<b>Орбита</b> ${tag(orbit)} · флот ${n} кор.`);
       } else lines.push(`<b>Орбита</b> под контролем ${tag(orbit)}, флота нет`);
     }
@@ -243,7 +245,7 @@ export class PlanetView {
       const sign: 1 | -1 = h % 2 ? 1 : -1;
       const tip = new THREE.Vector3(sign * (1.25 + ((h >> 3) % 20) / 100), 0.5 * (((h >> 8) % 3) - 1) * 0.4, 0.95);
       const n = Math.min(6, Math.max(1, Math.round(bl.str || 1)));
-      if (!(await this.formation(roster(bl.fac), n, tip, sign === 1 ? -1 : 1, token, null))) return;
+      if (!(await this.formation(roster(bl.fac), n, tip, sign === 1 ? -1 : 1, token, null, tintFor(fac(bl.fac))))) return;
       lines.push(`<b>Блокада</b> ${tag(bl.fac)} · ${n} кор.`);
     }
 
@@ -263,11 +265,12 @@ export class PlanetView {
     facing: 1 | -1,
     token: number,
     side: 0 | 1 | null,
+    tint: THREE.Color | null,
   ): Promise<boolean> {
     const spacing = 0.15;
     for (let k = 0; k < n; k++) {
       const capital = k === 0 || k % 3 === 1;
-      const s = await ship(capital ? army.capital : army.escort, capital ? LEN.capital : LEN.escort);
+      const s = await ship(capital ? army.capital : army.escort, capital ? LEN.capital : LEN.escort, tint);
       if (token !== this.token) return false;
       if (!s) continue;
       const [row, dy, dz] = WEDGE[k % WEDGE.length];
@@ -282,14 +285,14 @@ export class PlanetView {
   }
 
   /** Истребители кружат над полем боя между флотами. */
-  private async dogfight(a: ArmyRoster, b: ArmyRoster, nA: number, nB: number, token: number) {
+  private async dogfight(a: ArmyRoster, b: ArmyRoster, nA: number, nB: number, token: number, tints: [THREE.Color | null, THREE.Color | null]) {
     const mid = new THREE.Vector3(0, 0.2, 1.5);
     for (const [side, army, n] of [
       [0, a, nA],
       [1, b, nB],
     ] as const) {
       for (let k = 0; k < n; k++) {
-        const s = await ship(army.fighter, LEN.fighter);
+        const s = await ship(army.fighter, LEN.fighter, tints[side]);
         if (token !== this.token) return;
         if (!s) continue;
         this.fleet.add(s);

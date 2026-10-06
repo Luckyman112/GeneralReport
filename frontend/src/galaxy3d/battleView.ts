@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { instantiate, loadModel, loadTexture } from "./assets";
 import { ARMIES, ATMOSPHERE, GROUND, SURFACES, armyOf, surfaceUrl, type ArmyId, type ModelKey } from "./catalog";
+import { applyTint, tintFor } from "./tint";
 import { makeTrooper, poseTrooper, type TrooperRig } from "./trooper";
 import { resolveForces, type BattleData, type FactionData, type SystemData } from "./types";
 
@@ -269,6 +270,11 @@ export class BattleView {
     return side === 0 ? 1 : -1;
   }
 
+  /** Цвет для перекраски чужих корпусов (см. tint.ts); у Республики и КНС — null. */
+  private tint(side: SideIdx) {
+    return tintFor(this.faction(side === 0 ? this.p.battle.att : this.p.battle.def));
+  }
+
   private async spawnInfantry(side: SideIdx, key: ModelKey | "trooper", n: number) {
     if (n <= 0) return;
     const proto = key === "trooper" ? null : await loadModel(key).catch(() => null);
@@ -277,7 +283,7 @@ export class BattleView {
     const mark = new THREE.Color(this.faction(side === 0 ? this.p.battle.att : this.p.battle.def).color).getHex();
     for (let i = 0; i < n; i++) {
       const rig = proto ? null : makeTrooper(mark);
-      const obj = rig ? rig.root : instantiate(proto!);
+      const obj = rig ? rig.root : applyTint(instantiate(proto!), this.tint(side), 0.45);
       let mixer: THREE.AnimationMixer | null = null;
       if (proto && proto.animations.length) {
         mixer = new THREE.AnimationMixer(obj);
@@ -319,8 +325,9 @@ export class BattleView {
     const proto = await loadModel(key).catch(() => null);
     if (!proto || !this.alive) return;
     const d = this.dir(side);
+    const tint = this.tint(side);
     for (let i = 0; i < n; i++) {
-      const obj = instantiate(proto);
+      const obj = applyTint(instantiate(proto), tint, 0.45);
       let mixer: THREE.AnimationMixer | null = null;
       let action: THREE.AnimationAction | null = null;
       const clip = proto.animations.find((c) => c.duration > 0.1);
@@ -344,8 +351,9 @@ export class BattleView {
     const proto = await loadModel(key).catch(() => null);
     if (!proto || !this.alive) return;
     const d = this.dir(side);
+    const tint = this.tint(side);
     for (let i = 0; i < n; i++) {
-      const obj = instantiate(proto);
+      const obj = applyTint(instantiate(proto), tint, 0.45);
       this.scene.add(obj);
       this.flyers.push({
         side,
