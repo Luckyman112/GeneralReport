@@ -255,15 +255,27 @@ label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-si
 .bat3d:hover{background:rgba(240,164,49,.18)}
 /* досье планеты сквозное для мыши (под ним крутится 3D-шар) — кнопке клики нужны */
 #detail .bat3d{pointer-events:auto}
-.dipwrap{overflow-x:auto}
-table.dip{border-collapse:collapse;font:11px var(--mono);width:100%}
-table.dip th{font-weight:400;color:var(--dim);padding:2px 4px;text-align:left;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
-table.dip th i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
-table.dip td{padding:2px;text-align:center}
-table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,rgba(255,255,255,.05) 3px 6px)}
-.dipcell{width:22px;height:22px;padding:0;border:1px solid;background:rgba(5,7,12,.5);font:12px var(--mono);cursor:pointer}
+table.dip{border-collapse:separate;border-spacing:2px;table-layout:fixed;width:100%;font:11px var(--mono)}
+table.dip th{font-weight:400;color:var(--dim);padding:0;text-align:left;vertical-align:middle}
+table.dip th.col{width:24px;text-align:center}
+table.dip th.row{line-height:1.25;padding-right:4px}
+table.dip th.row span{overflow-wrap:anywhere}
+table.dip th i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle;flex:0 0 auto}
+table.dip td{padding:0;text-align:center}
+table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,rgba(143,184,216,.07) 3px 6px)}
+.dipcell{width:100%;height:24px;padding:0;border:1px solid;background:rgba(5,7,12,.5);font:12px var(--mono);cursor:pointer}
 .dipcell:disabled{cursor:default;opacity:1}
+.dipkeys{display:flex;flex-wrap:wrap;gap:2px 10px;font:11px var(--mono);color:var(--dim)}
+.dipkeys i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
 .diplegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:11px var(--mono)}
+
+/* Полосы прокрутки — тонкие и в цвет темы, вместо системных светлых */
+*{scrollbar-width:thin;scrollbar-color:rgba(143,184,216,.32) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(143,184,216,.3);border:3px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(143,184,216,.55);background-clip:padding-box}
+::-webkit-scrollbar-corner{background:transparent}
 .g3d-toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:rgba(5,7,12,.85);border:1px solid var(--line2);
   color:var(--ink);font:12px var(--mono);letter-spacing:.06em;padding:8px 14px;pointer-events:none;animation:g3dfade 2.6s forwards}
 @keyframes g3dfade{0%,80%{opacity:1}100%{opacity:0}}
@@ -3118,8 +3130,12 @@ function syncLog() {
 function syncDiplomacy() {
   const F = DATA.factions;
   if (F.length < 2) { el('dip-body').innerHTML = '<div class="hint" style="margin:0">нужно хотя бы две фракции</div>'; return; }
-  const head = '<tr><th></th>' + F.map((f, j) => '<th title="' + esc(f.name) + '"><i style="background:' + esc(f.color) + '"></i>' + (j + 1) + '</th>').join('') + '</tr>';
-  const rows = F.map((a, i) => '<tr><th title="' + esc(a.name) + '"><i style="background:' + esc(a.color) + '"></i>' + (i + 1) + '. ' + esc(a.name) + '</th>' +
+  // имена в строках помещаются, пока фракций немного; дальше — номера и расшифровка под таблицей
+  const compact = F.length > 6;
+  const head = '<tr><th></th>' + F.map((f, j) =>
+    '<th class="col" title="' + esc(f.name) + '"><i style="background:' + esc(f.color) + '"></i>' + (j + 1) + '</th>').join('') + '</tr>';
+  const rows = F.map((a, i) => '<tr><th class="row" title="' + esc(a.name) + '">' +
+      '<i style="background:' + esc(a.color) + '"></i>' + (compact ? (i + 1) : '<span>' + esc(a.name) + '</span>') + '</th>' +
     F.map(b => {
       if (a.id === b.id) return '<td class="self"></td>';
       const r = REL[rel(a.id, b.id)];
@@ -3127,7 +3143,10 @@ function syncDiplomacy() {
       return '<td><button class="dipcell" data-dip="' + esc(relKey(a.id, b.id)) + '" title="' + t + '" aria-label="' + t + '" style="color:' + r.col + ';border-color:' + r.col + '"' +
         (editing ? '' : ' disabled') + '>' + r.sym + '</button></td>';
     }).join('') + '</tr>').join('');
-  el('dip-body').innerHTML = '<div class="dipwrap"><table class="dip">' + head + rows + '</table></div>' +
+  const keys = compact
+    ? '<div class="dipkeys">' + F.map((f, i) => '<span><i style="background:' + esc(f.color) + '"></i>' + (i + 1) + ' ' + esc(f.name) + '</span>').join('') + '</div>'
+    : '';
+  el('dip-body').innerHTML = '<table class="dip">' + head + rows + '</table>' + keys +
     '<div class="diplegend">' + Object.values(REL).map(r => '<span style="color:' + r.col + '">' + r.sym + ' ' + r.label + '</span>').join('') +
     (editing ? '<span class="hint" style="margin:0">клик по клетке меняет отношение</span>' : '') + '</div>';
 }
