@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { instantiate, loadModel } from "./assets";
-import { ARMIES, STATIONS, UNIQUE_SHIPS, armyOf, flightOf, hashStr, tintForModel, type ArmyRoster, type ModelKey } from "./catalog";
+import { ARMIES, MODELS, STATIONS, UNIQUE_SHIPS, armyOf, flightOf, hashStr, tintForModel, type ArmyRoster, type ModelKey, type ModelSpec } from "./catalog";
 import { Planet, SUN_DIR, zoneLayout } from "./planet";
 import { applyTint, tintFor } from "./tint";
 import { LIVE_STAGES, resolveForces, type BattleData, type FactionData, type Forces, type PlanetPayload } from "./types";
@@ -10,9 +10,19 @@ import { LIVE_STAGES, resolveForces, type BattleData, type FactionData, type For
  * коэффициент на класс: крупные корабли (Венатор ≈ 0.1 радиуса планеты), малые
  * (истребители — иначе их не видно) и наземная техника. Внутри класса
  * пропорции настоящие: Аркитенс в 3.5 раза короче Венатора. */
-const SHIP_K = 0.1 / 1137;
-const FIGHTER_K = 0.014 / 12.71;
+// крупнее, чем было (0.1 и 0.014): на орбите корабли читались «как блохи»
+// (жалоба пользователя)
+const SHIP_K = 0.22 / 1137;
+const FIGHTER_K = 0.032 / 12.71;
 const GROUND_K = 0.0014;
+/** Сжатие шкалы внутри класса: малое подтягивается к крупному (длина^0.7 вместо
+ * длины), порядок размеров сохраняется — Lancer всё равно меньше Венатора, клон
+ * меньше AT-TE, но различим. Опорные размеры: Венатор, ARC-170, AT-TE. */
+const SQUASH = 0.3;
+const REF = { ship: 1137, fighter: 12.71, ground: 22.02 };
+function squash(key: ModelKey, ref: number): number {
+  return Math.pow(MODELS[key].size / ref, -SQUASH);
+}
 /** Дройдек в одном бою не больше трёх (решение пользователя). */
 const DROID_MAX = 3;
 /** Пехоты на сторону: две на каждую машину, от 2 до 8. */
@@ -161,7 +171,7 @@ function flashTexture(): THREE.Texture {
 async function ship(key: ModelKey, k: number, tint: THREE.Color | null): Promise<THREE.Object3D | null> {
   try {
     const o = instantiate(await loadModel(key));
-    o.scale.setScalar(k);
+    o.scale.setScalar(k * squash(key, k === FIGHTER_K || k === FIGHTER_K * 1.6 ? REF.fighter : REF.ship));
     return applyTint(o, tint);
   } catch {
     return null;
@@ -652,7 +662,7 @@ export class PlanetView {
     }
     if (token !== this.token || this.mode !== "surface" || this.current !== b) return;
     const obj = applyTint(instantiate(proto), tintForModel(b.rosters[side], key, b.tints[side]), 0.45);
-    obj.scale.setScalar(GROUND_K);
+    obj.scale.setScalar(GROUND_K * squash(key, REF.ground));
     let mixer: THREE.AnimationMixer | null = null;
     let action: THREE.AnimationAction | null = null;
     const clip = proto.animations.find((c) => c.duration > 0.1);
@@ -662,7 +672,8 @@ export class PlanetView {
       action.play();
       action.time = Math.random() * clip.duration;
     }
-    const walks = Boolean(clip) && !air;
+    const spec: ModelSpec = MODELS[key];
+    const walks = Boolean(clip) && !air && !spec.inPlace;
     const u1 = b.u - dir * FIELD_U * rand(0.22, 0.4);
     orient(obj, Planet.point(u, v, air ? 1.028 : 1), east(u).multiplyScalar(dir));
     this.ground.add(obj);
@@ -680,7 +691,7 @@ export class PlanetView {
     side: 0 | 1 | null,
     tint: THREE.Color | null,
   ): Promise<boolean> {
-    const spacing = 0.15;
+    const spacing = 0.21;
     for (let k = 0; k < n; k++) {
       const capital = k === 0 || k % 3 === 1;
       const key = capital ? army.capital : army.escort;

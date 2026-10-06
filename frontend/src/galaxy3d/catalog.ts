@@ -17,6 +17,8 @@ export interface ModelSpec {
   /** Как летает: strafe — только вперёд, заходами в атаку (истребители);
    * hover — зависает и стреляет с места, почти не смещаясь (LAAT). */
   flight?: "strafe" | "hover";
+  /** Анимация играется на месте, модель не идёт к фронту (стрельба, а не ходьба). */
+  inPlace?: boolean;
 }
 
 export const MODELS = {
@@ -26,6 +28,8 @@ export const MODELS = {
   clone: { url: "/models/units/clone.glb", size: 1.83, byHeight: true, yaw: -Math.PI / 2 },
   // пехота Дозора Смерти — мандалорец в броне (модель Джанго Фетта), 1.83 м
   mando: { url: "/models/units/mando.glb", size: 1.83, byHeight: true, yaw: 0 },
+  // пехота пиратов: стрелок с пистолетами, анимация стрельбы со вспышкой — на месте
+  pirate: { url: "/models/units/pirate.glb", size: 1.9, byHeight: true, yaw: 0, inPlace: true },
   atte: { url: "/models/vehicles/atte.glb", size: 22.02, yaw: 0 },
   aat: { url: "/models/vehicles/aat.glb", size: 9.19, yaw: 0 },
   // AT-AP — шагоход Республики, ходит вторым типом наземки рядом с AT-TE
@@ -148,14 +152,14 @@ export const ARMIES: Record<ArmyId, ArmyRoster> = {
   // пираты: свой фрегат, остальное взаймы (перекрашивается)
   pirate: {
     label: "Пираты",
-    infantry: null,
+    infantry: "pirate",
     vehicle: "aat",
     air: "vulture",
     capital: "piratefrigate",
     escort: "piratefrigate",
     fighter: "vulture",
     bolt: 0xffb43a,
-    own: ["piratefrigate"],
+    own: ["piratefrigate", "pirate"],
   },
 };
 

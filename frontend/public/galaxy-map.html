@@ -106,6 +106,20 @@ canvas{display:block;position:absolute;inset:0;width:100%;height:100%;touch-acti
 #minimap.show{opacity:1}
 body.in-planet #minimap{opacity:0}
 #tools{position:absolute;bottom:12px;left:12px;display:flex;gap:7px;flex-wrap:wrap;max-width:calc(100% - 360px);z-index:3}
+#search-wrap{position:relative;flex:0 0 auto}
+#sys-search{width:230px}
+#search-results{position:absolute;bottom:calc(100% + 6px);left:0;width:340px;max-height:min(420px,60vh);overflow:auto;
+  background:rgba(7,10,17,.97);border:1px solid var(--line2);box-shadow:0 10px 30px rgba(0,0,0,.5);z-index:6;padding:4px 0}
+#search-results[hidden]{display:none}
+.sr-head{padding:6px 12px 4px;font:500 10px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+.sr-item{display:flex;align-items:center;gap:9px;padding:7px 12px;cursor:pointer;font-size:13.5px;color:var(--ink)}
+.sr-item.active,.sr-item:hover{background:rgba(240,164,49,.12)}
+.sr-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 6px currentColor}
+.sr-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr-name mark{background:none;color:var(--hot);font-weight:600}
+.sr-meta{font:11px var(--mono);color:var(--dim);white-space:nowrap}
+.sr-tags{display:flex;gap:4px;font-size:12px}
+.sr-empty{padding:10px 12px;color:var(--dim);font-size:13px}
 #btn-add{display:none}
 body.editing #btn-add{display:block}
 .tool-edit{border-color:rgba(240,164,49,.45)!important}
@@ -308,7 +322,7 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
           <li><b>Клик по планете</b> — её карточка справа: владелец, гарнизон, объекты, бои.</li>
           <li><b>«Спуститься к планете»</b> в карточке — вид с орбиты: флоты, сектора, бои.</li>
           <li>На орбите <b>клик по сектору с боем</b> — спуск к наземному бою. Назад — «↑ К орбите» или Esc, к карте — «← К карте галактики».</li>
-          <li><b>Поиск</b> и <b>фильтры</b> внизу — найти планету, оставить на виду только спорное или бои.</li>
+          <li><b>Поиск</b> внизу (или клавиша <b>/</b>) — по названию, сектору или фракции; без запроса показывает, где идут бои. <b>Фильтры</b> рядом оставляют на виду только спорное или бои.</li>
         </ul>
       </section>
       <section>
@@ -410,8 +424,12 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
       <button id="btn-map" class="tool-edit" aria-expanded="false" title="Фоновое изображение карты, сетка, торговые маршруты, настройки анимаций и блокад">Фон и маршруты</button>
       <button id="btn-drawer" class="tool-edit" aria-expanded="false" title="Сохранить карту в файл или загрузить из файла (JSON)">Импорт / экспорт</button>
       <button id="btn-undo" class="tool-edit" disabled title="Отменить последнее действие (Ctrl+Z)">↶ Отменить</button>
-      <input id="sys-search" list="sys-search-list" placeholder="🔍 Найти планету…" title="Начните вводить название — камера перелетит к планете" style="width:150px;flex:0 0 auto" aria-label="Поиск планеты">
-      <datalist id="sys-search-list"></datalist>
+      <div id="search-wrap">
+        <input id="sys-search" placeholder="🔍 Найти планету…  /" autocomplete="off" spellcheck="false"
+          title="Название, сектор или фракция. Горячие клавиши: / или Ctrl+K" aria-label="Поиск планеты"
+          role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list">
+        <div id="search-results" role="listbox" hidden></div>
+      </div>
       <select id="flt-kind" aria-label="Фильтр отображения" title="Приглушить на карте всё, кроме выбранного" style="width:168px;flex:0 0 auto">
         <option value="all">Показать всё</option>
         <option value="disputed">Только спорное</option>
@@ -2983,14 +3001,114 @@ function closeDrawers() {
 el('btn-drawer').addEventListener('click', () => openDrawer('data'));
 el('btn-fac').addEventListener('click', () => openDrawer('fac'));
 el('btn-fit').addEventListener('click', fitView);
-el('sys-search').addEventListener('change', e => {
-  const q = e.target.value.trim().toLowerCase();
-  e.target.value = '';
-  if (!q) return;
-  const found = SYSTEMS.find(s => s.name.toLowerCase() === q) || SYSTEMS.find(s => s.name.toLowerCase().includes(q));
-  if (!found) return;
+/* Поиск планет (жалоба пользователя: «неудобно искать планеты»). Ищет по
+ * названию, сектору и фракции-владельцу; без запроса показывает горячие точки
+ * и недавно открытые. Стрелки — выбор, Enter — перелёт, Esc — закрыть. */
+const search = { items: [], active: 0, recent: [] };
+try { search.recent = JSON.parse(localStorage.getItem('galaxyRecentSys') || '[]'); } catch (e) { search.recent = []; }
+function sysTags(s) {
+  const t = [];
+  if (BATTLE[s.id]) t.push('<span title="Идёт бой">⚔</span>');
+  if (DATA.blockades.some(b => b.a === s.id || b.b === s.id)) t.push('<span title="Блокада">⛔</span>');
+  if (strat.cut.has(s.id)) t.push('<span title="Отрезана от снабжения">✂</span>');
+  if (badgesFor(s)) t.push('<span title="Запланирован ивент" style="color:#8fb8d8">◆</span>');
+  return t.join('');
+}
+function hl(text, q) {
+  if (!q) return esc(text);
+  const i = text.toLowerCase().indexOf(q);
+  if (i < 0) return esc(text);
+  return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
+}
+function searchRow(s, q, i) {
+  const f = facOf(s.own);
+  let sec = s.sector && SECTOR[s.sector] ? SECTOR[s.sector].name : (regionOf(s) ? regionOf(s).name : '');
+  // нашлась по фракции, а не по названию или сектору — покажем, чья она
+  if (q && !s.name.toLowerCase().includes(q) && !sec.toLowerCase().includes(q)) sec = f.name;
+  return '<div class="sr-item' + (i === search.active ? ' active' : '') + '" role="option" data-sr="' + i + '"' +
+    (i === search.active ? ' aria-selected="true"' : '') + '>' +
+    '<span class="sr-dot" style="color:' + esc(f.color) + ';background:' + esc(f.color) + '"></span>' +
+    '<span class="sr-name">' + hl(s.name, q) + '</span>' +
+    '<span class="sr-tags">' + sysTags(s) + '</span>' +
+    '<span class="sr-meta">' + esc(sec || gridRef(s)) + '</span></div>';
+}
+function renderSearch() {
+  const box = el('search-results'), input = el('sys-search');
+  const q = input.value.trim().toLowerCase();
+  let html = '';
+  if (!q) {
+    // без запроса: где идут бои, потом недавно открытые
+    const hot = SYSTEMS.filter(s => BATTLE[s.id]).sort((a, b) => a.name.localeCompare(b.name));
+    const recent = search.recent.map(id => SYS[id]).filter(s => s && !BATTLE[s.id]);
+    search.items = [...hot, ...recent];
+    if (search.active >= search.items.length) search.active = 0;
+    let i = 0;
+    if (hot.length) html += '<div class="sr-head">Идут бои</div>' + hot.map(s => searchRow(s, '', i++)).join('');
+    if (recent.length) html += '<div class="sr-head">Недавние</div>' + recent.map(s => searchRow(s, '', i++)).join('');
+    if (!html) html = '<div class="sr-empty">Начните вводить название планеты, сектора или фракции</div>';
+  } else {
+    // сначала совпадение с началом названия, затем внутри названия, затем по сектору/фракции
+    const score = s => {
+      const n = s.name.toLowerCase();
+      if (n === q) return 0;
+      if (n.startsWith(q)) return 1;
+      if (n.includes(q)) return 2;
+      const sec = (s.sector && SECTOR[s.sector] ? SECTOR[s.sector].name : '') + ' ' + (regionOf(s) ? regionOf(s).name : '');
+      if (sec.toLowerCase().includes(q)) return 3;
+      if (facOf(s.own).name.toLowerCase().includes(q)) return 4;
+      return -1;
+    };
+    search.items = SYSTEMS.map(s => [s, score(s)]).filter(([, k]) => k >= 0)
+      .sort((a, b) => a[1] - b[1] || a[0].name.localeCompare(b[0].name)).map(([s]) => s).slice(0, 40);
+    if (search.active >= search.items.length) search.active = 0;
+    html = search.items.length
+      ? search.items.map((s, i) => searchRow(s, q, i)).join('')
+      : '<div class="sr-empty">Ничего не найдено</div>';
+  }
+  box.innerHTML = html;
+  box.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+  const act = box.querySelector('.sr-item.active');
+  if (act) act.scrollIntoView({ block: 'nearest' });
+}
+function closeSearch() {
+  el('search-results').hidden = true;
+  el('sys-search').setAttribute('aria-expanded', 'false');
+}
+function goToSystem(s) {
+  if (!s) return;
+  search.recent = [s.id, ...search.recent.filter(id => id !== s.id)].slice(0, 6);
+  try { localStorage.setItem('galaxyRecentSys', JSON.stringify(search.recent)); } catch (e) { /* не сохраним — не страшно */ }
+  el('sys-search').value = '';
+  closeSearch();
+  el('sys-search').blur();
   if (mode !== 'map') surface();
-  selected = found.id; focusOn(found.id); syncPanel();
+  selected = s.id; focusOn(s.id); syncPanel();
+}
+el('sys-search').addEventListener('focus', () => { search.active = 0; renderSearch(); });
+el('sys-search').addEventListener('input', () => { search.active = 0; renderSearch(); });
+el('sys-search').addEventListener('blur', () => setTimeout(closeSearch, 150));
+el('sys-search').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!search.items.length) return;
+    search.active = (search.active + (e.key === 'ArrowDown' ? 1 : -1) + search.items.length) % search.items.length;
+    renderSearch();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    goToSystem(search.items[search.active]);
+  } else if (e.key === 'Escape') {
+    e.stopPropagation();
+    el('sys-search').value = '';
+    closeSearch();
+    el('sys-search').blur();
+  }
+});
+el('search-results').addEventListener('mousedown', e => {
+  const row = e.target.closest('[data-sr]');
+  if (!row) return;
+  e.preventDefault();
+  goToSystem(search.items[+row.dataset.sr]);
 });
 el('flt-kind').addEventListener('change', e => { viewFilter.kind = e.target.value; });
 el('flt-fac').addEventListener('change', e => { viewFilter.faction = e.target.value; });
@@ -3135,8 +3253,8 @@ function applyFactionTheme() {
   document.documentElement.style.setProperty('--fac-tint-rgb', f.rgb.join(','));
 }
 function syncSearchList() {
-  const dl = el('sys-search-list');
-  if (dl) dl.innerHTML = SYSTEMS.map(s => '<option value="' + esc(s.name) + '">').join('');
+  // список строится на лету при вводе (renderSearch); если он открыт — обновим
+  if (!el('search-results').hidden) renderSearch();
 }
 function syncRes() {
   const f = facOf(DATA.meta.main);
@@ -4162,6 +4280,11 @@ addEventListener('keydown', e => {
   const tag = e.target.tagName;
   if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') {
     if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+  if (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+    e.preventDefault();
+    el('sys-search').focus();
     return;
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && canEditAtAll) {

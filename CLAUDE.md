@@ -1260,6 +1260,11 @@ first of several planned improvement batches (запрос пользовате�
   `body.classList.contains('proposing')` (Ивентолог's local-only draft that
   hasn't gone through `submitProposal()` yet).
 
+**Planet search** (`#sys-search`, focused by `/` or Ctrl+K) replaced the datalist. It
+matches name, then sector or region, then owner faction. With an empty query it lists
+live battles and recently opened systems (`galaxyRecentSys` in localStorage). Rows show
+owner colour and battle/blockade/supply-cut/event icons.
+
 **Galaxy Map UX batch 2** (visual polish, no backend changes):
 - Planet dossier (`#detail`) stat block rewritten from a bare `<dl>` to
   `.stats`/`.stat`/`.stat.wide` card tiles (same `.lab`/`.v` visual language
@@ -1518,6 +1523,12 @@ its old 2D drawing.
   never tinted). They stand in two uneven rows nearest the front, two per vehicle, from
   2 to `INFANTRY_MAX = 8` per side, and fire like the rest. At canon scale they are
   specks next to the walkers and only read when zoomed in.
+- Pirate infantry is a gunslinger model with a built-in firing animation and muzzle
+  flash. `ModelSpec.inPlace` plays the animation without walking it to the front.
+- Scale was raised after "ships look like fleas": `SHIP_K` (Venator 0.22 of the planet
+  radius) and `FIGHTER_K`. `squash()` compresses each class toward its reference size
+  (length^0.7 against Venator, ARC-170, AT-TE): small hulls, infantry and droidekas are
+  bigger than strict canon, but the order of sizes stays the same.
 - `DATA.stations` (`[{id, key, name, fac, sys}]`, a top-level key copied in
   `loadData()` and listed in `_LIST_KEYS`): any number per type. Types: `xq6` (XQ6
   Platform, Republic) and `cis` (CIS station). A station hangs below the fleets in the
