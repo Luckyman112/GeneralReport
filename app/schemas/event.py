@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,6 +16,7 @@ class EventRead(BaseModel):
 
     id: int
     title: str
+    kind: str = "event"
     payload: dict[str, Any]
     status: EventStatus
     submitted_by: UserBrief
@@ -27,6 +28,8 @@ class EventRead(BaseModel):
     cancelled_by: UserBrief | None = None
     cancelled_at: datetime | None = None
     cancellation_reason: str | None = None
+    revision_comment: str | None = None
+    sent_by: UserBrief | None = None
     # Заявки на свободное сообщение по этой заявке (см. app/models/event_message.py)
     # — заполняется вручную в эндпоинте (batch-запросом), не через relationship
     messages: list[EventMessageRead] = Field(default_factory=list)
@@ -43,9 +46,17 @@ class EventPlanetBadge(BaseModel):
     briefing_start: str | None = None
 
 
+EventKind = Literal["event", "rp", "mini"]
+
+
 class EventCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
+    kind: EventKind = "event"
     payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class EventRevisionRequest(BaseModel):
+    comment: str = Field(min_length=1, max_length=2000)
 
 
 class EventUpdate(BaseModel):
@@ -70,19 +81,6 @@ class EventMapRead(BaseModel):
     id: int
     name: str
     url: str | None = None
-
-
-class EventCommsMessage(BaseModel):
-    """Форма миника: сообщение «на коммуникатор бойцов»."""
-
-    sender: str = Field(min_length=1, max_length=200)
-    recipient: str = Field(min_length=1, max_length=200)
-    message: str = Field(min_length=1, max_length=1500)
-    time: str | None = Field(default=None, max_length=60)
-
-
-class EventCommsResult(BaseModel):
-    text: str
 
 
 class EventMapCreate(BaseModel):
@@ -123,6 +121,10 @@ class EventRosterEntry(BaseModel):
     rp_count_week: int = 0
     rp_count_month: int = 0
     rp_count_all_time: int = 0
+    # то же за выбранный в составе период (since/until), см. app/api/event_room.py::get_roster
+    mini_count: int = 0
+    combat_count: int = 0
+    rp_count: int = 0
     activity_last_report_at: datetime | None = None
 
 

@@ -142,3 +142,54 @@ async def daily_type_counts(db: AsyncSession, *, since: datetime, until: datetim
     for day, event_type, count in result.all():
         by_day.setdefault(day, {})[event_type] = count
     return by_day
+
+
+async def counts_in_range(
+    db: AsyncSession, user_ids: list[int], *, since: datetime | None, until: datetime | None
+) -> dict[int, dict[str, int]]:
+    """Одобренные отчёты каждого бойца по типам за произвольный период (для
+    состава Ивентрума с выбором периода). since/until=None — без ограничения."""
+    if not user_ids:
+        return {}
+    query = select(
+        EventActivityReport.submitted_by_user_id, EventActivityReport.event_type, func.count(EventActivityReport.id)
+    ).where(
+        EventActivityReport.submitted_by_user_id.in_(user_ids),
+        EventActivityReport.status == EventActivityReportStatus.APPROVED,
+    )
+    if since is not None:
+        query = query.where(EventActivityReport.created_at >= since)
+    if until is not None:
+        query = query.where(EventActivityReport.created_at < until)
+    query = query.group_by(EventActivityReport.submitted_by_user_id, EventActivityReport.event_type)
+    out: dict[int, dict[str, int]] = {}
+    for user_id, event_type, count in (await db.execute(query)).all():
+        out.setdefault(user_id, {})[event_type] = count
+    return out
+
+
+async def daily_user_counts(db: AsyncSession, *, since: datetime, until: datetime) -> dict[str, dict[int, int]]:
+    """Одобренные отчёты по дням и по авторам — график «кто даёт активность»."""
+    day_expr = func.to_char(EventActivityReport.created_at, "YYYY-MM-DD")
+    query = (
+        select(day_expr, EventActivityReport.submitted_by_user_id, func.count(EventActivityReport.id))
+        .where(
+            EventActivityReport.status == EventActivityReportStatus.APPROVED,
+            EventActivityReport.created_at >= since,
+            EventActivityReport.created_at < until,
+        )
+        .group_by(day_expr, EventActivityReport.submitted_by_user_id)
+    )
+    by_day: dict[str, dict[int, int]] = {}
+    for day, user_id, count in (await db.execute(query)).all():
+        by_day.setdefault(day, {})[user_id] = count
+    return by_day
+
+
+async def first_approved_at(db: AsyncSession) -> datetime | None:
+    result = await db.execute(
+        select(func.min(EventActivityReport.created_at)).where(
+            EventActivityReport.status == EventActivityReportStatus.APPROVED
+        )
+    )
+    return result.scalar_one_or_none()

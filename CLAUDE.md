@@ -630,10 +630,24 @@ card/embed itself.
   check as create). Both are `can_decide_event`.
 - The event request form no longer shows "Система". `star_system` still passes
   through on edit, so old events keep their value.
-- Mini-event comms form (`EventCommsForm.jsx`, `POST /event-room/comms`): formats the
-  "[ На коммуникатор бойцов пришло сообщение ]" text and posts it to
-  `AppSettings.event_comms_channel_id` (migration 0096, picked in Настройки), no
-  role ping. The route is declared before the `/{event_id}` routes on purpose.
+- One request flow for three kinds (migration 0097): `Event.kind` is `event`
+  (operation dossier card), `rp` (RP event embed) or `mini` (the
+  "[ На коммуникатор бойцов пришло сообщение ]" text). The fields of each kind live
+  in `payload`; the templates are in `frontend/src/components/eventroom/requestModel.js`.
+  Statuses: `pending` → `revision` (reviewer's `revision_comment`, author fixes it
+  and the edit flips it back to `pending`) → `approved` → sent. **Approval no
+  longer posts to Discord**: the author (or a reviewer) presses «Отправить»
+  (`POST /event-room/{id}/send`), which stores `notified_at`, `sent_by` and the
+  `discord_channel_id` it went to. Edits after that update the same message
+  (`_deliver` in `app/api/event_room.py`, per kind; `mini` goes to
+  `event_comms_channel_id`, falling back to the event channel, and has no ping).
+  Reviewers may edit any time except after cancellation; the author only while
+  `pending`/`revision`. The old standalone comms form and `POST /comms` are gone.
+- `GET /event-room/roster` takes `since`/`until`: request counts and report
+  counts (`mini_count`/`combat_count`/`rp_count`) are for that range only (bug
+  report: the request columns used to be all-time whatever the period said).
+  `GET /event-room/roster/trend` takes `group=type|person`; without `since` it
+  starts at the first approved report.
 
 ### Ивентрум roster — merged состав+activity table, split mini/combat
 `GET /event-room/roster` (`app/api/event_room.py::get_roster`) is one merged

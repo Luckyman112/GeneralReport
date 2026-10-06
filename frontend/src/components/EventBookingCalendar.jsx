@@ -6,12 +6,16 @@ import { DateTimePicker } from "./DateTimePicker";
 import { useToast } from "./ToastContext";
 import { formatMskDate } from "../utils/formatDate";
 
-const STATUS_LABELS = { pending: "ожидает", approved: "одобрено", rejected: "отклонено" };
+// rejected у брони = отменена (отдельного статуса нет, см. app/crud/event_booking.py::cancel)
+const STATUS_LABELS = { pending: "ожидает", approved: "действует", rejected: "отменена" };
+
+function hhmm(iso) {
+  return new Date(iso).toLocaleTimeString("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" });
+}
+function who(u) {
+  return u ? u.nickname_override || u.username : "—";
+}
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-const MONTH_NAMES = [
-  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
-];
 
 function startOfMonth(d) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -28,7 +32,8 @@ function toPickerValue(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function formatDayLabel(d) {
-  return `${d.getDate()} ${MONTH_NAMES[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
+  // toLocaleDateString даёт родительный падеж: «8 октября 2026», а не «8 октябрь»
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }).replace(" г.", "");
 }
 
 /** Календарь бронирования дат/времени под ивенты — бронь занимает слот сразу,
@@ -237,9 +242,9 @@ export function EventBookingCalendar() {
                       <span
                         key={b.id}
                         className={`booking-calendar-chip booking-calendar-chip-${b.status}`}
-                        title={`${b.title} (${STATUS_LABELS[b.status]})`}
+                        title={`${hhmm(b.starts_at)}–${hhmm(b.ends_at)} МСК · ${b.title} · ${who(b.requested_by)} · ${STATUS_LABELS[b.status]}${b.status === "rejected" && b.rejection_reason ? ` (${b.rejection_reason})` : ""}`}
                       >
-                        {b.title}
+                        {hhmm(b.starts_at)} {b.title}
                       </span>
                     ))}
                   </div>
@@ -249,6 +254,31 @@ export function EventBookingCalendar() {
           })
         )}
       </div>
+
+      {selectedDate && (bookingsByDateKey.get(toDateKey(selectedDate)) || []).length > 0 && (
+        <div className="booking-day-panel fade-in-up">
+          <h4>Брони на {formatDayLabel(selectedDate)}</h4>
+          <ul className="booking-day-list">
+            {(bookingsByDateKey.get(toDateKey(selectedDate)) || []).map((b) => (
+              <li key={b.id} className={`booking-day-item status-${b.status}`}>
+                <span className="booking-day-time">
+                  {hhmm(b.starts_at)}–{hhmm(b.ends_at)} МСК
+                </span>
+                <span className="booking-day-title">{b.title}</span>
+                <span className="hint-text">забронировал {who(b.requested_by)}</span>
+                <span className={`status-badge status-${b.status}`}>{STATUS_LABELS[b.status]}</span>
+                {b.status === "rejected" && (
+                  <span className="report-rejection-reason">
+                    Отменил {who(b.decided_by)}
+                    {b.decided_at ? ` ${formatMskDate(b.decided_at)} МСК` : ""}
+                    {b.rejection_reason ? `: ${b.rejection_reason}` : ""}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {selectedDate && (
         <form className="report-form fade-in-up" onSubmit={handleSubmitBooking}>
@@ -293,8 +323,10 @@ export function EventBookingCalendar() {
                   <p className="member-report-content">
                     {b.title} — <span className={`status-badge status-${b.status}`}>{STATUS_LABELS[b.status]}</span>
                   </p>
-                  {b.status === "rejected" && b.rejection_reason && (
-                    <p className="report-rejection-reason">Причина отклонения: {b.rejection_reason}</p>
+                  {b.status === "rejected" && (
+                    <p className="report-rejection-reason">
+                      Отменил {who(b.decided_by)}{b.rejection_reason ? `: ${b.rejection_reason}` : ""}
+                    </p>
                   )}
                 </li>
               ))}

@@ -16061,119 +16061,6 @@
     }
    }
   },
-  "/api/event-room/comms": {
-   "post": {
-    "tags": [
-     "event-room"
-    ],
-    "summary": "Send Comms Message",
-    "description": "Форма миника: бот отправляет сообщение «на коммуникатор бойцов» в канал,\nвыбранный в настройках (event_comms_channel_id). Без пинга ролей.",
-    "operationId": "send_comms_message_api_event_room_comms_post",
-    "security": [
-     {
-      "HTTPBearer": []
-     }
-    ],
-    "parameters": [
-     {
-      "name": "X-View-As-Role",
-      "in": "header",
-      "required": false,
-      "schema": {
-       "anyOf": [
-        {
-         "type": "string"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "title": "X-View-As-Role"
-      }
-     },
-     {
-      "name": "X-View-As-Regiment-Id",
-      "in": "header",
-      "required": false,
-      "schema": {
-       "anyOf": [
-        {
-         "type": "integer"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "title": "X-View-As-Regiment-Id"
-      }
-     },
-     {
-      "name": "X-View-As-Extra",
-      "in": "header",
-      "required": false,
-      "schema": {
-       "anyOf": [
-        {
-         "type": "string"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "title": "X-View-As-Extra"
-      }
-     },
-     {
-      "name": "X-View-As-Discord-Id",
-      "in": "header",
-      "required": false,
-      "schema": {
-       "anyOf": [
-        {
-         "type": "string"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "title": "X-View-As-Discord-Id"
-      }
-     }
-    ],
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/EventCommsMessage"
-       }
-      }
-     }
-    },
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/EventCommsResult"
-        }
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
   "/api/event-room": {
    "get": {
     "tags": [
@@ -16618,6 +16505,40 @@
     ],
     "parameters": [
      {
+      "name": "since",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Since"
+      }
+     },
+     {
+      "name": "until",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Until"
+      }
+     },
+     {
       "name": "X-View-As-Role",
       "in": "header",
       "required": false,
@@ -16716,7 +16637,7 @@
      "event-room"
     ],
     "summary": "Get Roster Trend",
-    "description": "График активности (TrendChart на фронте) — Мини-ивент/Боевой вылет по\nдням за произвольный диапазон (см. решение пользователя: неделя/месяц/\nсвои даты).",
+    "description": "График активности по дням за период. group=type — линии мини-ивент /\nбоевой вылет / РП ивент; group=person — линия на каждого ивентолога, чтобы\nбыло видно, кто даёт активность (см. решение пользователя). Без since —\nс первого одобренного отчёта («всё время»).",
     "operationId": "get_roster_trend_api_event_room_roster_trend_get",
     "security": [
      {
@@ -16727,21 +16648,49 @@
      {
       "name": "since",
       "in": "query",
-      "required": true,
+      "required": false,
       "schema": {
-       "type": "string",
-       "format": "date-time",
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
        "title": "Since"
       }
      },
      {
       "name": "until",
       "in": "query",
-      "required": true,
+      "required": false,
       "schema": {
-       "type": "string",
-       "format": "date-time",
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
        "title": "Until"
+      }
+     },
+     {
+      "name": "group",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "type",
+        "person"
+       ],
+       "type": "string",
+       "default": "type",
+       "title": "Group"
       }
      },
      {
@@ -17286,7 +17235,7 @@
      "event-room"
     ],
     "summary": "Update Event",
-    "description": "Правка заявки — доступна и пока она ожидает решения, и уже после\nодобрения (многое, например командующего операции, узнают только по мере\nбрифинга — см. решение пользователя). Отклонённую заявку менять нельзя —\nрешение по ней уже окончательно. Если заявка уже была одобрена, дозаполнение\nРЕДАКТИРУЕТ уже отправленное ботом сообщение (см. решение пользователя) —\nесли его почему-то не удалось отредактировать (например, кто-то удалил\nсообщение вручную), бот отправляет новое и запоминает уже его id.",
+    "description": "Кто может править (см. решение пользователя): Ассистент/Куратор — когда\nугодно, кроме уже отменённой заявки; автор — только пока заявка на\nрассмотрении или возвращена на редакцию. Правка автором заявки «на\nредакции» снова отправляет её на рассмотрение. Если сообщение уже ушло в\nDiscord, правка редактирует то же сообщение.",
     "operationId": "update_event_api_event_room__event_id__patch",
     "security": [
      {
@@ -17408,6 +17357,7 @@
      "event-room"
     ],
     "summary": "Approve Event",
+    "description": "Одобрение больше не отправляет сообщение само: после него у автора\nпоявляется кнопка «Отправить» (см. send_event), см. решение пользователя.",
     "operationId": "approve_event_api_event_room__event_id__approve_post",
     "security": [
      {
@@ -17610,6 +17560,240 @@
       }
      }
     },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventRead"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/event-room/{event_id}/revision": {
+   "post": {
+    "tags": [
+     "event-room"
+    ],
+    "summary": "Send Event To Revision",
+    "description": "Вернуть заявку автору с коротким замечанием, что поправить.",
+    "operationId": "send_event_to_revision_api_event_room__event_id__revision_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "event_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Event Id"
+      }
+     },
+     {
+      "name": "X-View-As-Role",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-View-As-Role"
+      }
+     },
+     {
+      "name": "X-View-As-Regiment-Id",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-View-As-Regiment-Id"
+      }
+     },
+     {
+      "name": "X-View-As-Extra",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-View-As-Extra"
+      }
+     },
+     {
+      "name": "X-View-As-Discord-Id",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-View-As-Discord-Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EventRevisionRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventRead"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/event-room/{event_id}/send": {
+   "post": {
+    "tags": [
+     "event-room"
+    ],
+    "summary": "Send Event",
+    "description": "Отправить одобренную заявку в Discord — автор или Ассистент/Куратор.\nПовторно отправить нельзя: дальше правки редактируют то же сообщение.",
+    "operationId": "send_event_api_event_room__event_id__send_post",
+    "security": [
+     {
+      "HTTPBearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "event_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Event Id"
+      }
+     },
+     {
+      "name": "X-View-As-Role",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-View-As-Role"
+      }
+     },
+     {
+      "name": "X-View-As-Regiment-Id",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-View-As-Regiment-Id"
+      }
+     },
+     {
+      "name": "X-View-As-Extra",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-View-As-Extra"
+      }
+     },
+     {
+      "name": "X-View-As-Discord-Id",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-View-As-Discord-Id"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -23175,61 +23359,6 @@
     "type": "object",
     "title": "EventCancelRequest"
    },
-   "EventCommsMessage": {
-    "properties": {
-     "sender": {
-      "type": "string",
-      "maxLength": 200,
-      "minLength": 1,
-      "title": "Sender"
-     },
-     "recipient": {
-      "type": "string",
-      "maxLength": 200,
-      "minLength": 1,
-      "title": "Recipient"
-     },
-     "message": {
-      "type": "string",
-      "maxLength": 1500,
-      "minLength": 1,
-      "title": "Message"
-     },
-     "time": {
-      "anyOf": [
-       {
-        "type": "string",
-        "maxLength": 60
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Time"
-     }
-    },
-    "type": "object",
-    "required": [
-     "sender",
-     "recipient",
-     "message"
-    ],
-    "title": "EventCommsMessage",
-    "description": "Форма миника: сообщение «на коммуникатор бойцов»."
-   },
-   "EventCommsResult": {
-    "properties": {
-     "text": {
-      "type": "string",
-      "title": "Text"
-     }
-    },
-    "type": "object",
-    "required": [
-     "text"
-    ],
-    "title": "EventCommsResult"
-   },
    "EventCreate": {
     "properties": {
      "title": {
@@ -23237,6 +23366,16 @@
       "maxLength": 255,
       "minLength": 1,
       "title": "Title"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "event",
+       "rp",
+       "mini"
+      ],
+      "title": "Kind",
+      "default": "event"
      },
      "payload": {
       "type": "object",
@@ -23598,6 +23737,11 @@
       "type": "string",
       "title": "Title"
      },
+     "kind": {
+      "type": "string",
+      "title": "Kind",
+      "default": "event"
+     },
      "payload": {
       "type": "object",
       "title": "Payload"
@@ -23691,6 +23835,27 @@
       ],
       "title": "Cancellation Reason"
      },
+     "revision_comment": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revision Comment"
+     },
+     "sent_by": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/UserBrief"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "messages": {
       "items": {
        "$ref": "#/components/schemas/EventMessageRead"
@@ -23724,6 +23889,21 @@
      "reason"
     ],
     "title": "EventRejectRequest"
+   },
+   "EventRevisionRequest": {
+    "properties": {
+     "comment": {
+      "type": "string",
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Comment"
+     }
+    },
+    "type": "object",
+    "required": [
+     "comment"
+    ],
+    "title": "EventRevisionRequest"
    },
    "EventRosterEntry": {
     "properties": {
@@ -23817,6 +23997,21 @@
       "title": "Rp Count All Time",
       "default": 0
      },
+     "mini_count": {
+      "type": "integer",
+      "title": "Mini Count",
+      "default": 0
+     },
+     "combat_count": {
+      "type": "integer",
+      "title": "Combat Count",
+      "default": 0
+     },
+     "rp_count": {
+      "type": "integer",
+      "title": "Rp Count",
+      "default": 0
+     },
      "activity_last_report_at": {
       "anyOf": [
        {
@@ -23848,7 +24043,8 @@
      "pending",
      "approved",
      "rejected",
-     "cancelled"
+     "cancelled",
+     "revision"
     ],
     "title": "EventStatus"
    },

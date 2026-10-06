@@ -2336,27 +2336,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/event-room/comms": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Send Comms Message
-         * @description Форма миника: бот отправляет сообщение «на коммуникатор бойцов» в канал,
-         *     выбранный в настройках (event_comms_channel_id). Без пинга ролей.
-         */
-        post: operations["send_comms_message_api_event_room_comms_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/event-room": {
         parameters: {
             query?: never;
@@ -2445,9 +2424,10 @@ export interface paths {
         };
         /**
          * Get Roster Trend
-         * @description График активности (TrendChart на фронте) — Мини-ивент/Боевой вылет по
-         *     дням за произвольный диапазон (см. решение пользователя: неделя/месяц/
-         *     свои даты).
+         * @description График активности по дням за период. group=type — линии мини-ивент /
+         *     боевой вылет / РП ивент; group=person — линия на каждого ивентолога, чтобы
+         *     было видно, кто даёт активность (см. решение пользователя). Без since —
+         *     с первого одобренного отчёта («всё время»).
          */
         get: operations["get_roster_trend_api_event_room_roster_trend_get"];
         put?: never;
@@ -2560,13 +2540,11 @@ export interface paths {
         head?: never;
         /**
          * Update Event
-         * @description Правка заявки — доступна и пока она ожидает решения, и уже после
-         *     одобрения (многое, например командующего операции, узнают только по мере
-         *     брифинга — см. решение пользователя). Отклонённую заявку менять нельзя —
-         *     решение по ней уже окончательно. Если заявка уже была одобрена, дозаполнение
-         *     РЕДАКТИРУЕТ уже отправленное ботом сообщение (см. решение пользователя) —
-         *     если его почему-то не удалось отредактировать (например, кто-то удалил
-         *     сообщение вручную), бот отправляет новое и запоминает уже его id.
+         * @description Кто может править (см. решение пользователя): Ассистент/Куратор — когда
+         *     угодно, кроме уже отменённой заявки; автор — только пока заявка на
+         *     рассмотрении или возвращена на редакцию. Правка автором заявки «на
+         *     редакции» снова отправляет её на рассмотрение. Если сообщение уже ушло в
+         *     Discord, правка редактирует то же сообщение.
          */
         patch: operations["update_event_api_event_room__event_id__patch"];
         trace?: never;
@@ -2580,7 +2558,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve Event */
+        /**
+         * Approve Event
+         * @description Одобрение больше не отправляет сообщение само: после него у автора
+         *     появляется кнопка «Отправить» (см. send_event), см. решение пользователя.
+         */
         post: operations["approve_event_api_event_room__event_id__approve_post"];
         delete?: never;
         options?: never;
@@ -2599,6 +2581,47 @@ export interface paths {
         put?: never;
         /** Reject Event */
         post: operations["reject_event_api_event_room__event_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-room/{event_id}/revision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Event To Revision
+         * @description Вернуть заявку автору с коротким замечанием, что поправить.
+         */
+        post: operations["send_event_to_revision_api_event_room__event_id__revision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-room/{event_id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Event
+         * @description Отправить одобренную заявку в Discord — автор или Ассистент/Куратор.
+         *     Повторно отправить нельзя: дальше правки редактируют то же сообщение.
+         */
+        post: operations["send_event_api_event_room__event_id__send_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3913,29 +3936,16 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
-        /**
-         * EventCommsMessage
-         * @description Форма миника: сообщение «на коммуникатор бойцов».
-         */
-        EventCommsMessage: {
-            /** Sender */
-            sender: string;
-            /** Recipient */
-            recipient: string;
-            /** Message */
-            message: string;
-            /** Time */
-            time?: string | null;
-        };
-        /** EventCommsResult */
-        EventCommsResult: {
-            /** Text */
-            text: string;
-        };
         /** EventCreate */
         EventCreate: {
             /** Title */
             title: string;
+            /**
+             * Kind
+             * @default event
+             * @enum {string}
+             */
+            kind: "event" | "rp" | "mini";
             /** Payload */
             payload?: Record<string, never>;
         };
@@ -4055,6 +4065,11 @@ export interface components {
             id: number;
             /** Title */
             title: string;
+            /**
+             * Kind
+             * @default event
+             */
+            kind: string;
             /** Payload */
             payload: Record<string, never>;
             status: components["schemas"]["EventStatus"];
@@ -4076,6 +4091,9 @@ export interface components {
             cancelled_at?: string | null;
             /** Cancellation Reason */
             cancellation_reason?: string | null;
+            /** Revision Comment */
+            revision_comment?: string | null;
+            sent_by?: components["schemas"]["UserBrief"] | null;
             /** Messages */
             messages?: components["schemas"]["EventMessageRead"][];
         };
@@ -4083,6 +4101,11 @@ export interface components {
         EventRejectRequest: {
             /** Reason */
             reason: string;
+        };
+        /** EventRevisionRequest */
+        EventRevisionRequest: {
+            /** Comment */
+            comment: string;
         };
         /**
          * EventRosterEntry
@@ -4153,6 +4176,21 @@ export interface components {
              * @default 0
              */
             rp_count_all_time: number;
+            /**
+             * Mini Count
+             * @default 0
+             */
+            mini_count: number;
+            /**
+             * Combat Count
+             * @default 0
+             */
+            combat_count: number;
+            /**
+             * Rp Count
+             * @default 0
+             */
+            rp_count: number;
             /** Activity Last Report At */
             activity_last_report_at?: string | null;
         };
@@ -4160,7 +4198,7 @@ export interface components {
          * EventStatus
          * @enum {string}
          */
-        EventStatus: "pending" | "approved" | "rejected" | "cancelled";
+        EventStatus: "pending" | "approved" | "rejected" | "cancelled" | "revision";
         /**
          * EventUpdate
          * @description Правка заявки, пока она pending — например, дозаполнить командующего
@@ -11338,44 +11376,6 @@ export interface operations {
             };
         };
     };
-    send_comms_message_api_event_room_comms_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-View-As-Role"?: string | null;
-                "X-View-As-Regiment-Id"?: number | null;
-                "X-View-As-Extra"?: string | null;
-                "X-View-As-Discord-Id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EventCommsMessage"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EventCommsResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_events_api_event_room_get: {
         parameters: {
             query?: never;
@@ -11518,7 +11518,10 @@ export interface operations {
     };
     get_roster_api_event_room_roster_get: {
         parameters: {
-            query?: never;
+            query?: {
+                since?: string | null;
+                until?: string | null;
+            };
             header?: {
                 "X-View-As-Role"?: string | null;
                 "X-View-As-Regiment-Id"?: number | null;
@@ -11552,9 +11555,10 @@ export interface operations {
     };
     get_roster_trend_api_event_room_roster_trend_get: {
         parameters: {
-            query: {
-                since: string;
-                until: string;
+            query?: {
+                since?: string | null;
+                until?: string | null;
+                group?: "type" | "person";
             };
             header?: {
                 "X-View-As-Role"?: string | null;
@@ -11830,6 +11834,82 @@ export interface operations {
                 "application/json": components["schemas"]["EventRejectRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_event_to_revision_api_event_room__event_id__revision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-View-As-Role"?: string | null;
+                "X-View-As-Regiment-Id"?: number | null;
+                "X-View-As-Extra"?: string | null;
+                "X-View-As-Discord-Id"?: string | null;
+            };
+            path: {
+                event_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_event_api_event_room__event_id__send_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-View-As-Role"?: string | null;
+                "X-View-As-Regiment-Id"?: number | null;
+                "X-View-As-Extra"?: string | null;
+                "X-View-As-Discord-Id"?: string | null;
+            };
+            path: {
+                event_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

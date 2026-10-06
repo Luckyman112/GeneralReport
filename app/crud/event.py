@@ -13,6 +13,7 @@ _LOAD_OPTIONS = [
     selectinload(Event.submitted_by).selectinload(User.rank),
     selectinload(Event.decided_by).selectinload(User.rank),
     selectinload(Event.cancelled_by).selectinload(User.rank),
+    selectinload(Event.sent_by).selectinload(User.rank),
 ]
 
 
@@ -45,19 +46,25 @@ async def get_by_id(db: AsyncSession, event_id: int) -> Event | None:
     return await db.get(Event, event_id, options=_LOAD_OPTIONS, populate_existing=True)
 
 
-async def create(db: AsyncSession, *, title: str, payload: dict, submitted_by_user_id: int) -> Event:
-    row = Event(title=title, payload=payload, submitted_by_user_id=submitted_by_user_id)
+async def create(
+    db: AsyncSession, *, title: str, payload: dict, submitted_by_user_id: int, kind: str = "event"
+) -> Event:
+    row = Event(title=title, kind=kind, payload=payload, submitted_by_user_id=submitted_by_user_id)
     db.add(row)
     await db.commit()
     return await db.get(Event, row.id, options=_LOAD_OPTIONS, populate_existing=True)
 
 
-async def update_content(db: AsyncSession, event: Event, *, title: str, payload: dict) -> Event:
-    """Правка заявки — доступна автору и Ассистенту/Куратору, как пока заявка
-    ожидает решения, так и уже после одобрения (см. app/api/event_room.py) —
-    многое (например, командующего) узнают только по мере брифинга."""
+async def update_content(
+    db: AsyncSession, event: Event, *, title: str, payload: dict, resubmit: bool = False
+) -> Event:
+    """Правка заявки (кто и когда может править — см. app/api/event_room.py).
+    resubmit=True — автор исправил заявку, возвращённую на редакцию: она снова
+    уходит на рассмотрение."""
     event.title = title
     event.payload = payload
+    if resubmit and event.status == EventStatus.REVISION:
+        event.status = EventStatus.PENDING
     await db.commit()
     return await db.get(Event, event.id, options=_LOAD_OPTIONS, populate_existing=True)
 
@@ -70,12 +77,36 @@ async def decide(
     # с пингом роли в Discord-канал каждый раз заново (баг-репорт: 7 пингов
     # всего сервера от одной и той же заявки) — тот же паттерн, что
     # promotion_crud.decide()
-    if event.status != EventStatus.PENDING:
+    if event.status not in (EventStatus.PENDING, EventStatus.REVISION):
         raise AppError("Заявка уже решена — повторное решение по ней невозможно")
     event.status = EventStatus.APPROVED if approve else EventStatus.REJECTED
     event.decided_by_user_id = decided_by_user_id
     event.decided_at = datetime.now(timezone.utc)
     event.rejection_reason = rejection_reason
+    await db.commit()
+    return await db.get(Event, event.id, options=_LOAD_OPTIONS, populate_existing=True)
+
+
+async def send_to_revision(db: AsyncSession, event: Event, *, reviewer_user_id: int, comment: str) -> Event:
+    """Вернуть заявку автору на доработку с замечанием. Только для ещё не
+    решённой заявки — одобренную правит сам куратор, а не возвращает."""
+    if event.status not in (EventStatus.PENDING, EventStatus.REVISION):
+        raise AppError("На редакцию можно вернуть только заявку, которая ещё на рассмотрении")
+    event.status = EventStatus.REVISION
+    event.revision_comment = comment
+    event.decided_by_user_id = reviewer_user_id
+    event.decided_at = datetime.now(timezone.utc)
+    await db.commit()
+    return await db.get(Event, event.id, options=_LOAD_OPTIONS, populate_existing=True)
+
+
+async def mark_sent(
+    db: AsyncSession, event: Event, *, sent_by_user_id: int, channel_id: str, discord_message_id: str | None
+) -> Event:
+    event.notified_at = datetime.now(timezone.utc)
+    event.sent_by_user_id = sent_by_user_id
+    event.discord_channel_id = channel_id
+    event.discord_message_id = discord_message_id
     await db.commit()
     return await db.get(Event, event.id, options=_LOAD_OPTIONS, populate_existing=True)
 

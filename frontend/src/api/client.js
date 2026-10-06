@@ -728,13 +728,16 @@ export const api = {
   revokeAllSessions: (token) => request("/api/admin/sessions/revoke-all", { method: "POST", token }),
 
   listEvents: (token) => request("/api/event-room", { token }),
-  createEvent: (token, { title, payload }) =>
-    request("/api/event-room", { method: "POST", token, body: { title, payload } }),
+  createEvent: (token, { title, kind, payload }) =>
+    request("/api/event-room", { method: "POST", token, body: { title, kind: kind || "event", payload } }),
   updateEvent: (token, eventId, { title, payload }) =>
     request(`/api/event-room/${eventId}`, { method: "PATCH", token, body: { title, payload } }),
   approveEvent: (token, eventId) => request(`/api/event-room/${eventId}/approve`, { method: "POST", token }),
   rejectEvent: (token, eventId, reason) =>
     request(`/api/event-room/${eventId}/reject`, { method: "POST", token, body: { reason } }),
+  sendEventToRevision: (token, eventId, comment) =>
+    request(`/api/event-room/${eventId}/revision`, { method: "POST", token, body: { comment } }),
+  sendEvent: (token, eventId) => request(`/api/event-room/${eventId}/send`, { method: "POST", token }),
   createEventMessage: (token, eventId, content) =>
     request(`/api/event-room/${eventId}/messages`, { method: "POST", token, body: { content } }),
   decideEventMessage: (token, messageId, { status, rejectionReason }) =>
@@ -762,12 +765,21 @@ export const api = {
       body: { name, url: url || null },
     }),
   deleteEventMap: (token, mapId) => request(`/api/event-room/maps/${mapId}`, { method: "DELETE", token }),
-  getEventRoster: (token) => request("/api/event-room/roster", { token }),
+  getEventRoster: (token, range) => {
+    const q = new URLSearchParams();
+    if (range?.since) q.set("since", range.since);
+    if (range?.until) q.set("until", range.until);
+    const qs = q.toString();
+    return request(`/api/event-room/roster${qs ? `?${qs}` : ""}`, { token });
+  },
   getEventRosterMemberDetail: (token, discordId) => request(`/api/event-room/roster/${discordId}`, { token }),
-  getEventRosterTrend: (token, { since, until }) =>
-    request(`/api/event-room/roster/trend?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, {
-      token,
-    }),
+  getEventRosterTrend: (token, { since, until, group }) => {
+    const q = new URLSearchParams();
+    if (since) q.set("since", since);
+    if (until) q.set("until", until);
+    if (group) q.set("group", group);
+    return request(`/api/event-room/roster/trend?${q.toString()}`, { token });
+  },
   uploadEventMapImage: (token, file) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -837,8 +849,6 @@ export const api = {
     }),
   cancelEventBooking: (token, bookingId, reason) =>
     request(`/api/event-bookings/${bookingId}/cancel`, { method: "POST", token, body: { reason: reason || null } }),
-  sendEventComms: (token, { sender, recipient, message, time }) =>
-    request("/api/event-room/comms", { method: "POST", token, body: { sender, recipient, message, time } }),
   approveEventBooking: (token, bookingId) =>
     request(`/api/event-bookings/${bookingId}/approve`, { method: "POST", token }),
 

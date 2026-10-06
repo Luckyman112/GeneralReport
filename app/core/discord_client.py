@@ -218,7 +218,7 @@ async def fetch_guild_text_channels() -> list[dict]:
     ]
 
 
-async def send_channel_message(channel_id: str, content: str | None = None, *, embed: dict | None = None) -> None:
+async def send_channel_message(channel_id: str, content: str | None = None, *, embed: dict | None = None) -> str | None:
     """Отправляет сообщение от имени бота в канал (Bot API, не webhook — см.
     решение пользователя: уведомление должно выглядеть как сообщение бота).
     embed — карточка операции (см. app/api/event_room.py); интерактивные кнопки
@@ -237,6 +237,26 @@ async def send_channel_message(channel_id: str, content: str | None = None, *, e
     if response.status_code not in (200, 201):
         logger.error("Discord send channel message failed: %s %s", response.status_code, response.text)
         raise DiscordAPIError("Не удалось отправить сообщение в Discord-канал.")
+    # id нужен, чтобы потом править это же сообщение (РП ивент, миник)
+    try:
+        return response.json().get("id")
+    except ValueError:
+        return None
+
+
+async def edit_channel_message_text(
+    channel_id: str, message_id: str, *, content: str | None = None, embed: dict | None = None
+) -> None:
+    """Правка уже отправленного сообщения без вложений — для РП ивента и
+    миника (у заявки на ивент есть картинка-досье, её правит edit_channel_message)."""
+    url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages/{message_id}"
+    body: dict = {"content": content or ""}
+    body["embeds"] = [embed] if embed else []
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(url, headers=_bot_headers(), json=body)
+    if response.status_code not in (200, 201):
+        logger.error("Discord edit message failed: %s %s", response.status_code, response.text)
+        raise DiscordAPIError("Не удалось отредактировать сообщение в Discord-канале.")
 
 
 async def send_channel_message_with_file(

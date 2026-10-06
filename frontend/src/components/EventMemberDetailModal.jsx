@@ -8,6 +8,7 @@ import { PeriodFilterBar } from "./PeriodFilterBar";
 import { StatusBadge } from "./StatusBadge";
 import { useToast } from "./ToastContext";
 import { usePeriodFilter } from "../hooks/usePeriodFilter";
+import { KindBadge, StatusChip } from "./eventroom/RequestCard";
 import { formatMskDate } from "../utils/formatDate";
 
 const EVENT_TYPE_LABELS = { mini: "Мини-ивент", combat: "Боевой вылет", rp: "РП ивент" };
@@ -171,7 +172,7 @@ export function EventMemberDetailModal({ discordId, onClose }) {
                   <ul className="member-report-list">
                     {filteredEvents.map((ev) => (
                       <li key={ev.id}>
-                        <StatusBadge status={ev.status} />
+                        <KindBadge ev={ev} /> <StatusChip ev={ev} />
                         <span className="report-regiment">{ev.title}</span>
                         <span className="member-report-date">{formatMskDate(ev.created_at)} МСК</span>
                         {ev.status === "rejected" && ev.rejection_reason && (
