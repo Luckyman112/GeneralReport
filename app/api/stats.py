@@ -73,11 +73,20 @@ async def get_formation_stats(
 
     cutoff = stats_crud.period_cutoff(period)
     counts = await stats_crud.count_by_regiment(db, cutoff=cutoff)
-    regiments = {r.id: r for r in await regiment_crud.get_all(db)}
+    # архивные тоже: их старые рапорты остаются в статистике, и без них
+    # подпись падала в "#10" вместо названия (баг-репорт)
+    regiments = {r.id: r for r in await regiment_crud.get_all(db, include_archived=True)}
+
+    def regiment_label(rid: int) -> str:
+        r = regiments.get(rid)
+        if r is None:
+            return f"#{rid}"
+        return f"{r.name} (архив)" if r.is_archived else r.name
+
     by_regiment = [
         StatBucket(
             id=rid,
-            label=regiments[rid].name if rid in regiments else f"#{rid}",
+            label=regiment_label(rid),
             count=count,
             color=regiments[rid].color if rid in regiments else None,
         )
@@ -93,7 +102,7 @@ async def get_formation_stats(
     trend = [
         TrendSeries(
             id=rid,
-            label=regiments[rid].name if rid in regiments else f"#{rid}",
+            label=regiment_label(rid),
             color=regiments[rid].color if rid in regiments else None,
             points=[counts_by_regiment.get(rid, {}).get(d, 0) for d in trend_dates],
         )
