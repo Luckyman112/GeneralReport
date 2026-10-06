@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { instantiate, loadModel } from "./assets";
-import { ARMIES, UNIQUE_SHIPS, armyOf, flightOf, hashStr, type ArmyRoster, type ModelKey } from "./catalog";
+import { ARMIES, STATIONS, UNIQUE_SHIPS, armyOf, flightOf, hashStr, tintForModel, type ArmyRoster, type ModelKey } from "./catalog";
 import { Planet, SUN_DIR, zoneLayout } from "./planet";
 import { applyTint, tintFor } from "./tint";
 import { LIVE_STAGES, resolveForces, type BattleData, type FactionData, type Forces, type PlanetPayload } from "./types";
@@ -13,6 +13,10 @@ import { LIVE_STAGES, resolveForces, type BattleData, type FactionData, type For
 const SHIP_K = 0.1 / 1137;
 const FIGHTER_K = 0.014 / 12.71;
 const GROUND_K = 0.0014;
+/** Дройдек в одном бою не больше трёх (решение пользователя). */
+const DROID_MAX = 3;
+/** Станции крупнее кораблей того же размера не рисуем: тот же коэффициент, что у кораблей. */
+const STATION_K = SHIP_K;
 /** Камера при спуске к бою: высота над поверхностью (в радиусах планеты). */
 const SURFACE_ALT = 0.5;
 /** Половина поля боя по долготе (доля оборота) и по широте. */
@@ -198,6 +202,7 @@ export class PlanetView {
   private fx = new THREE.Group();
   private ground = new THREE.Group();
   private bobbers: { obj: THREE.Object3D; base: THREE.Vector3; phase: number }[] = [];
+  private stations: THREE.Object3D[] = [];
   private fighters: Fighter[] = [];
   private gunners: [THREE.Object3D[], THREE.Object3D[]] = [[], []];
   private bombers = new Map<string, THREE.Object3D[]>();
@@ -472,6 +477,25 @@ export class PlanetView {
       lines.push(`<b>Именной корабль</b> ${u.name || spec.title}${u.fac ? " · " + tag(u.fac) : ""}`);
     }
 
+    // станции висят ниже плоскости флотов и медленно вращаются
+    for (const [i, st] of (p.stations || []).entries()) {
+      const spec = STATIONS[st.key];
+      if (!spec) continue;
+      const own = st.key === "xq6" ? "rep" : "sep";
+      const tint = st.fac && armyOf(fac(st.fac)) !== own ? tintFor(fac(st.fac)) : null;
+      const s = await ship(spec.model, STATION_K, tint);
+      if (token !== this.token) return;
+      if (!s) continue;
+      const side = i % 2 ? 1 : -1;
+      const pos = new THREE.Vector3(side * (0.95 + Math.floor(i / 2) * 0.22), -0.42 - Math.floor(i / 2) * 0.05, 1.2);
+      s.position.copy(pos);
+      s.rotation.x = 0.35;
+      this.fleet.add(s);
+      this.bobbers.push({ obj: s, base: pos, phase: i * 1.3 + 0.5 });
+      this.stations.push(s);
+      lines.push(`<b>Станция</b> ${st.name || spec.title}${st.fac ? " · " + tag(st.fac) : ""}`);
+    }
+
     if (sys.zones) {
       const held = Object.entries(sys.zoneHolders || {}).filter(([, k]) => k > 0);
       lines.push(`<b>Поверхность</b> ${held.map(([fid, k]) => `${tag(fid)} ${k}/${sys.zones}`).join(" · ")}`);
@@ -566,7 +590,15 @@ export class PlanetView {
       const veh = Math.min(6, n.veh);
       for (let i = 0; i < veh; i++) {
         const v = b.v + FIELD_V * ((i - (veh - 1) / 2) / Math.max(1, veh - 1)) * 1.6 + rand(-0.004, 0.004);
-        jobs.push(this.spawnUnit(r.vehicle, side, dir, b, token, b.u - dir * FIELD_U * rand(0.75, 1.1), v));
+        const key = r.vehicle2 && i % 2 === 1 ? r.vehicle2 : r.vehicle;
+        jobs.push(this.spawnUnit(key, side, dir, b, token, b.u - dir * FIELD_U * rand(0.75, 1.1), v));
+      }
+      if (r.droid && veh > 0) {
+        const nd = Math.min(DROID_MAX, veh);
+        for (let i = 0; i < nd; i++) {
+          const v = b.v + FIELD_V * ((i - (nd - 1) / 2) / Math.max(1, nd - 1)) * 1.1 + rand(-0.003, 0.003);
+          jobs.push(this.spawnUnit(r.droid, side, dir, b, token, b.u - dir * FIELD_U * rand(0.6, 0.7), v));
+        }
       }
       const air = Math.min(3, n.air);
       for (let i = 0; i < air; i++) {
@@ -608,7 +640,7 @@ export class PlanetView {
       return;
     }
     if (token !== this.token || this.mode !== "surface" || this.current !== b) return;
-    const obj = applyTint(instantiate(proto), b.tints[side], 0.45);
+    const obj = applyTint(instantiate(proto), tintForModel(b.rosters[side], key, b.tints[side]), 0.45);
     obj.scale.setScalar(GROUND_K);
     let mixer: THREE.AnimationMixer | null = null;
     let action: THREE.AnimationAction | null = null;
@@ -640,7 +672,8 @@ export class PlanetView {
     const spacing = 0.15;
     for (let k = 0; k < n; k++) {
       const capital = k === 0 || k % 3 === 1;
-      const s = await ship(capital ? army.capital : army.escort, SHIP_K, tint);
+      const key = capital ? army.capital : army.escort;
+      const s = await ship(key, SHIP_K, tintForModel(army, key, tint));
       if (token !== this.token) return false;
       if (!s) continue;
       const [row, dy, dz] = WEDGE[k % WEDGE.length];
@@ -673,7 +706,8 @@ export class PlanetView {
       for (let k = 0; k < n; k++) {
         // каждый второй в армии с бомбардировщиками — бомбардировщик
         const bomber = Boolean(army.bomber) && k % 2 === 1;
-        const s = await ship(bomber ? army.bomber! : army.fighter, FIGHTER_K, tints[side]);
+        const key = bomber ? army.bomber! : army.fighter;
+        const s = await ship(key, FIGHTER_K, tintForModel(army, key, tints[side]));
         if (token !== this.token) return;
         if (!s) continue;
         this.fleet.add(s);
@@ -789,6 +823,7 @@ export class PlanetView {
     for (const b of this.bobbers) {
       b.obj.position.set(b.base.x + Math.sin(t * 0.21 + b.phase) * 0.006, b.base.y + Math.sin(t * 0.5 + b.phase) * 0.008, b.base.z);
     }
+    for (const s of this.stations) s.rotation.y += dt * 0.08;
 
     if (this.mode === "orbit") this.orbitCombat(dt);
     else this.groundCombat(dt);
@@ -1007,6 +1042,7 @@ export class PlanetView {
     this.fleet.visible = true;
     this.fx.clear();
     this.bobbers = [];
+    this.stations = [];
     this.fighters = [];
     this.gunners = [[], []];
     this.bombers = new Map();

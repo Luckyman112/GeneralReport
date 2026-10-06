@@ -377,6 +377,10 @@ table.dip td.self{background:repeating-linear-gradient(45deg,transparent 0 3px,r
       <div class="body" id="uq-body"></div>
     </section>
     <section class="card">
+      <h2>Станции</h2>
+      <div class="body" id="st-body"></div>
+    </section>
+    <section class="card">
       <h2>Дипломатия</h2>
       <div class="body" id="dip-body"></div>
     </section>
@@ -824,6 +828,7 @@ function indexData() {
     if (!FACTION[a] || !FACTION[b] || !REL[DATA.diplomacy[k]]) delete DATA.diplomacy[k];
   });
   normalizeUniqueShips();
+  normalizeStations();
   try { if (MAP3D) MAP3D.prune(new Set(SYSTEMS.map(x => x.id))); } catch (e) { /* MAP3D ещё не объявлен */ }
 }
 function today() {
@@ -917,7 +922,9 @@ function loadData(raw) {
     // дипломатии терялись при каждой загрузке страницы
     diplomacy: (d.diplomacy && typeof d.diplomacy === 'object' && !Array.isArray(d.diplomacy)) ? { ...d.diplomacy } : {},
     // именные корабли (по одному на всю галактику, см. UNIQUE_SHIPS ниже)
-    uniqueShips: Array.isArray(d.uniqueShips) ? d.uniqueShips.map(u => ({ ...u })) : []
+    uniqueShips: Array.isArray(d.uniqueShips) ? d.uniqueShips.map(u => ({ ...u })) : [],
+    // станции у планет (сколько угодно, см. STATIONS ниже)
+    stations: Array.isArray(d.stations) ? d.stations.map(x => ({ ...x })) : []
   };
   DATA.factions.forEach(f => { if (!Array.isArray(f.res)) f.res = []; });
   indexData();
@@ -1727,6 +1734,7 @@ function drawNodes(alpha) {
 
     drawOrbitMarks(s, top.x, top.y, rad, nodeA);
     drawUniqueShipMark(s, top.x, top.y, rad, nodeA);
+    drawStationMark(s, top.x, top.y, rad, nodeA);
 
     // Вспышка-кольцо при смене владельца/начале-завершении боя (см. addFlash) —
     // расширяется и гаснет за DATA.meta.fx.flashMs (настраивается Асик+).
@@ -2584,7 +2592,7 @@ function syncFactions() {
       '<input value="' + esc(f.name) + '" data-fac="' + esc(f.id) + '" data-k="name" aria-label="Название фракции">' +
       '<label class="neu-flag"><input type="checkbox" data-fac="' + esc(f.id) + '" data-k="neutral"' + (f.neutral ? ' checked' : '') + '> нейтральная</label>' +
       '<select data-fac="' + esc(f.id) + '" data-k="army" aria-label="Войска в 3D" title="Какими моделями фракция воюет в 3D">' +
-        [['', 'войска: авто'], ['rep', 'войска: Республика'], ['sep', 'войска: КНС'], ['bank', 'войска: Банковский клан']].map(([v, l]) => '<option value="' + v + '"' + ((f.army || '') === v ? ' selected' : '') + '>' + l + '</option>').join('') +
+        [['', 'войска: авто'], ['rep', 'войска: Республика'], ['sep', 'войска: КНС'], ['bank', 'войска: Банковский клан'], ['dw', 'войска: Дозор Смерти'], ['pirate', 'войска: пираты']].map(([v, l]) => '<option value="' + v + '"' + ((f.army || '') === v ? ' selected' : '') + '>' + l + '</option>').join('') +
       '</select>' +
       '<button class="mini" data-facdel="' + esc(f.id) + '" aria-label="Удалить фракцию">×</button>' +
     '</div>').join('');
@@ -3437,6 +3445,71 @@ function normalizeUniqueShips() {
     if (u.fac && !FACTION[u.fac]) u.fac = '';
   });
 }
+/* Станции: в отличие от именных кораблей их сколько угодно, у каждой тип
+ * (модель), название, владелец и система. */
+const STATIONS = { xq6: { title: 'Платформа XQ6', side: 'Республика' }, cis: { title: 'Станция КНС', side: 'КНС' } };
+function normalizeStations() {
+  DATA.stations = (DATA.stations || []).filter(x => x && STATIONS[x.key]);
+  DATA.stations.forEach(x => {
+    if (!x.id) x.id = 'st' + Math.random().toString(36).slice(2, 9);
+    if (x.sys && !SYS[x.sys]) x.sys = '';
+    if (x.fac && !FACTION[x.fac]) x.fac = '';
+  });
+}
+function stationsAt(id) { return (DATA.stations || []).filter(x => x.sys === id); }
+function syncStations() {
+  const list = DATA.stations || [];
+  const rows = list.map((x, i) => {
+    const meta = STATIONS[x.key];
+    if (!editing) {
+      const where = x.sys && SYS[x.sys]
+        ? '<button class="mini" data-goto="' + esc(x.sys) + '">у ' + esc(SYS[x.sys].name) + '</button>'
+        : '<span style="color:var(--dim)">не на карте</span>';
+      return '<div class="kv" style="align-items:center;gap:8px"><span><b>' + esc(x.name || meta.title) + '</b>' +
+        (x.fac ? ' · <span style="color:' + esc(facOf(x.fac).color) + '">' + esc(facOf(x.fac).name) + '</span>' : '') +
+        '</span>' + where + '</div>';
+    }
+    return '<div class="uq-row"><div class="lab" style="display:flex;justify-content:space-between;align-items:center">' + esc(meta.title) +
+        '<button class="mini" data-stdel="' + i + '" title="Убрать станцию">×</button></div>' +
+      '<input value="' + esc(x.name || '') + '" data-st="' + i + '" data-k="name" aria-label="Название" placeholder="' + esc(meta.title) + '">' +
+      '<div class="editgrid" style="margin-top:5px">' +
+        '<select data-st="' + i + '" data-k="fac" aria-label="Чья"><option value="">без фракции</option>' +
+          DATA.factions.map(f => '<option value="' + esc(f.id) + '"' + (x.fac === f.id ? ' selected' : '') + '>' + esc(f.name) + '</option>').join('') + '</select>' +
+        '<select data-st="' + i + '" data-k="sys" aria-label="Где"><option value="">не на карте</option>' +
+          SYSTEMS.slice().sort((a, b) => a.name.localeCompare(b.name)).map(s => '<option value="' + esc(s.id) + '"' + (x.sys === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select>' +
+      '</div></div>';
+  }).join('');
+  const add = editing
+    ? '<div class="editgrid" style="margin-top:8px">' + Object.entries(STATIONS).map(([k, m]) =>
+        '<button class="mini" data-stadd="' + k + '">+ ' + esc(m.title) + '</button>').join('') + '</div>'
+    : '';
+  el('st-body').innerHTML = (rows || '<div class="hint" style="margin:0">станций нет</div>') + add;
+}
+function drawStationMark(s, x, y, rad, a) {
+  const here = stationsAt(s.id);
+  if (!here.length) return;
+  here.forEach((st, i) => {
+    const px = x + rad * 1.05 + i * 13, py = y + rad * .95;
+    const col = st.fac ? facOf(st.fac).col : '#9fb3c8';
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = col; ctx.fillStyle = '#05070c'; ctx.lineWidth = 1.5;
+    // шестиугольник с точкой — значок станции
+    ctx.beginPath();
+    for (let k = 0; k < 6; k++) {
+      const ang = Math.PI / 6 + k * Math.PI / 3;
+      const vx = px + Math.cos(ang) * 5.5, vy = py + Math.sin(ang) * 5.5;
+      if (k) ctx.lineTo(vx, vy); else ctx.moveTo(vx, vy);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill();
+  });
+  if (cam.z > .9) {
+    ctx.font = '500 10px "IBM Plex Mono", monospace';
+    ctx.fillStyle = here[0].fac ? facOf(here[0].fac).col : '#9fb3c8';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(here.length > 1 ? here.length + ' станции' : (here[0].name || STATIONS[here[0].key].title), x + rad * 1.05 + here.length * 13, y + rad * .95);
+  }
+}
 function uniqueShipsAt(id) { return (DATA.uniqueShips || []).filter(u => u.sys === id); }
 function syncUniqueShips() {
   const list = DATA.uniqueShips || [];
@@ -3585,7 +3658,7 @@ function drawConvoys(alpha) {
   }
   ctx.restore();
 }
-function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncUniqueShips(); syncDiplomacy(); syncFacSummary(); syncBattles(); syncConvoys(); syncBlocks(); syncLog(); syncRequests(); }
+function syncStats() { syncCtrl(); syncRes(); syncEsc(); syncUniqueShips(); syncStations(); syncDiplomacy(); syncFacSummary(); syncBattles(); syncConvoys(); syncBlocks(); syncLog(); syncRequests(); }
 
 el('rail-r').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -3758,6 +3831,23 @@ el('rail-r').addEventListener('input', e => {
 el('rail-l').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b) return;
+  // «у <планета>» у именных кораблей и станций — перелёт к системе
+  if (b.dataset.goto !== undefined) {
+    if (SYS[b.dataset.goto]) { selected = b.dataset.goto; focusOn(selected); syncPanel(); }
+    return;
+  }
+  if (b.dataset.stadd !== undefined) {
+    if (!editing) return;
+    DATA.stations.push({ id: 'st' + Math.random().toString(36).slice(2, 9), key: b.dataset.stadd, name: '', fac: '', sys: selected && SYS[selected] ? selected : '' });
+    syncStations(); syncDetail(); touch();
+    return;
+  }
+  if (b.dataset.stdel !== undefined) {
+    if (!editing) return;
+    DATA.stations.splice(+b.dataset.stdel, 1);
+    syncStations(); syncDetail(); touch();
+    return;
+  }
   const f = facOf(DATA.meta.main);
   if (b.id === 'res-add') { f.res.push({ k: 'Ресурс', v: '0' }); syncRes(); touch(); }
   else if (b.dataset.resdel !== undefined) { f.res.splice(+b.dataset.resdel, 1); syncRes(); touch(); }
@@ -3783,6 +3873,13 @@ el('rail-l').addEventListener('click', e => {
 });
 el('rail-l').addEventListener('change', e => {
   const t = e.target;
+  if (t.dataset.st !== undefined && t.dataset.k !== 'name') {
+    const x = DATA.stations[+t.dataset.st];
+    if (!x || !editing) return;
+    x[t.dataset.k] = t.value;
+    syncStations(); syncDetail(); touch();
+    return;
+  }
   if (t.dataset.uq === undefined) return;
   const u = DATA.uniqueShips[+t.dataset.uq];
   if (!u || !editing) return;
@@ -3791,6 +3888,11 @@ el('rail-l').addEventListener('change', e => {
 });
 el('rail-l').addEventListener('input', e => {
   const t = e.target;
+  if (t.dataset.st !== undefined && t.dataset.k === 'name') {
+    const x = DATA.stations[+t.dataset.st];
+    if (x && editing) { x.name = t.value; touch(); }
+    return;
+  }
   if (t.dataset.uq !== undefined && t.dataset.k === 'name') {
     const u = DATA.uniqueShips[+t.dataset.uq];
     if (u && editing) { u.name = t.value; touch(); }
@@ -4232,11 +4334,12 @@ function payloadFor(id) {
     factions: DATA.factions,
     battles: DATA.battles.filter(b => b.sys === id && LIVE_STAGES[b.status]),
     uniqueShips: uniqueShipsAt(id).map(u => ({ key: u.key, name: u.name, fac: u.fac })),
+    stations: stationsAt(id).map(x => ({ key: x.key, name: x.name, fac: x.fac })),
     blockades: DATA.blockades.filter(b => b.a === id || b.b === id),
     layout: { x: lay.x, y: lay.y, r: lay.disp }
   };
 }
-function payloadKey(p) { return JSON.stringify([p.sys, p.battles, p.blockades, p.uniqueShips, p.factions.map(f => [f.id, f.color, f.army])]); }
+function payloadKey(p) { return JSON.stringify([p.sys, p.battles, p.blockades, p.uniqueShips, p.stations, p.factions.map(f => [f.id, f.color, f.army])]); }
 async function show3DPlanet(id) {
   const G = await load3D();
   if (!G || mode !== 'planet' || diveTarget !== id) return;
@@ -4294,8 +4397,9 @@ function shipSpriteFor(factionId) {
   const f = facOf(factionId);
   const army = G3D.armyOf(f.raw || { id: factionId });
   const base = SHIP_SPRITES[army];
-  // родные корпуса не перекрашиваем: Республика, КНС и Munificent Банковского клана
-  if (!base || factionId === 'rep' || factionId === 'sep' || army === 'bank') return base || null;
+  // родные корпуса не перекрашиваем: Республика, КНС, Munificent Банковского клана,
+  // Lancer Дозора Смерти и фрегат пиратов
+  if (!base || factionId === 'rep' || factionId === 'sep' || army === 'bank' || army === 'dw' || army === 'pirate') return base || null;
   const key = factionId + ':' + f.col;
   if (shipTintCache[key]) return shipTintCache[key];
   const c = document.createElement('canvas');

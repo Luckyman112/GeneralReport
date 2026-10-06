@@ -1503,6 +1503,25 @@ its old 2D drawing.
   an enemy capital ship in orbit, two onto enemy ground units on the surface. A bomb
   is a glowing sprite that falls with acceleration and bursts in a blue flash.
 
+- Death Watch (`ARMIES.dw`: Lancer frigate 250 m, a concept fighter at Fang fighter
+  scale 10.56 m) and pirates (`ARMIES.pirate`: Assault Frigate Mk I, 700 m). Both are
+  also picked automatically from the faction name (`isDeathWatch`/`isPirates`).
+  `ArmyRoster.own` lists an army's native models: those keep their colours, while
+  borrowed ones (ground vehicles, pirate Vultures) are tinted to the faction
+  (`tintForModel`).
+- Ground extras: `vehicle2` alternates with the main vehicle (Republic AT-AP,
+  15.24 m, no animation, so it stands still). `droid` adds droidekas (CIS and Banking
+  Clan, 1.83 m tall) in front of the vehicles, at most `DROID_MAX = 3` per side per
+  battle (user decision).
+- `DATA.stations` (`[{id, key, name, fac, sys}]`, a top-level key copied in
+  `loadData()` and listed in `_LIST_KEYS`): any number per type. Types: `xq6` (XQ6
+  Platform, Republic) and `cis` (CIS station). A station hangs below the fleets in the
+  orbit view, rotating slowly. It is tinted only when its owner's army is not the
+  station's own side. The 2D map shows it as a hexagon to the right of the planet.
+  The left-rail card «Станции» adds and edits stations; a new one is placed at the
+  selected system. The left rail's `data-goto` buttons («у <планета>») were dead until
+  this change: the left-rail click handler ignored them.
+
 The galaxy page opens a help overlay (`#help`) on the first visit (`galaxyHelpSeen` in
 localStorage). The toolbar hides the edit-only buttons (`.tool-edit`) outside edit
 mode, and `syncModeUi()` shows the strip at the top that explains what the current

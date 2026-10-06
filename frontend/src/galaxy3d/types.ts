@@ -70,8 +70,16 @@ export interface UniqueShipData {
   fac?: string;
 }
 
+/** Станция у планеты (см. catalog.ts::STATIONS). */
+export interface StationData {
+  key: string;
+  name: string;
+  fac?: string;
+}
+
 export interface PlanetPayload {
   uniqueShips?: UniqueShipData[];
+  stations?: StationData[];
   sys: SystemData;
   factions: FactionData[];
   /** Идущие бои на планете — их может быть несколько, по одному на сектор. */

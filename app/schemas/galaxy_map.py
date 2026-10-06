@@ -17,7 +17,7 @@ from app.schemas.user import UserBrief
 # верхнего уровня, не полная валидация.
 _LIST_KEYS = (
     "systems", "factions", "lanes", "regions", "routes", "battles", "convoys", "blockades", "log", "facilityTypes",
-    "uniqueShips",
+    "uniqueShips", "stations",
 )
 _DICT_KEYS = ("meta", "diplomacy")
 
